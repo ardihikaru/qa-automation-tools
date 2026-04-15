@@ -1,0 +1,27 @@
+{
+  "name": "playwright-docs",
+  "version": "1.0.0",
+  "description": "Playwright Documentation Generator - Record flows and generate documentation",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "test": "playwright test",
+    "record": "ts-node src/recorder.ts"
+  },
+  "keywords": ["playwright", "documentation", "automation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "yaml": "^2.3.4",
+    "minimax-api": "^1.0.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.2"
+  }
+}
