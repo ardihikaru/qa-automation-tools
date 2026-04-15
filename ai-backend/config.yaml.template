@@ -1,0 +1,255 @@
+# ============================================================
+# QA Automation Tools - Configuration Template
+# ============================================================
+# This is the TEMPLATE configuration file. Copy values to config.yaml.
+# DO NOT commit actual credentials - use this template for reference.
+# ============================================================
+# 
+# USAGE:
+# 1. Copy this file to config.yaml (gitignored)
+# 2. Update values with actual credentials
+# 3. Keep config.yaml in .gitignore
+# ============================================================
+
+# ------------------------------------------------------------
+# STAGING ENVIRONMENT
+# ------------------------------------------------------------
+# Base URL for the application under test
+staging:
+  url: "https://your-staging-domain.com/"
+  
+  # API endpoints (GraphQL and REST)
+  graph_api_url: "https://your-api-graphql.com"
+  rest_api_url: "https://your-api-rest.com/"
+  
+  # Timeout settings (milliseconds)
+  timeout: 30000
+  navigation_timeout: 30000
+  action_timeout: 5000
+
+# ------------------------------------------------------------
+# ROLE-BASED CREDENTIALS
+# ------------------------------------------------------------
+# User accounts for different roles in the system
+# Add one entry per role that will be tested
+credentials:
+  # Example: Super Admin
+  super_admin:
+    username: "your-super-admin-email@example.com"
+    password: "your-password-here"
+    role_code: "SuperAdmin"
+  
+  # Example: Add more roles as needed
+  # admin:
+  #   username: "admin@example.com"
+  #   password: "changeme"
+  #   role_code: "Admin"
+  #
+  # doctor:
+  #   username: "doctor@example.com"
+  #   password: "changeme"
+  #   role_code: "Doctor"
+  #
+  # cashier:
+  #   username: "cashier@example.com"
+  #   password: "changeme"
+  #   role_code: "Cashier"
+
+# ------------------------------------------------------------
+# AI BACKEND (Golang)
+# ------------------------------------------------------------
+# Backend server and database configuration
+backend:
+  # Server host and port
+  host: "0.0.0.0"
+  port: 8080
+  
+  # Database (Neon PostgreSQL)
+  database:
+    host: "your-db-host.neon.tech"    # e.g., "qaautomation.us-east-1.aws.neon.tech"
+    port: 5432
+    username: "your-db-username"
+    password: "your-db-password"
+    name: "your-db-name"
+    # OR use full connection string:
+    # connection_string: "postgres://user:password@host:5432/dbname?sslmode=require"
+  
+  # Minimax AI API
+  ai:
+    api_key: "your-minimax-api-key"
+    model: "abab6.5s-chat"
+    embedding_model: "emb-embedding-01"
+    # Optional: Custom API endpoint
+    # base_url: "https://api.minimax.chat/v1"
+  
+  # Security settings
+  security:
+    api_secret_key: "change-this-secure-random-string"
+    cors_enabled: true
+    cors_origins: "*"  # Or comma-separated: "https://domain1.com,https://domain2.com"
+
+# ------------------------------------------------------------
+# PLAYWRIGHT DOCS (Documentation Generator)
+# ------------------------------------------------------------
+playwright_docs:
+  # Browser configuration
+  browser:
+    type: "chromium"           # chromium | firefox | webkit
+    headless: true
+    slow_mo: 0
+    viewport:
+      width: 1280
+      height: 720
+  
+  # Output directories
+  output:
+    video_dir: "output/videos"
+    docs_dir: "output/docs"
+    screenshots_dir: "output/screenshots"
+    record_video: false
+    video_format: "webm"
+  
+  # Flow configuration
+  flows:
+    roles: ["super_admin"]      # Roles to generate docs for
+    max_steps: 50
+    continue_on_error: true
+
+# ------------------------------------------------------------
+# PLAYWRIGHT QA (QA System)
+# ------------------------------------------------------------
+playwright_qa:
+  # Browser settings
+  browser:
+    type: "chromium"
+    headless: true
+    slow_mo: 0
+    viewport:
+      width: 1280
+      height: 720
+    args:
+      - "--no-sandbox"
+      - "--disable-setuid-sandbox"
+  
+  # Exploration mode settings
+  exploration:
+    mode: "guided"            # random | guided | planning
+    max_steps: 50
+    max_iterations: 10
+    exploration_ratio: 0.2   # 20% explore, 80% exploit
+    plan_depth: 3
+  
+  # Learning cache settings
+  learning:
+    enabled: true
+    endpoint: "/api/learning"
+    search_endpoint: "/api/search"
+    success_increment: 0.1
+    failure_decrement: 0.1
+    decay_factor: 0.95
+    min_usage_count: 3
+  
+  # Goal detection
+  goals:
+    known:
+      - name: "create_user"
+        signals: ["User created", "Success", "created"]
+        priority: 1
+      - name: "create_invoice"
+        signals: ["Invoice created", "Success", "created"]
+        priority: 1
+      - name: "login"
+        signals: ["Dashboard", "Welcome", "logged"]
+        priority: 2
+      - name: "save_form"
+        signals: ["Success", "Saved", "created"]
+        priority: 1
+      - name: "search"
+        signals: ["Results", "found", "Search"]
+        priority: 2
+    confidence_threshold: 0.5
+  
+  # QA Skills config
+  skills:
+    enabled: true
+    run_on_navigate: true
+    builtin:
+      - max_length
+      - required_field
+      - data_persistence
+      - multi_tab_save
+      - input_type
+      - label_association
+    severity_threshold: "low"
+
+# ------------------------------------------------------------
+# LOGGER SETTINGS
+# ------------------------------------------------------------
+logger:
+  api_url: "http://localhost:8080"
+  batch_size: 10
+  flush_interval: 5000
+  retry:
+    count: 3
+    delay: 1000
+
+# ------------------------------------------------------------
+# DASHBOARD (React)
+# ------------------------------------------------------------
+dashboard:
+  dev_server:
+    host: "localhost"
+    port: 3000
+  proxy:
+    enabled: true
+    target: "http://localhost:8080"
+  ui:
+    theme: "light"
+    primary_color: "#2563eb"
+    debug: false
+
+# ------------------------------------------------------------
+# COST OPTIMIZATION
+# ------------------------------------------------------------
+cost_optimization:
+  caching:
+    enabled: true
+    ai_cache: true
+    embedding_cache: true
+    similarity_cache: true
+  expected_savings:
+    hash_cache: 0.70
+    input_normalization: 0.30
+    embedding_reuse: 0.65
+    similarity_reuse: 0.20
+    total: 0.95
+
+# ------------------------------------------------------------
+# MONITORING
+# ------------------------------------------------------------
+monitoring:
+  log_level: "info"
+  structured_logging: true
+  metrics_enabled: true
+
+# ------------------------------------------------------------
+# ENVIRONMENT-SPECIFIC OVERRIDES
+# ------------------------------------------------------------
+# Uncomment for development:
+# development:
+#   staging:
+#     url: "http://localhost:3000"
+#   backend:
+#     port: 8080
+
+# Uncomment for production:
+# production:
+#   staging:
+#     url: "https://app.yourdomain.com"
+#   backend:
+#     port: 8080
+#     security:
+#       cors_origins: "https://dashboard.yourdomain.com"
+#   cost_optimization:
+#     caching:
+#       enabled: true

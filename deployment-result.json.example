@@ -1,0 +1,59 @@
+{
+  "deployment_timestamp": "2025-01-13T12:00:00Z",
+  "project": "qa-automation-tools-example-org",
+  "region": "asia-southeast1",
+  "services": {
+    "ai-backend": {
+      "service_name": "qa-backend",
+      "image": "gcr.io/qa-automation-tools-example-org/qa-backend:v2",
+      "status": "SUCCESS",
+      "url": "https://qa-backend-000000000000.asia-southeast1.run.app",
+      "memory": "512Mi",
+      "cpu": "1",
+      "port": 8080,
+      "environment_variables": {
+        "DATABASE_URL": "postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require",
+        "MINIMAX_API_KEY": "sk-api-***",
+        "NODE_ENV": "production"
+      },
+      "deployments": [
+        {
+          "attempt": 1,
+          "status": "FAILED",
+          "error": "Container failed to start - database not configured"
+        },
+        {
+          "attempt": 2,
+          "status": "SUCCESS",
+          "note": "Retried with proper DATABASE_URL and MINIMAX_API_KEY"
+        }
+      ]
+    },
+    "dashboard": {
+      "service_name": "qa-dashboard",
+      "image": "gcr.io/qa-automation-tools-example-org/qa-dashboard:v2",
+      "status": "SUCCESS",
+      "url": "https://qa-dashboard-000000000000.asia-southeast1.run.app",
+      "memory": "256Mi",
+      "cpu": "1",
+      "port": 80,
+      "configuration": {
+        "nginx_proxy_to_backend": "https://qa-backend-000000000000.asia-southeast1.run.app"
+      },
+      "deployments": [
+        {
+          "attempt": 1,
+          "status": "FAILED",
+          "error": "Container failed to start - health check failed"
+        },
+        {
+          "attempt": 2,
+          "status": "SUCCESS",
+          "note": "Fixed nginx.conf to use direct backend URL"
+        }
+      ]
+    }
+  },
+  "overall_status": "SUCCESS",
+  "notes": "Both services deployed successfully. The ai-backend connects to Neon database and uses Minimax AI. The dashboard proxies API calls to the backend."
+}
