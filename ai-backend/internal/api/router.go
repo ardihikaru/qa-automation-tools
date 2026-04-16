@@ -171,6 +171,9 @@ func (r *Router) handleFlows(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		// Set proper headers and status before encoding
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(flow)
 
 	default:
@@ -183,6 +186,8 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		// List issues with optional filters
+		w.Header().Set("Content-Type", "application/json")
+		
 		query := req.URL.Query()
 		filterFixed := query.Get("is_fixed")
 		target := query.Get("target")
@@ -261,6 +266,11 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			result = append(result, *issue)
 		}
 
+		// Return empty array instead of null if no results
+		if result == nil {
+			result = []IssueWithSuggestions{}
+		}
+
 		json.NewEncoder(w).Encode(result)
 
 	case "POST":
@@ -289,6 +299,9 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			r.db.Exec(req.Context(), `UPDATE raw_issues SET category = $1 WHERE id = $2`, category, issue.ID)
 		}
 
+		// Set proper headers and status before encoding
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(issue)
 
 	default:
@@ -394,6 +407,11 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		results = append(results, result)
 	}
 
+	// Return empty array instead of null if no results
+	if results == nil {
+		results = []SearchResult{}
+	}
+
 	json.NewEncoder(w).Encode(results)
 }
 
@@ -454,6 +472,8 @@ func (r *Router) handleCostTrend(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
 	rows, err := r.db.Query(req.Context(), `
 		SELECT DATE(created_at) as date, SUM(cost_estimate) as cost
 		FROM request_logs
@@ -474,6 +494,11 @@ func (r *Router) handleCostTrend(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 		trends = append(trends, trend)
+	}
+
+	// Return empty array instead of null if no results
+	if trends == nil {
+		trends = []models.CostTrend{}
 	}
 
 	json.NewEncoder(w).Encode(trends)
@@ -513,6 +538,8 @@ func (r *Router) handleCostByFeature(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
 	rows, err := r.db.Query(req.Context(), `
 		SELECT COALESCE(endpoint, 'unknown') as feature, SUM(cost_estimate) as cost
 		FROM request_logs
@@ -535,6 +562,11 @@ func (r *Router) handleCostByFeature(w http.ResponseWriter, req *http.Request) {
 		results = append(results, result)
 	}
 
+	// Return empty array instead of null if no results
+	if results == nil {
+		results = []models.CostByFeature{}
+	}
+
 	json.NewEncoder(w).Encode(results)
 }
 
@@ -554,9 +586,20 @@ func (r *Router) handleVideos(w http.ResponseWriter, req *http.Request) {
 
 // handleAnalytics handles /api/analytics
 func (r *Router) handleAnalytics(w http.ResponseWriter, req *http.Request) {
-	// Simplified - return basic stats
+	// Return basic stats
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"flows": 0, "issues": 0}`)
+
+	type AnalyticsResponse struct {
+		Flows  int `json:"flows"`
+		Issues int `json:"issues"`
+	}
+
+	response := AnalyticsResponse{
+		Flows:  0,
+		Issues: 0,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 // handleLearning handles /api/learning

@@ -1,176 +1,105 @@
-# Test Scenario - Local API Testing
+# Test Scenario - API Testing
 
 ## Overview
-This file contains test scenarios for local API testing using Playwright.
-Copy this file to TEST-SCENARIO.md (gitignored) before running tests.
+This file documents test scenarios for production API testing.
+Production API: https://ai-backend-000000000000.asia-southeast1.run.app
 
-## API Endpoints to Test
+## Test Scenarios
 
 ### 1. Health Check
-- **Endpoint**: `GET /health`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK with database status
-  - [ ] Valid JSON response format
+- **Endpoint**: GET /health
+- **Expected**: 200 OK with JSON `{"status": "ok", "database": "connected"}`
+- **Verification**: Response contains "status": "ok"
 
-### 2. Flows API
-- **Endpoint**: `GET /api/flows`
-- **Authentication**: Not required (configured but not enforced)
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON array response (may be empty)
+### 2. GET /api/flows
+- **Endpoint**: GET /api/flows
+- **Expected**: 200 OK with JSON array (may be empty)
+- **Verification**: Response is valid JSON array
 
-- **Endpoint**: `POST /api/flows`
-- **Headers**: `Content-Type: application/json`
-- **Body**:
-  ```json
-  {
-    "role_id": "super_admin",
-    "name": "Test Flow",
-    "description": "Test flow description"
-  }
-  ```
-- **Test Cases**:
-  - [ ] Returns 201 Created on valid payload
-  - [ ] Returns 400 Bad Request on invalid payload
+### 3. POST /api/flows
+- **Endpoint**: POST /api/flows
+- **Body**: `{"role_id": 1, "name": "QA Test Flow", "description": "Testing POST flow endpoint"}`
+- **Expected**: 201 Created with created flow object
+- **Verification**: 
+  - Status code is 201
+  - Response contains "id" field
 
-### 3. Docs API
-- **Endpoint**: `GET /api/docs`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON response
+### 4. GET /api/docs
+- **Endpoint**: GET /api/docs
+- **Expected**: 200 OK with JSON `{"docs": []}`
+- **Verification**: Response is valid JSON
 
-### 4. Videos API
-- **Endpoint**: `GET /api/videos`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON response
+### 5. GET /api/videos
+- **Endpoint**: GET /api/videos
+- **Expected**: 200 OK with JSON `{"videos": []}`
+- **Verification**: Response is valid JSON
 
-### 5. Issues API
-- **Endpoint**: `GET /api/issues`
-- **Authentication**: Not required
-- **Query Parameters**: `is_fixed`, `target`
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Filters work correctly
+### 6. GET /api/issues
+- **Endpoint**: GET /api/issues
+- **Expected**: 200 OK with JSON array (not null)
+- **Verification**: 
+  - Response is not null
+  - If array, return as array `[]`
 
-- **Endpoint**: `POST /api/issues`
-- **Headers**: `Content-Type: application/json`
-- **Body**:
-  ```json
-  {
-    "page": "login",
-    "action": "click",
-    "error_type": "validation",
-    "error_text": "Invalid email format",
-    "category": "validation",
-    "severity": "medium"
-  }
-  ```
-- **Test Cases**:
-  - [ ] Returns 201 Created on valid payload
-  - [ ] Returns 400 Bad Request on invalid payload
+### 7. POST /api/issues
+- **Endpoint**: POST /api/issues
+- **Body**: `{"page":"login","action":"click","error_type":"validation","error_text":"test error"}`
+- **Expected**: 201 Created
+- **Verification**: 
+  - Status code is 201
+  - Response contains "id" field
 
-### 6. Skills API
-- **Endpoint**: `GET /api/skills`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON array response
+### 8. GET /api/skills
+- **Endpoint**: GET /api/skills
+- **Expected**: 200 OK with JSON array
+- **Verification**: Response is valid JSON array
 
-### 7. Search API
-- **Endpoint**: `GET /api/search?q=<query>`
-- **Authentication**: Not required
-- **Required Parameters**: `q` (search query)
-- **Test Cases**:
-  - [ ] Returns 200 OK with valid query
-  - [ ] Returns 400 Bad Request without query parameter
-  - [ ] Returns 503 Service Unavailable when AI service is unavailable
+### 9. GET /api/search (no param)
+- **Endpoint**: GET /api/search
+- **Expected**: 400 Bad Request
+- **Verification**: Status code is 400
 
-### 8. Cost Analytics APIs
-- **Endpoint**: `GET /api/cost/overview`
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Contains total_requests, total_tokens, total_cost fields
+### 10. GET /api/search?q=test
+- **Endpoint**: GET /api/search?q=test
+- **Expected**: 200 OK with JSON array (not null)
+- **Verification**: Response is array (not null)
 
-- **Endpoint**: `GET /api/cost/trend`
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Returns trend data for last 30 days
+### 11. GET /api/cost/overview
+- **Endpoint**: GET /api/cost/overview
+- **Expected**: 200 OK with JSON object containing cost stats
+- **Verification**: Response contains total_requests, total_cost fields
 
-- **Endpoint**: `GET /api/cost/efficiency`
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Contains hit/miss counts
+### 12. GET /api/cost/trend
+- **Endpoint**: GET /api/cost/trend
+- **Expected**: 200 OK with JSON array (not null)
+- **Verification**: Response is array `[]` (empty) not null
 
-- **Endpoint**: `GET /api/cost/by-feature`
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Contains top 20 features by cost
+### 13. GET /api/cost/efficiency
+- **Endpoint**: GET /api/cost/efficiency
+- **Expected**: 200 OK with JSON object
+- **Verification**: Response contains "hit" and "miss" fields
 
-### 9. Analytics API
-- **Endpoint**: `GET /api/analytics`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON response with stats
+### 14. GET /api/cost/by-feature
+- **Endpoint**: GET /api/cost/by-feature
+- **Expected**: 200 OK with JSON array (not null)
+- **Verification**: Response is array `[]` (empty) not null
 
-### 10. Learning API
-- **Endpoint**: `GET /api/learning`
-- **Authentication**: Not required
-- **Test Cases**:
-  - [ ] Returns 200 OK
-  - [ ] Valid JSON response
+### 15. GET /api/analytics
+- **Endpoint**: GET /api/analytics
+- **Expected**: 200 OK with JSON object
+- **Verification**: 
+  - Response contains "flows" and "issues" fields
+  - No extra spaces in JSON
 
-## Test Execution
+### 16. GET /api/learning
+- **Endpoint**: GET /api/learning
+- **Expected**: 200 OK with JSON object
+- **Verification**: Response contains learning_records field
 
-### Prerequisites
-1. Start the ai-backend server:
-   ```bash
-   cd ai-backend
-   go build -o server ./cmd/server
-   ./server
-   ```
+### Error Handling Tests
 
-2. Verify server is running:
-   ```bash
-   curl http://localhost:8080/health
-   ```
-
-### Testing with Playwright
-Run tests against the local API:
-
-```bash
-cd playwright-qa
-npm test
-```
-
-Or test manually with curl:
-
-```bash
-# Health check
-curl http://localhost:8080/health
-
-# All flows
-curl http://localhost:8080/api/flows
-
-# Search (requires q parameter)
-curl "http://localhost:8080/api/search?q=login"
-```
-
-## Authentication Notes
-- API_SECRET_KEY is defined in config.yaml but NOT enforced in router.go
-- All endpoints are accessible without authentication
-- CORS is enabled for all origins (`*`)
-
-## Expected Issues
-1. Database may return 503 if not connected
-2. Search endpoint returns 503 if AI service is unavailable
-3. Some endpoints require database connection
-
-## Status
-- [ ] Create test scenarios
-- [ ] Run all API tests
-- [ ] Document results
+### Invalid JSON on POST /api/forms
+- **Endpoint**: POST /api/flows
+- **Body**: Invalid JSON
+- **Expected**: 400 Bad Request
+- **Verification**: Status code is 400
