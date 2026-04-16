@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -910,9 +912,60 @@ func (r *Router) handleCostByFeature(w http.ResponseWriter, req *http.Request) {
 
 // handleDocs handles /api/docs
 func (r *Router) handleDocs(w http.ResponseWriter, req *http.Request) {
-	// Simplified - return list of docs
+	if req.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"docs": []}`)
+
+	type DocInfo struct {
+		Name        string `json:"name"`
+		Path        string `json:"path"`
+		Product     string `json:"product,omitempty"`
+		Description string `json:"description,omitempty"`
+	}
+
+	var docs []DocInfo
+
+	// Walk through product-documentations directory
+	productDir := "../product-documentations"
+	entries, err := os.ReadDir(productDir)
+	if err != nil {
+		log.Printf("Error reading product-documentations: %v", err)
+		json.NewEncoder(w).Encode([]DocInfo{})
+		return
+	}
+
+	for _, productEntry := range entries {
+		if !productEntry.IsDir() {
+			continue
+		}
+
+		productName := productEntry.Name()
+		productPath := filepath.Join(productDir, productName)
+
+		docEntries, err := os.ReadDir(productPath)
+		if err != nil {
+			continue
+		}
+
+		for _, docEntry := range docEntries {
+			if docEntry.IsDir() || filepath.Ext(docEntry.Name()) == ".md" {
+				docName := strings.TrimSuffix(docEntry.Name(), ".md")
+				docs = append(docs, DocInfo{
+					Name:    docName,
+					Path:    filepath.Join(productPath, docEntry.Name()),
+					Product: productName,
+				})
+			}
+		}
+	}
+
+	if docs == nil {
+		docs = []DocInfo{}
+	}
+	json.NewEncoder(w).Encode(docs)
 }
 
 // handleVideos handles /api/videos
