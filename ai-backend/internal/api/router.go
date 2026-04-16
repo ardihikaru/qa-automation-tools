@@ -86,6 +86,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Issue endpoints
 	case "/api/issues":
 		r.handleIssues(w, req)
+	case "/api/issues/status":
+		r.handleIssueStatus(w, req)
+	case "/api/issues/notes":
+		r.handleIssueNotes(w, req)
 
 	// Skill endpoints
 	case "/api/skills":
@@ -606,4 +610,88 @@ func (r *Router) handleAnalytics(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"learning_records": 0}`)
+}
+
+// handleIssueStatus handles POST /api/issues/status
+func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var payload struct {
+		ID        int  `json:"id"`
+		IsFixed bool `json:"is_fixed"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if payload.ID == 0 {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := r.db.Exec(req.Context(), `
+		UPDATE raw_issues
+		SET is_fixed = $1
+		WHERE id = $2
+	`, payload.IsFixed, payload.ID)
+
+	if err != nil {
+		log.Printf("Error updating issue status: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":        payload.ID,
+		"is_fixed": payload.IsFixed,
+	})
+}
+
+// handleIssueNotes handles POST /api/issues/notes
+func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var payload struct {
+		ID    int    `json:"id"`
+		Notes string `json:"notes"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if payload.ID == 0 {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := r.db.Exec(req.Context(), `
+		UPDATE raw_issues
+		SET notes = $1
+		WHERE id = $2
+	`, payload.Notes, payload.ID)
+
+	if err != nil {
+		log.Printf("Error updating issue notes: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":    payload.ID,
+		"notes": payload.Notes,
+	})
 }
