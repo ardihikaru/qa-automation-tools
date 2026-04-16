@@ -970,9 +970,64 @@ func (r *Router) handleDocs(w http.ResponseWriter, req *http.Request) {
 
 // handleVideos handles /api/videos
 func (r *Router) handleVideos(w http.ResponseWriter, req *http.Request) {
-	// Simplified - return list of videos
+	if req.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"videos": []}`)
+
+	type VideoInfo struct {
+		Name    string `json:"name"`
+		Path    string `json:"path"`
+		Size    int64  `json:"size,omitempty"`
+	}
+
+	var videos []VideoInfo
+
+	// Walk through playwright-docs/output/videos directory
+	videoDir := "../playwright-docs/output/videos"
+	entries, err := os.ReadDir(videoDir)
+	if err != nil {
+		log.Printf("Error reading videos directory: %v", err)
+		json.NewEncoder(w).Encode([]VideoInfo{})
+		return
+	}
+
+	for _, domainEntry := range entries {
+		if !domainEntry.IsDir() {
+			continue
+		}
+
+		domainName := domainEntry.Name()
+		domainPath := filepath.Join(videoDir, domainName)
+
+		videoFiles, err := os.ReadDir(domainPath)
+		if err != nil {
+			continue
+		}
+
+		for _, videoFile := range videoFiles {
+			if !videoFile.IsDir() && (filepath.Ext(videoFile.Name()) == ".webm" || filepath.Ext(videoFile.Name()) == ".mp4") {
+				fileInfo, err := videoFile.Info()
+				var size int64
+				if err == nil {
+					size = fileInfo.Size()
+				}
+				
+				videos = append(videos, VideoInfo{
+					Name: videoFile.Name(),
+					Path: filepath.Join(domainPath, videoFile.Name()),
+					Size: size,
+				})
+			}
+		}
+	}
+
+	if videos == nil {
+		videos = []VideoInfo{}
+	}
+	json.NewEncoder(w).Encode(videos)
 }
 
 // handleAnalytics handles /api/analytics

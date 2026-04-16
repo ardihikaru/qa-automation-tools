@@ -225,18 +225,15 @@ func TestVideosEndpoint(t *testing.T) {
 	// Serve request
 	router.ServeHTTP(w, req)
 
-	// Check response
+	// Check response - should be OK and return array
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status OK, got %d", w.Code)
 	}
 
-	var response map[string]interface{}
+	// Response should be valid JSON array
+	var response []interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Errorf("Failed to parse response: %v", err)
-	}
-
-	if response["videos"] == nil {
-		t.Errorf("Expected videos key in response")
 	}
 }
 
