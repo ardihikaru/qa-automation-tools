@@ -32,12 +32,14 @@ interface RecorderOptions {
   outputDir?: string;
   videoDir?: string;
   screenshotDir?: string;
+  defaultWait?: number;
 }
 
 const defaultOptions: RecorderOptions = {
   outputDir: 'output',
   videoDir: 'videos',
   screenshotDir: 'screenshots',
+  defaultWait: 2000,
 };
 
 /**
@@ -72,6 +74,77 @@ function replacePlaceholders(value: string, credentials: Credential): string {
 }
 
 /**
+ * Wait for element to be visible before interaction
+ */
+async function waitForElementVisible(
+  page: Page,
+  selector: string,
+  timeout: number = 10000
+): Promise<boolean> {
+  try {
+    await page.waitForSelector(selector, {
+      state: 'visible',
+      timeout,
+    });
+    return true;
+  } catch {
+    console.log(`    ⚠️ Element not found: ${selector}`);
+    return false;
+  }
+}
+
+/**
+ * Try to fill using multiple selector strategies
+ */
+async function tryFillWithFallback(
+  page: Page,
+  selectors: string,
+  value: string
+): Promise<boolean> {
+  const selectorList = selectors.split(',').map(s => s.trim());
+  
+  for (const selector of selectorList) {
+    try {
+      if (await page.locator(selector).first().isVisible({ timeout: 2000 })) {
+        await page.fill(selector, value);
+        console.log(`    ✅ Filled: ${selector}`);
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+  
+  console.log(`    ❌ Could not fill any selector: ${selectors}`);
+  return false;
+}
+
+/**
+ * Try to click using multiple selector strategies
+ */
+async function tryClickWithFallback(
+  page: Page,
+  selectors: string
+): Promise<boolean> {
+  const selectorList = selectors.split(',').map(s => s.trim());
+  
+  for (const selector of selectorList) {
+    try {
+      if (await page.locator(selector).first().isVisible({ timeout: 2000 })) {
+        await page.click(selector);
+        console.log(`    ✅ Clicked: ${selector}`);
+        return true;
+      }
+    } catch {
+      continue;
+    }
+  }
+  
+  console.log(`    ❌ Could not click any selector: ${selectors}`);
+  return false;
+}
+
+/**
  * Record a single flow
  */
 export async function recordFlow(
@@ -82,8 +155,12 @@ export async function recordFlow(
   options: RecorderOptions = defaultOptions
 ): Promise<void> {
   const outputDir = options.outputDir || 'output';
-  const screenshotDir = path.join(outputDir, options.screenshotDir || 'screenshots');
-
+  
+  // Organize screenshots by staging URL and role_code
+  const stagingUrl = config.staging.url.replace(/https?:\/\//, '');
+  const screenshotDir = path.join(outputDir, options.screenshotDir || 'screenshots', stagingUrl, credentials.role_code);
+  const defaultWait = options.defaultWait || 2000;
+  
   // Ensure directories exist
   if (!fs.existsSync(screenshotDir)) {
     fs.mkdirSync(screenshotDir, { recursive: true });
@@ -92,46 +169,74 @@ export async function recordFlow(
   // Get staging URL
   const baseUrl = config.staging.url;
 
+  console.log(`    🌐 Base URL: ${baseUrl}`);
+
   // Execute flow steps
   for (let i = 0; i < flow.steps.length; i++) {
     const step = flow.steps[i];
 
     try {
+      console.log(`    Step ${i + 1}: ${step.action} ${step.selector || ''}`);
+      
       switch (step.action) {
         case 'navigate':
-          await page.goto(baseUrl + step.selector, {
+          const fullUrl = baseUrl.replace(/\/$/, '') + (step.selector || '');
+          console.log(`    → Navigating to: ${fullUrl}`);
+          await page.goto(fullUrl, {
             waitUntil: 'domcontentloaded',
             timeout: config.staging.timeout,
           });
+          // Wait for page to stabilize
+          await page.waitForTimeout(defaultWait);
           break;
 
         case 'click':
-          await page.click(step.selector, { timeout: 5000 });
+          if (step.selector) {
+            await tryClickWithFallback(page, step.selector);
+          }
           break;
 
         case 'type':
           const value = step.value
             ? replacePlaceholders(step.value, credentials)
             : '';
-          await page.fill(step.selector, value);
+          console.log(`    → Typing: ${value}`);
+          if (step.selector) {
+            // Clear field first, then fill using fallback
+            try {
+              await page.locator(step.selector).first().clear();
+            } catch {}
+            await tryFillWithFallback(page, step.selector, value);
+          }
           break;
 
         case 'select':
-          await page.selectOption(step.selector, step.value);
+          // Wait for element to be visible first
+          if (step.value && step.selector && await waitForElementVisible(page, step.selector, 10000)) {
+            await page.selectOption(step.selector, step.value);
+          }
           break;
 
         case 'wait':
           if (step.wait) {
+            console.log(`    → Waiting ${step.wait}ms`);
             await page.waitForTimeout(step.wait);
           }
           break;
       }
+
+      // Small delay after each action for stability
+      await page.waitForTimeout(500);
 
       // Capture screenshot after each step
       const screenshotName = `${flow.id}-step-${i + 1}`;
       await captureScreenshot(page, screenshotName, screenshotDir);
     } catch (error) {
       console.error(`  ❌ Step ${i + 1} failed:`, error);
+      // Try to capture screenshot on failure
+      try {
+        await captureScreenshot(page, `${flow.id}-error-step-${i + 1}`, screenshotDir);
+      } catch {}
     }
   }
 
@@ -157,4 +262,4 @@ async function waitForElement(
   }
 }
 
-export { RecorderOptions, FlowConfig, Credential, replacePlaceholders };
+export { RecorderOptions };
