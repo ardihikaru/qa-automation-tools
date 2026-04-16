@@ -97,6 +97,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Skill endpoints
 	case "/api/skills":
 		r.handleSkills(w, req)
+	case "/api/skills/logs":
+		r.handleSkillLogs(w, req)
+	case "/api/skills/stats":
+		r.handleSkillStats(w, req)
 
 	// Search endpoint
 	case "/api/search":
@@ -363,6 +367,219 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(skills)
+}
+
+// handleSkillLogs handles /api/skills/logs
+func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Query skill logs with filters
+		query := req.URL.Query()
+		skillID := query.Get("skill_id")
+		page := query.Get("page")
+		passed := query.Get("passed")
+		fromDate := query.Get("from_date")
+		toDate := query.Get("to_date")
+		limit := 20
+		if l := query.Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+		if limit > 100 {
+			limit = 100
+		}
+
+		sql := `
+			SELECT sl.id, sl.skill_id, sl.page, sl.action, sl.result, sl.is_passed, sl.error_message, sl.created_at,
+			       s.name as skill_name
+			FROM skill_logs sl
+			LEFT JOIN skills s ON sl.skill_id = s.id
+			WHERE 1=1
+		`
+		args := []interface{}{}
+		argNum := 1
+
+		if skillID != "" {
+			sql += fmt.Sprintf(" AND sl.skill_id = $%d", argNum)
+			args = append(args, skillID)
+			argNum++
+		}
+
+		if page != "" {
+			sql += fmt.Sprintf(" AND sl.page = $%d", argNum)
+			args = append(args, page)
+			argNum++
+		}
+
+		if passed != "" {
+			sql += fmt.Sprintf(" AND sl.is_passed = $%d", argNum)
+			args = append(args, passed == "true")
+			argNum++
+		}
+
+		if fromDate != "" {
+			sql += fmt.Sprintf(" AND sl.created_at >= $%d", argNum)
+			args = append(args, fromDate)
+			argNum++
+		}
+
+		if toDate != "" {
+			sql += fmt.Sprintf(" AND sl.created_at <= $%d", argNum)
+			args = append(args, toDate)
+			argNum++
+		}
+
+		sql += fmt.Sprintf(" ORDER BY sl.created_at DESC LIMIT $%d", argNum)
+		args = append(args, limit)
+
+		rows, err := db.Query(req.Context(), sql, args...)
+		if err != nil {
+			log.Printf("Error querying skill logs: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type SkillLogWithName struct {
+			models.SkillLog
+			SkillName string `json:"skill_name,omitempty"`
+		}
+
+		var skillLogs []SkillLogWithName
+		for rows.Next() {
+			var entry SkillLogWithName
+			if err := rows.Scan(&entry.ID, &entry.SkillID, &entry.Page, &entry.Action, &entry.Result, 
+				&entry.IsPassed, &entry.ErrorMsg, &entry.CreatedAt, &entry.SkillName); err != nil {
+				log.Printf("Scan error: %v", err)
+				continue
+			}
+			skillLogs = append(skillLogs, entry)
+		}
+
+		if skillLogs == nil {
+			skillLogs = []SkillLogWithName{}
+		}
+		json.NewEncoder(w).Encode(skillLogs)
+
+	case "POST":
+		// Create skill log entry
+		var payload struct {
+			SkillID      int    `json:"skill_id"`
+			Page        string `json:"page"`
+			Action      string `json:"action"`
+			Result      string `json:"result"`
+			IsPassed    bool   `json:"is_passed"`
+			ErrorMsg    string `json:"error_message,omitempty"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.SkillID == 0 || payload.Page == "" || payload.Action == "" || payload.Result == "" {
+			http.Error(w, "skill_id, page, action, and result are required", http.StatusBadRequest)
+			return
+		}
+
+		var id int
+		var createdAt time.Time
+		err := db.QueryRow(req.Context(), `
+			INSERT INTO skill_logs (skill_id, page, action, result, is_passed, error_message)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id, created_at
+		`, payload.SkillID, payload.Page, payload.Action, payload.Result, payload.IsPassed, payload.ErrorMsg).Scan(&id, &createdAt)
+
+		if err != nil {
+			log.Printf("Error inserting skill log: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":         id,
+			"skill_id":   payload.SkillID,
+			"page":       payload.Page,
+			"action":     payload.Action,
+			"result":     payload.Result,
+			"is_passed":  payload.IsPassed,
+			"created_at": createdAt,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleSkillStats handles /api/skills/stats
+func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get aggregated stats for skills
+	type SkillStats struct {
+		SkillID     int     `json:"skill_id"`
+		SkillName   string  `json:"skill_name"`
+		TotalRuns   int     `json:"total_runs"`
+		PassedRuns  int     `json:"passed_runs"`
+		FailedRuns  int     `json:"failed_runs"`
+		PassRate   float64 `json:"pass_rate"`
+		LastRun    *time.Time `json:"last_run,omitempty"`
+	}
+
+	var stats []SkillStats
+
+	rows, err := db.Query(req.Context(), `
+		SELECT sl.skill_id, 
+		       COALESCE(s.name, 'Unknown') as skill_name,
+		       COUNT(*) as total_runs,
+		       COUNT(*) FILTER (WHERE sl.is_passed = true) as passed_runs,
+		       COUNT(*) FILTER (WHERE sl.is_passed = false) as failed_runs,
+		       CASE WHEN COUNT(*) > 0 THEN COUNT(*) FILTER (WHERE sl.is_passed = true) * 1.0 / COUNT(*) ELSE 0 END as pass_rate,
+		       MAX(sl.created_at) as last_run
+		FROM skill_logs sl
+		LEFT JOIN skills s ON sl.skill_id = s.id
+		GROUP BY sl.skill_id, s.name
+		ORDER BY total_runs DESC
+	`)
+	if err != nil {
+		log.Printf("Error querying skill stats: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var stat SkillStats
+		if err := rows.Scan(&stat.SkillID, &stat.SkillName, &stat.TotalRuns, &stat.PassedRuns, 
+			&stat.FailedRuns, &stat.PassRate, &stat.LastRun); err != nil {
+			log.Printf("Scan error: %v", err)
+			continue
+		}
+		stats = append(stats, stat)
+	}
+
+	if stats == nil {
+		stats = []SkillStats{}
+	}
+	json.NewEncoder(w).Encode(stats)
 }
 
 // handleSearch handles /api/search
