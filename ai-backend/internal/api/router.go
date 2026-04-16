@@ -1,10 +1,13 @@
 package api
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qa-automation/ai-backend/internal/db"
@@ -116,6 +119,22 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Learning endpoints
 	case "/api/learning":
 		r.handleLearning(w, req)
+	case "/api/learning/navigation":
+		r.handleLearningNavigation(w, req)
+	case "/api/learning/sequences":
+		r.handleLearningSequences(w, req)
+	case "/api/learning/context":
+		r.handleLearningContext(w, req)
+	case "/api/learning/stats":
+		r.handleLearningStats(w, req)
+
+	// AI Cache endpoints
+	case "/api/ai-cache":
+		r.handleAICache(w, req)
+
+	// Embedding Cache endpoints
+	case "/api/embedding-cache":
+		r.handleEmbeddingCache(w, req)
 
 	default:
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -608,8 +627,660 @@ func (r *Router) handleAnalytics(w http.ResponseWriter, req *http.Request) {
 
 // handleLearning handles /api/learning
 func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"learning_records": 0}`)
+
+	switch req.Method {
+	case "GET":
+		// List learning records with optional filters
+		query := req.URL.Query()
+		intent := query.Get("intent")
+		page := query.Get("page")
+		limit := 10
+		if l := query.Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+
+		sql := `
+			SELECT id, intent, action, page, success_score, usage_count, 
+			       last_success, decay_factor, created_at, updated_at
+			FROM learning_cache
+			WHERE 1=1
+		`
+		args := []interface{}{}
+		argNum := 1
+
+		if intent != "" {
+			sql += fmt.Sprintf(" AND intent ILIKE '%%' || $%d || '%%'", argNum)
+			args = append(args, intent)
+			argNum++
+		}
+
+		if page != "" {
+			sql += fmt.Sprintf(" AND page = $%d", argNum)
+			args = append(args, page)
+			argNum++
+		}
+
+		sql += fmt.Sprintf(" ORDER BY success_score DESC, usage_count DESC LIMIT $%d", argNum)
+		args = append(args, limit)
+
+		rows, err := db.Query(req.Context(), sql, args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var records []models.LearningRecord
+		for rows.Next() {
+			var record models.LearningRecord
+			if err := rows.Scan(&record.ID, &record.Intent, &record.Action, &record.Page,
+				&record.SuccessScore, &record.UsageCount, &record.LastSuccess,
+				&record.DecayFactor, &record.CreatedAt, &record.UpdatedAt); err != nil {
+				continue
+			}
+			records = append(records, record)
+		}
+
+		if records == nil {
+			records = []models.LearningRecord{}
+		}
+		json.NewEncoder(w).Encode(records)
+
+	case "POST":
+		// Add new learning record
+		var payload struct {
+			Intent      string  `json:"intent"`
+			Action     string  `json:"action"`
+			Page       string  `json:"page"`
+			Success    bool    `json:"success"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.Intent == "" || payload.Action == "" {
+			http.Error(w, "intent and action are required", http.StatusBadRequest)
+			return
+		}
+
+		// Check if record exists
+		var existingID int
+		err := db.QueryRow(req.Context(), `
+			SELECT id FROM learning_cache 
+			WHERE intent = $1 AND action = $2 AND page = $3
+		`, payload.Intent, payload.Action, payload.Page).Scan(&existingID)
+
+		if err == nil {
+			// Update existing record
+			successBool := payload.Success
+			_, err = db.Exec(req.Context(), `
+				UPDATE learning_cache
+				SET success_score = CASE 
+					WHEN $4::bool THEN LEAST(success_score + 0.1, 1.0)
+					ELSE GREATEST(success_score - 0.1, 0.0)
+				END,
+				usage_count = usage_count + 1,
+				last_success = CASE WHEN $4::bool THEN NOW() ELSE last_success END,
+				updated_at = NOW()
+				WHERE id = $5
+			`, successBool, existingID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":      existingID,
+				"updated": true,
+			})
+		} else {
+			// Insert new record
+			score := 0.5
+			if payload.Success {
+				score = 1.0
+			}
+			var id int
+			var createdAt, updatedAt time.Time
+			err := db.QueryRow(req.Context(), `
+				INSERT INTO learning_cache (intent, action, page, success_score, usage_count, last_success)
+				VALUES ($1, $2, $3, $4, 1, CASE WHEN $5 THEN NOW() ELSE NULL END)
+				RETURNING id, created_at, updated_at
+			`, payload.Intent, payload.Action, payload.Page, score, payload.Success).Scan(&id, &createdAt, &updatedAt)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":         id,
+				"intent":     payload.Intent,
+				"action":     payload.Action,
+				"page":       payload.Page,
+				"success":    payload.Success,
+				"created_at": createdAt,
+			})
+		}
+
+	case "DELETE":
+		// Delete learning record
+		id := req.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "id parameter required", http.StatusBadRequest)
+			return
+		}
+
+		var intID int
+		fmt.Sscanf(id, "%d", &intID)
+
+		_, err := db.Exec(req.Context(), `DELETE FROM learning_cache WHERE id = $1`, intID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deleted": true,
+			"id":     intID,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleAICache handles /api/ai-cache
+func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Get cached response by hash
+		hash := req.URL.Query().Get("hash")
+		if hash == "" {
+			http.Error(w, "hash parameter required", http.StatusBadRequest)
+			return
+		}
+
+		var cached struct {
+			ID         int       `json:"id"`
+			InputHash  string    `json:"input_hash"`
+			InputText  string    `json:"input_text"`
+			OutputText string    `json:"output_text"`
+			Model      string    `json:"model"`
+			Cost       float64   `json:"cost_estimate"`
+			CreatedAt  time.Time `json:"created_at"`
+		}
+
+		err := db.QueryRow(req.Context(), `
+			SELECT id, input_hash, input_text, output_text, model, cost_estimate, created_at
+			FROM ai_cache
+			WHERE input_hash = $1
+		`, hash).Scan(&cached.ID, &cached.InputHash, &cached.InputText, &cached.OutputText, &cached.Model, &cached.Cost, &cached.CreatedAt)
+
+		if err != nil {
+			http.Error(w, "cache not found", http.StatusNotFound)
+			return
+		}
+
+		json.NewEncoder(w).Encode(cached)
+
+	case "POST":
+		// Store AI response in cache
+		var payload struct {
+			InputText  string  `json:"input_text"`
+			OutputText string  `json:"output_text"`
+			Model      string  `json:"model,omitempty"`
+			Cost       float64 `json:"cost,omitempty"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.InputText == "" || payload.OutputText == "" {
+			http.Error(w, "input_text and output_text are required", http.StatusBadRequest)
+			return
+		}
+
+		// Generate hash
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(payload.InputText)))
+
+		// Check if exists
+		var existingID int
+		err := db.QueryRow(req.Context(), `SELECT id FROM ai_cache WHERE input_hash = $1`, hash).Scan(&existingID)
+
+		if err == nil {
+			// Return existing without inserting
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"cached":   true,
+				"id":      existingID,
+				"hash":    hash,
+				"message": "Cache hit",
+			})
+			return
+		}
+
+		// Insert new cache entry
+		model := payload.Model
+		if model == "" {
+			model = "MiniMax-M2.5"
+		}
+
+		var id int
+		var createdAt time.Time
+		err = db.QueryRow(req.Context(), `
+			INSERT INTO ai_cache (input_hash, input_text, output_text, model, cost_estimate)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, created_at
+		`, hash, payload.InputText, payload.OutputText, model, payload.Cost).Scan(&id, &createdAt)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":         id,
+			"hash":       hash,
+			"cached":     false,
+			"created_at": createdAt,
+		})
+
+	case "DELETE":
+		// Clear cache or specific entry
+		hash := req.URL.Query().Get("hash")
+		if hash != "" {
+			_, err := db.Exec(req.Context(), `DELETE FROM ai_cache WHERE input_hash = $1`, hash)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "hash": hash})
+		} else {
+			// Clear all
+			_, err := db.Exec(req.Context(), `DELETE FROM ai_cache`)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "all": true})
+		}
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleEmbeddingCache handles /api/embedding-cache
+func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Get cached embedding by hash
+		hash := req.URL.Query().Get("hash")
+		if hash == "" {
+			http.Error(w, "hash parameter required", http.StatusBadRequest)
+			return
+		}
+
+		var cached struct {
+			ID        int       `json:"id"`
+			TextHash string    `json:"text_hash"`
+			Text     string    `json:"text"`
+			Model    string    `json:"model"`
+			CreatedAt time.Time `json:"created_at"`
+		}
+
+		err := db.QueryRow(req.Context(), `
+			SELECT id, text_hash, text, model, created_at
+			FROM embedding_cache
+			WHERE text_hash = $1
+		`, hash).Scan(&cached.ID, &cached.TextHash, &cached.Text, &cached.Model, &cached.CreatedAt)
+
+		if err != nil {
+			http.Error(w, "cache not found", http.StatusNotFound)
+			return
+		}
+
+		json.NewEncoder(w).Encode(cached)
+
+	case "POST":
+		// Store embedding in cache
+		var payload struct {
+			Text      string    `json:"text"`
+			Embedding []float64 `json:"embedding"`
+			Model     string   `json:"model,omitempty"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.Text == "" {
+			http.Error(w, "text is required", http.StatusBadRequest)
+			return
+		}
+
+		// Generate hash (simplified - in production use proper vector encoding)
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(payload.Text)))
+
+		// Check if exists
+		var existingID int
+		err := db.QueryRow(req.Context(), `SELECT id FROM embedding_cache WHERE text_hash = $1`, hash).Scan(&existingID)
+
+		if err == nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"cached":   true,
+				"id":      existingID,
+				"hash":    hash,
+				"message": "Cache hit",
+			})
+			return
+		}
+
+		// Convert embedding to string for storage (vector type)
+		var embeddingStr string
+		if len(payload.Embedding) > 0 {
+			embeddingStr = fmt.Sprintf("[%s]", strings.Join(func() []string {
+				s := make([]string, len(payload.Embedding))
+				for i, v := range payload.Embedding {
+					s[i] = fmt.Sprintf("%.6f", v)
+				}
+				return s
+			}(), ","))
+		}
+
+		model := payload.Model
+		if model == "" {
+			model = "emb-embedding-01"
+		}
+
+		var id int
+		var createdAt time.Time
+		err = db.QueryRow(req.Context(), `
+			INSERT INTO embedding_cache (text_hash, text, embedding, model)
+			VALUES ($1, $2, $3::vector, $4)
+			RETURNING id, created_at
+		`, hash, payload.Text, embeddingStr, model).Scan(&id, &createdAt)
+
+		if err != nil {
+			log.Printf("Embedding cache insert error: %v", err)
+			// Fallback: insert without vector
+			err = db.QueryRow(req.Context(), `
+				INSERT INTO embedding_cache (text_hash, text, model)
+				VALUES ($1, $2, $3)
+				RETURNING id, created_at
+			`, hash, payload.Text, model).Scan(&id, &createdAt)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":         id,
+			"hash":       hash,
+			"cached":     false,
+			"created_at": createdAt,
+		})
+
+	case "DELETE":
+		// Clear cache
+		hash := req.URL.Query().Get("hash")
+		if hash != "" {
+			_, err := db.Exec(req.Context(), `DELETE FROM embedding_cache WHERE text_hash = $1`, hash)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "hash": hash})
+		} else {
+			_, err := db.Exec(req.Context(), `DELETE FROM embedding_cache`)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "all": true})
+		}
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLearningStats handles GET /api/learning/stats
+func (r *Router) handleLearningStats(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	stats, err := r.learningService.GetLearningStats(req.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(stats)
+}
+
+// handleLearningNavigation handles /api/learning/navigation
+func (r *Router) handleLearningNavigation(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Get navigation edges from a source page
+		sourcePage := req.URL.Query().Get("source")
+		if sourcePage == "" {
+			http.Error(w, "source parameter required", http.StatusBadRequest)
+			return
+		}
+
+		edges, err := r.learningService.GetNavigationEdges(req.Context(), sourcePage)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(edges)
+
+	case "POST":
+		// Add navigation edge
+		var payload struct {
+			SourcePage string `json:"source_page"`
+			TargetPage string `json:"target_page"`
+			Action    string `json:"action"`
+			Success  bool   `json:"success"`
+			DurationMs int  `json:"duration_ms"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.SourcePage == "" || payload.TargetPage == "" || payload.Action == "" {
+			http.Error(w, "source_page, target_page, and action are required", http.StatusBadRequest)
+			return
+		}
+
+		err := r.learningService.AddNavigationEdge(req.Context(), 
+			payload.SourcePage, payload.TargetPage, payload.Action, payload.Success, payload.DurationMs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"added": true,
+			"source_page": payload.SourcePage,
+			"target_page": payload.TargetPage,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLearningSequences handles /api/learning/sequences
+func (r *Router) handleLearningSequences(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Get action sequences for a goal
+		goal := req.URL.Query().Get("goal")
+		if goal == "" {
+			http.Error(w, "goal parameter required", http.StatusBadRequest)
+			return
+		}
+
+		sequences, err := r.learningService.GetActionSequences(req.Context(), goal)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(sequences)
+
+	case "POST":
+		// Add action sequence
+		var payload struct {
+			Goal      string `json:"goal"`
+			Steps     string `json:"steps"`
+			Success  bool   `json:"success"`
+			DurationMs int  `json:"duration_ms"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.Goal == "" || payload.Steps == "" {
+			http.Error(w, "goal and steps are required", http.StatusBadRequest)
+			return
+		}
+
+		err := r.learningService.AddActionSequence(req.Context(), 
+			payload.Goal, payload.Steps, payload.Success, payload.DurationMs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"added": true,
+			"goal": payload.Goal,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLearningContext handles /api/learning/context
+func (r *Router) handleLearningContext(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// Get context record
+		contextKey := req.URL.Query().Get("key")
+		contextValue := req.URL.Query().Get("value")
+		if contextKey == "" || contextValue == "" {
+			http.Error(w, "key and value parameters required", http.StatusBadRequest)
+			return
+		}
+
+		record, err := r.learningService.GetContextRecord(req.Context(), contextKey, contextValue)
+		if err != nil {
+			http.Error(w, "context record not found", http.StatusNotFound)
+			return
+		}
+
+		json.NewEncoder(w).Encode(record)
+
+	case "POST":
+		// Add context record
+		var payload struct {
+			ContextKey   string `json:"context_key"`
+			ContextValue string `json:"context_value"`
+			BestAction   string `json:"best_action"`
+			Success     bool   `json:"success"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.ContextKey == "" || payload.ContextValue == "" {
+			http.Error(w, "context_key and context_value are required", http.StatusBadRequest)
+			return
+		}
+
+		err := r.learningService.AddContextRecord(req.Context(), 
+			payload.ContextKey, payload.ContextValue, payload.BestAction, payload.Success)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"added": true,
+			"context_key": payload.ContextKey,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // handleIssueStatus handles POST /api/issues/status
