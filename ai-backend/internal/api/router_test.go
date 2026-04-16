@@ -428,3 +428,39 @@ func TestLearningNavigationPostNoDB(t *testing.T) {
 		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
 	}
 }
+
+func TestLearningSequencesNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request
+	req := httptest.NewRequest("GET", "/api/learning/sequences?goal=create_user", nil)
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}
+
+func TestLearningSequencesPostNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request with JSON body
+	body := strings.NewReader(`{"goal": "create_user", "steps": "[\"login\", \"submit\"]", "success": true}`)
+	req := httptest.NewRequest("POST", "/api/learning/sequences", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}
