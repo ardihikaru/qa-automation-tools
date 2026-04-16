@@ -15,6 +15,10 @@ tutorial-playwright-docs.md
 playwright-docs/output/
 playwright-docs/recorder/
 
+dashboard/dist/
+playwright-docs/dist/
+playwright-qa/dist/
+
 *.pdf
 
 *.yaml
