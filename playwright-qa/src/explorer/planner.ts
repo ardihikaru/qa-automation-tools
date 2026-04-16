@@ -1,9 +1,13 @@
 /**
  * Planning Explorer - Multi-step planning agent
  * Plans sequences of actions to achieve goals
+ * Updated to use centralized config.yaml
  */
 
 import { chromium, Browser, Page } from 'playwright';
+import * as fs from 'fs';
+import * as yaml from 'yaml';
+import * as path from 'path';
 
 // Configuration interface
 interface Config {
@@ -75,23 +79,24 @@ const KNOWN_GOALS: Goal[] = [
 ];
 
 /**
- * Load configuration
+ * Load configuration from config.yaml
  */
 function loadConfig(): Config {
-  return {
-    stagingUrl: process.env.STAGING_URL || 'https://staging.yourapp.com',
+  // Default values from environment variables
+  const defaults = {
+    stagingUrl: process.env.STAGING_URL || 'https://stag-app-hisv3.sismedika.online',
     credentials: {
       admin: {
-        username: process.env.ADMIN_USER || 'admin@example.com',
-        password: process.env.ADMIN_PASS || 'changeme',
+        username: process.env.ADMIN_USER || 'KG2024001',
+        password: process.env.ADMIN_PASS || 'Bismillah1!',
       },
       doctor: {
-        username: process.env.DOCTOR_USER || 'doctor@example.com',
-        password: process.env.DOCTOR_PASS || 'changeme',
+        username: process.env.DOCTOR_USER || 'KG2024029',
+        password: process.env.DOCTOR_PASS || 'Bismillah1!',
       },
       cashier: {
-        username: process.env.CASHIER_USER || 'cashier@example.com',
-        password: process.env.CASHIER_PASS || 'changeme',
+        username: process.env.CASHIER_USER || 'KG2024055',
+        password: process.env.CASHIER_PASS || 'Bismillah1!',
       },
     },
     apiUrl: process.env.API_URL || 'http://localhost:8080',
@@ -99,6 +104,44 @@ function loadConfig(): Config {
     planDepth: parseInt(process.env.PLAN_DEPTH || '3'),
     timeout: parseInt(process.env.TIMEOUT || '30000'),
   };
+
+  // Try to load from config.yaml
+  try {
+    const configPath = path.join(process.cwd(), '..', 'config.yaml');
+    if (fs.existsSync(configPath)) {
+      const configFile = fs.readFileSync(configPath, 'utf8');
+      const configData = yaml.parse(configFile);
+      
+      if (configData?.staging?.url) {
+        defaults.stagingUrl = configData.staging.url;
+      }
+      
+      if (configData?.credentials?.admin) {
+        defaults.credentials.admin = {
+          username: configData.credentials.admin.username,
+          password: configData.credentials.admin.password,
+        };
+      }
+      
+      if (configData?.credentials?.doctor_gp) {
+        defaults.credentials.doctor = {
+          username: configData.credentials.doctor_gp.username,
+          password: configData.credentials.doctor_gp.password,
+        };
+      }
+      
+      if (configData?.credentials?.cashier) {
+        defaults.credentials.cashier = {
+          username: configData.credentials.cashier.username,
+          password: configData.credentials.cashier.password,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load config.yaml, using defaults:', e);
+  }
+
+  return defaults;
 }
 
 /**
@@ -302,27 +345,52 @@ function usePlanningMode(page: Page): boolean {
 
 /**
  * Login as role
+ * Uses the correct selectors for HIS frontend login form
  */
 async function loginAs(page: Page, role: 'admin' | 'doctor' | 'cashier', config: Config): Promise<boolean> {
   const creds = config.credentials[role];
   
   try {
-    await page.goto(config.stagingUrl + '/login', { timeout: config.timeout });
+    // Navigate to login page - using correct path for HIS frontend
+    await page.goto(config.stagingUrl + '/auth/login', { timeout: config.timeout, waitUntil: 'networkidle' });
     
-    const emailInput = await page.$('input[name="email"], input[type="email"], #email');
-    const passwordInput = await page.$('input[name="password"], input[type="password"], #password');
+    // Wait for the login form to be visible
+    await page.waitForSelector('input[name="username"], input[name="password"]', { timeout: 5000 });
+    
+    // Wait a bit for JavaScript to initialize
+    await page.waitForTimeout(500);
+    
+    // Find input fields - using the correct selectors for HIS frontend
+    // Username field uses name="username", NOT name="email"
+    const usernameInput = await page.$('input[name="username"]');
+    const passwordInput = await page.$('input[name="password"]');
     const submitButton = await page.$('button[type="submit"], button:has-text("Login")');
     
-    if (emailInput && passwordInput && submitButton) {
-      await emailInput.fill(creds.username);
+    if (usernameInput && passwordInput && submitButton) {
+      // Clear any existing values first
+      await usernameInput.fill('');
+      await passwordInput.fill('');
+      
+      // Fill in credentials with small delay between each
+      await usernameInput.fill(creds.username);
+      await page.waitForTimeout(100); // Small delay
       await passwordInput.fill(creds.password);
+      await page.waitForTimeout(100); // Small delay
+      
+      // Click submit
       await submitButton.click();
+      
+      // Wait for navigation or response
       await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1000); // Additional wait for auth to process
+      
       return true;
     }
     
+    console.log('  ⚠️ Login form elements not found');
     return false;
-  } catch {
+  } catch (error) {
+    console.log('  ❌ Login error:', error);
     return false;
   }
 }

@@ -1,105 +1,102 @@
-# Test Scenario - API Testing
+# Test Scenarios - HISv3 Staging
+
+This file contains detailed test scenarios for documenting the HISv3 system.
+This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual testing.
 
 ## Overview
-This file documents test scenarios for production API testing.
-Production API: https://ai-backend-1087642958941.asia-southeast1.run.app
 
-## Test Scenarios
+- **Staging URL**: https://stag-app-hisv3.sismedika.online/
+- **Backend API**: https://ai-backend-1087642958941.asia-southeast1.run.app
+- **Documentation Output**: playwright-docs/output/
 
-### 1. Health Check
-- **Endpoint**: GET /health
-- **Expected**: 200 OK with JSON `{"status": "ok", "database": "connected"}`
-- **Verification**: Response contains "status": "ok"
+## Role-based Test Scenarios
 
-### 2. GET /api/flows
-- **Endpoint**: GET /api/flows
-- **Expected**: 200 OK with JSON array (may be empty)
-- **Verification**: Response is valid JSON array
+### 1. Super Admin (KG prefix credentials)
 
-### 3. POST /api/flows
-- **Endpoint**: POST /api/flows
-- **Body**: `{"role_id": 1, "name": "QA Test Flow", "description": "Testing POST flow endpoint"}`
-- **Expected**: 201 Created with created flow object
-- **Verification**: 
-  - Status code is 201
-  - Response contains "id" field
+**Credential**: `KG2024001` / `Bismillah1!`
 
-### 4. GET /api/docs
-- **Endpoint**: GET /api/docs
-- **Expected**: 200 OK with JSON `{"docs": []}`
-- **Verification**: Response is valid JSON
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| SA-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| SA-002 | Dashboard | View outpatient dashboard | Dashboard loads with menu items |
+| SA-003 | User Management | Navigate to /administration/user | User list displays |
 
-### 5. GET /api/videos
-- **Endpoint**: GET /api/videos
-- **Expected**: 200 OK with JSON `{"videos": []}`
-- **Verification**: Response is valid JSON
+### 2. Doctor GP (KG prefix credentials)
 
-### 6. GET /api/issues
-- **Endpoint**: GET /api/issues
-- **Expected**: 200 OK with JSON array (not null)
-- **Verification**: 
-  - Response is not null
-  - If array, return as array `[]`
+**Credential**: `KG2024029` / `Bismillah1!`
 
-### 7. POST /api/issues
-- **Endpoint**: POST /api/issues
-- **Body**: `{"page":"login","action":"click","error_type":"validation","error_text":"test error"}`
-- **Expected**: 201 Created
-- **Verification**: 
-  - Status code is 201
-  - Response contains "id" field
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| DGP-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| DGP-002 | Doctor Dashboard | View doctor queue | Queue list displays |
+| DGP-003 | Patient List | Navigate to /doctor/patient | Patient list displays |
+| DGP-004 | Medical Record | Navigate to /doctor/medical-record | Medical record form displays |
+| DGP-005 | Prescription | Navigate to /doctor/prescription | Prescription form displays |
 
-### 8. GET /api/skills
-- **Endpoint**: GET /api/skills
-- **Expected**: 200 OK with JSON array
-- **Verification**: Response is valid JSON array
+### 3. Nurse (KG prefix credentials)
 
-### 9. GET /api/search (no param)
-- **Endpoint**: GET /api/search
-- **Expected**: 400 Bad Request
-- **Verification**: Status code is 400
+**Credential**: `KG2024003` / `Bismillah1!`
 
-### 10. GET /api/search?q=test
-- **Endpoint**: GET /api/search?q=test
-- **Expected**: 200 OK with JSON array (not null)
-- **Verification**: Response is array (not null)
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| N-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| N-002 | Nurse Dashboard | Navigate to /nurse/queue | Queue list displays |
+| N-003 | Patient Vitals | Navigate to /nurse/vitals | Vitals form displays |
 
-### 11. GET /api/cost/overview
-- **Endpoint**: GET /api/cost/overview
-- **Expected**: 200 OK with JSON object containing cost stats
-- **Verification**: Response contains total_requests, total_cost fields
+### 4. Admission (KG prefix credentials)
 
-### 12. GET /api/cost/trend
-- **Endpoint**: GET /api/cost/trend
-- **Expected**: 200 OK with JSON array (not null)
-- **Verification**: Response is array `[]` (empty) not null
+**Credential**: `KG2024008` / `Bismillah1!`
 
-### 13. GET /api/cost/efficiency
-- **Endpoint**: GET /api/cost/efficiency
-- **Expected**: 200 OK with JSON object
-- **Verification**: Response contains "hit" and "miss" fields
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| A-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| A-002 | Dashboard | Navigate to /administration/encounter/outpatient-dashboard | Dashboard displays |
+| A-003 | New Patient | Navigate to /administration/patient/new | Registration form displays |
+| A-004 | Queue | Navigate to /administration/encounter/queue | Queue management displays |
 
-### 14. GET /api/cost/by-feature
-- **Endpoint**: GET /api/cost/by-feature
-- **Expected**: 200 OK with JSON array (not null)
-- **Verification**: Response is array `[]` (empty) not null
+### 5. Cashier (KG prefix credentials)
 
-### 15. GET /api/analytics
-- **Endpoint**: GET /api/analytics
-- **Expected**: 200 OK with JSON object
-- **Verification**: 
-  - Response contains "flows" and "issues" fields
-  - No extra spaces in JSON
+**Credential**: `KG2024055` / `Bismillah1!`
 
-### 16. GET /api/learning
-- **Endpoint**: GET /api/learning
-- **Expected**: 200 OK with JSON object
-- **Verification**: Response contains learning_records field
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| C-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| C-002 | Dashboard | Navigate to /cashier | Dashboard displays |
+| C-003 | Billing | Navigate to /cashier/billing | Billing list displays |
+| C-004 | Payment | Navigate to /cashier/payment | Payment form displays |
 
-### Error Handling Tests
+### 6. Pharmacy (KG prefix credentials)
 
-### Invalid JSON on POST /api/forms
-- **Endpoint**: POST /api/flows
-- **Body**: Invalid JSON
-- **Expected**: 400 Bad Request
-- **Verification**: Status code is 400
+**Credential**: `KG2024053` / `Bismillah1!`
+
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| P-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| P-002 | Dashboard | Navigate to /pharmacy | Dashboard displays |
+| P-003 | Dispense | Navigate to /pharmacy/dispense | Dispense form displays |
+| P-004 | Inventory | Navigate to /pharmacy/inventory | Inventory list displays |
+
+### 7. Laboratory (KG prefix credentials)
+
+**Credential**: `KG2024054` / `Bismillah1!`
+
+| ID | Feature | Steps | Expected Result |
+|----|---------|-------|----------------|
+| L-001 | Login | Navigate to /auth/login, enter credentials, click Login | Successful login to dashboard |
+| L-002 | Dashboard | Navigate to /laboratory | Dashboard displays |
+| L-003 | Results | Navigate to /laboratory/results | Results list displays |
+| L-004 | Specimen | Navigate to /laboratory/specimen | Specimen management displays |
+
+## Test Execution Order
+
+1. Login flows (prerequisite for all roles)
+2. Dashboard flows
+3. Feature-specific flows (patient, prescription, billing, etc.)
+4. Edge case flows (error handling, validation)
+
+## Notes
+
+- All credentials share common password: `Bismillah1!`
+- Add delays between steps for stability
+- Capture screenshots at each step for documentation
+- Record video for complex flows
