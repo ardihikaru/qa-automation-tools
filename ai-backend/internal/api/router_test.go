@@ -356,3 +356,39 @@ func TestCreateFlowNoDB(t *testing.T) {
 		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
 	}
 }
+
+func TestGoalEventsNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request
+	req := httptest.NewRequest("GET", "/api/goal-events", nil)
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}
+
+func TestGoalEventsPostNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request with JSON body
+	body := strings.NewReader(`{"goal_name": "create_user", "confidence": 0.8}`)
+	req := httptest.NewRequest("POST", "/api/goal-events", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}

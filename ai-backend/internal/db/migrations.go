@@ -170,8 +170,14 @@ var migrations = []string{
 		id SERIAL PRIMARY KEY,
 		goal_name TEXT NOT NULL,
 		confidence DECIMAL(3, 2) DEFAULT 0,
+		page TEXT,
+		action TEXT,
 		detected_at TIMESTAMP DEFAULT NOW()
 	);`,
+
+	// Analytics - Goal Events - Add missing columns (for existing tables)
+	`ALTER TABLE goal_events ADD COLUMN IF NOT EXISTS page TEXT;`,
+	`ALTER TABLE goal_events ADD COLUMN IF NOT EXISTS action TEXT;`,
 
 	// Learning System - Navigation Edges (for navigation graph)
 	`CREATE TABLE IF NOT EXISTS navigation_edges (
