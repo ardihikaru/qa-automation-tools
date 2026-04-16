@@ -112,6 +112,7 @@ type LearningRecord struct {
 	UsageCount  int       `json:"usage_count"`
 	LastSuccess time.Time `json:"last_success"`
 	DecayFactor float64 `json:"decay_factor"`
+	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
@@ -147,4 +148,46 @@ type SkillLog struct {
 	IsPassed   bool      `json:"is_passed"`
 	ErrorMsg   string    `json:"error_message,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+// NavigationEdge represents a navigation graph edge
+type NavigationEdge struct {
+	ID            int       `json:"id"`
+	SourcePage   string    `json:"source_page"`
+	TargetPage   string    `json:"target_page"`
+	Action       string    `json:"action"`
+	SuccessCount int       `json:"success_count"`
+	FailureCount int       `json:"failure_count"`
+	SuccessRate float64   `json:"success_rate"`
+	AvgDuration int       `json:"avg_duration_ms"`
+	LastUsed    time.Time `json:"last_used,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ActionSequence represents a multi-step plan
+type ActionSequence struct {
+	ID            int       `json:"id"`
+	Goal          string    `json:"goal"`
+	Steps         string    `json:"steps"` // JSON string
+	SuccessCount int       `json:"success_count"`
+	FailureCount int       `json:"failure_count"`
+	AvgDuration  int       `json:"avg_duration_ms,omitempty"`
+	LastUsed     time.Time `json:"last_used,omitempty"`
+	IsValid      bool      `json:"is_valid"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ContextRecord represents context-aware learning entry
+type ContextRecord struct {
+	ID            int       `json:"id"`
+	ContextKey   string    `json:"context_key"`
+	ContextValue string   `json:"context_value"`
+	BestAction  string   `json:"best_action"`
+	SuccessScore float64  `json:"success_score"`
+	UsageCount   int       `json:"usage_count"`
+	LastSuccess  time.Time `json:"last_success,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
