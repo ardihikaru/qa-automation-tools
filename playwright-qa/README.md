@@ -31,3 +31,43 @@ Full intelligence - exploration, learning, skills, goal detection.
 2. **Required Field** - Detect empty required input bypass
 3. **Data Persistence** - Detect data loss after reload
 4. **Multi-tab Save** - Detect unsaved tab data
+
+## API Testing
+
+### Production API
+
+Production API endpoint: https://ai-backend-1087642958941.asia-southeast1.run.app
+
+### Testing Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/flows` | GET/POST | CRUD flows |
+| `/api/issues` | GET/POST | Issue tracking |
+| `/api/skills` | GET | QA skills |
+| `/api/search` | GET | Search learning cache |
+| `/api/cost/*` | GET | Cost analytics |
+
+### Manual Testing
+
+```bash
+# Base URL
+BASE_URL="https://ai-backend-1087642958941.asia-southeast1.run.app"
+
+# Test health
+curl $BASE_URL/health
+
+# Test flows
+curl $BASE_URL/api/flows
+
+# Test search
+curl "$BASE_URL/api/search?q=login"
+```
+
+### Test Results
+
+See `TEST-RESULTS.md.example` for detailed test results including:
+- Status codes for all endpoints
+- Known issues (NULL values, status code mismatches)
+- Error handling validation

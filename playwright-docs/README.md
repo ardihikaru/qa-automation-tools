@@ -16,3 +16,25 @@ Record flows and generate documentation.
 ## Key Feature
 
 Lightweight - no issue detection, just documentation generation.
+
+## Test Scenarios
+
+### Production API
+
+Production API: https://ai-backend-1087642958941.asia-southeast1.run.app
+
+See `TEST-SCENARIO.md.example` for complete test scenarios.
+
+### Documentation
+
+Run recorder to capture flows:
+
+```bash
+cd playwright-docs
+npm install
+npm run recorder
+```
+
+Output files:
+- `output/videos/*.mp4` - Recorded videos
+- `output/docs/*.md` - Generated documentation
