@@ -12,6 +12,8 @@ dashboard/nginx.conf
 
 *.pdf
 
+*.yaml
+
 .idea/
 .vscode/
 
