@@ -140,6 +140,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/api/embedding-cache":
 		r.handleEmbeddingCache(w, req)
 
+	// Goal Events endpoints
+	case "/api/goal-events":
+		r.handleGoalEvents(w, req)
+
 	default:
 		http.Error(w, "Not Found", http.StatusNotFound)
 	}
@@ -1582,4 +1586,158 @@ func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 		"id":    payload.ID,
 		"notes": payload.Notes,
 	})
+}
+
+// handleGoalEvents handles /api/goal-events
+func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		// List goal events with optional filters
+		query := req.URL.Query()
+		goalName := query.Get("goal_name")
+		fromDate := query.Get("from_date")
+		toDate := query.Get("to_date")
+		limit := 20
+		if l := query.Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+		}
+		if limit > 100 {
+			limit = 100
+		}
+
+		sql := `
+			SELECT id, goal_name, confidence, page, action, detected_at
+			FROM goal_events
+			WHERE 1=1
+		`
+		args := []interface{}{}
+		argNum := 1
+
+		if goalName != "" {
+			sql += fmt.Sprintf(" AND goal_name ILIKE '%%' || $%d || '%%'", argNum)
+			args = append(args, goalName)
+			argNum++
+		}
+
+		if fromDate != "" {
+			sql += fmt.Sprintf(" AND detected_at >= $%d", argNum)
+			args = append(args, fromDate)
+			argNum++
+		}
+
+		if toDate != "" {
+			sql += fmt.Sprintf(" AND detected_at <= $%d", argNum)
+			args = append(args, toDate)
+			argNum++
+		}
+
+		sql += fmt.Sprintf(" ORDER BY detected_at DESC LIMIT $%d", argNum)
+		args = append(args, limit)
+
+		rows, err := db.Query(req.Context(), sql, args...)
+		if err != nil {
+			log.Printf("Error querying goal events: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var events []models.GoalEvent
+		for rows.Next() {
+			var event models.GoalEvent
+			if err := rows.Scan(&event.ID, &event.GoalName, &event.Confidence, &event.Page, &event.Action, &event.DetectedAt); err != nil {
+				log.Printf("Scan error: %v", err)
+				continue
+			}
+			events = append(events, event)
+		}
+
+		// Return empty array instead of null if no results
+		if events == nil {
+			events = []models.GoalEvent{}
+		}
+		json.NewEncoder(w).Encode(events)
+
+	case "POST":
+		// Create goal event
+		var payload struct {
+			GoalName   string  `json:"goal_name"`
+			Confidence float64 `json:"confidence"`
+			Page       string  `json:"page,omitempty"`
+			Action     string  `json:"action,omitempty"`
+		}
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.GoalName == "" {
+			http.Error(w, "goal_name is required", http.StatusBadRequest)
+			return
+		}
+
+		// Validate confidence if provided
+		confidence := payload.Confidence
+		if confidence < 0 || confidence > 1 {
+			confidence = 0.5 // Default to 0.5 if invalid
+		}
+
+		var id int
+		var detectedAt time.Time
+		err := db.QueryRow(req.Context(), `
+			INSERT INTO goal_events (goal_name, confidence, page, action)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, detected_at
+		`, payload.GoalName, confidence, payload.Page, payload.Action).Scan(&id, &detectedAt)
+
+		if err != nil {
+			log.Printf("Error inserting goal event: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id":          id,
+			"goal_name":   payload.GoalName,
+			"confidence":  confidence,
+			"page":        payload.Page,
+			"action":      payload.Action,
+			"detected_at": detectedAt,
+		})
+
+	case "DELETE":
+		// Delete goal event by ID
+		id := req.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "id parameter required", http.StatusBadRequest)
+			return
+		}
+
+		var intID int
+		fmt.Sscanf(id, "%d", &intID)
+
+		_, err := db.Exec(req.Context(), `DELETE FROM goal_events WHERE id = $1`, intID)
+		if err != nil {
+			log.Printf("Error deleting goal event: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deleted": true,
+			"id":     intID,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
