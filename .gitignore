@@ -21,3 +21,6 @@ dashboard/nginx.conf
 
 _prompts/
 _docs/
+
+TEST-SCENARIO.md
+TEST-RESULTS.md
