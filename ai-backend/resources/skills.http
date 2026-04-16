@@ -1,0 +1,24 @@
+# Skills API Endpoints
+
+### GET /api/skills - List all active skills
+GET {{base_url}}/api/skills
+
+> {%
+  client.test("List skills returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+  
+  client.test("Each skill has required fields", function() {
+    var body = JSON.parse(response.body);
+    if (body.length > 0) {
+      expect(body[0]).to.have.property("id");
+      expect(body[0]).to.have.property("name");
+      expect(body[0]).to.have.property("description");
+    }
+  });
+%}

@@ -14,19 +14,33 @@ import (
 
 // Service handles AI interactions with Minimax
 type Service struct {
-	APIKey   string
-	BaseURL  string
-	Model    string
-	httpClient *http.Client
+	APIKey        string
+	BaseURL       string
+	Model         string
+	ChatEndpoint  string
+	httpClient    *http.Client
 }
 
 // NewService creates a new AI service
 func NewService(apiKey string) *Service {
+	// Default values - these will be overridden by config
 	return &Service{
-		APIKey:   apiKey,
-		BaseURL:  "https://api.minimax.chat/v1",
-		Model:   "abab6.5s-chat",
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		APIKey:       apiKey,
+		BaseURL:      "https://api.minimax.io/v1",
+		Model:        "MiniMax-M2.5",
+		ChatEndpoint: "/chat/completions",
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+// NewServiceWithConfig creates a new AI service with full configuration
+func NewServiceWithConfig(apiKey, baseURL, model, chatEndpoint string) *Service {
+	return &Service{
+		APIKey:       apiKey,
+		BaseURL:      baseURL,
+		Model:        model,
+		ChatEndpoint: chatEndpoint,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -67,7 +81,7 @@ func (s *Service) Chat(prompt string) (string, error) {
 		return "", err
 	}
 
-	httpReq, err := http.NewRequest("POST", s.BaseURL+"/text/chatcompletion_pro", bytes.NewBuffer(body))
+	httpReq, err := http.NewRequest("POST", s.BaseURL+s.ChatEndpoint, bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
@@ -109,45 +123,32 @@ type EmbeddingResponse struct {
 }
 
 // GenerateEmbedding generates an embedding for text
+// Note: MiniMax doesn't have public embedding API, so we return a placeholder
+// In production, consider using OpenAI text-embedding-3-small or another provider
 func (s *Service) GenerateEmbedding(text string) ([]float64, error) {
 	if s.APIKey == "" {
 		return nil, fmt.Errorf("MINIMAX_API_KEY not set")
 	}
 
-	req := EmbeddingRequest{
-		Text:  text,
-		Model: "emb-embedding-01",
+	// Per MiniMax-API-Endpoint.pdf: embedding API not available publicly
+	// Return a simple hash-based placeholder embedding for demo purposes
+	// In production, integrate with OpenAI or other embedding provider
+	placeholder := make([]float64, 1536)
+	hash := 0
+	for i, c := range text {
+		placeholder[i%1536] += float64(c)
+		hash ^= int(c) << ((i % 8) * 4)
+	}
+	// Normalize
+	for i := range placeholder {
+		placeholder[i] = placeholder[i] / float64(len(text)+1)
+		if placeholder[i] > 1 {
+			placeholder[i] = 1
+		}
 	}
 
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequest("POST", s.BaseURL+"/embedding", bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+s.APIKey)
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	var embResp EmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
-		return nil, err
-	}
-
-	return embResp.Embedding, nil
+	fmt.Printf("⚠️  Using placeholder embedding (MiniMax doesn't have public embedding API)\n")
+	return placeholder, nil
 }
 
 // GenerateEmbeddingBase64 generates an embedding and returns as base64

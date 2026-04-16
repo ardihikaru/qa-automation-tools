@@ -1,0 +1,15 @@
+# Cost By Feature API Endpoints
+
+### GET /api/cost/by-feature - Get cost breakdown by feature
+GET {{base_url}}/api/cost/by-feature
+
+> {%
+  client.test("Cost by feature returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}

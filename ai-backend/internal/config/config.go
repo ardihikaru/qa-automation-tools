@@ -67,10 +67,10 @@ type DatabaseConfig struct {
 
 // AIConfig holds AI settings
 type AIConfig struct {
-	APIKey         string `yaml:"api_key"`
-	Model          string `yaml:"model"`
-	EmbeddingModel string `yaml:"embedding_model"`
-	BaseURL        string `yaml:"base_url,omitempty"`
+	APIKey        string `yaml:"api_key"`
+	Model        string `yaml:"model"`
+	BaseURL      string `yaml:"base_url,omitempty"`
+	ChatEndpoint string `yaml:"chat_endpoint,omitempty"`
 }
 
 // SecurityConfig holds security settings
@@ -266,10 +266,10 @@ func LoadConfig() *Config {
 				Name:     getEnvString("DB_NAME", "qaautomation"),
 			},
 			AI: AIConfig{
-				APIKey:         getEnvString("MINIMAX_API_KEY", ""),
-				Model:          getEnvString("AI_MODEL", "abab6.5s-chat"),
-				EmbeddingModel: getEnvString("AI_EMBEDDING_MODEL", "emb-embedding-01"),
-				BaseURL:        getEnvString("AI_BASE_URL", "https://api.minimax.chat/v1"),
+				APIKey:        getEnvString("MINIMAX_API_KEY", ""),
+				Model:         getEnvString("AI_MODEL", "MiniMax-M2.5"),
+				BaseURL:       getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
+				ChatEndpoint: getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
 			},
 			Security: SecurityConfig{
 				APISecretKey: getEnvString("API_SECRET_KEY", ""),
@@ -384,8 +384,8 @@ func loadYAMLConfig(cfg *Config) {
 		if temp.Backend.AI.Model != "" && os.Getenv("AI_MODEL") == "" {
 			cfg.Backend.AI.Model = temp.Backend.AI.Model
 		}
-		if temp.Backend.AI.EmbeddingModel != "" && os.Getenv("AI_EMBEDDING_MODEL") == "" {
-			cfg.Backend.AI.EmbeddingModel = temp.Backend.AI.EmbeddingModel
+		if temp.Backend.AI.ChatEndpoint != "" && os.Getenv("AI_CHAT_ENDPOINT") == "" {
+			cfg.Backend.AI.ChatEndpoint = temp.Backend.AI.ChatEndpoint
 		}
 		if temp.Backend.Security.CORSEnabled {
 			cfg.Backend.Security.CORSEnabled = true

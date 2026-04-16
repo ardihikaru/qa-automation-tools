@@ -49,7 +49,12 @@ func main() {
 			}
 
 			// Initialize services
-			aiService = ai.NewService(cfg.Backend.AI.APIKey)
+			aiService = ai.NewServiceWithConfig(
+				cfg.Backend.AI.APIKey,
+				cfg.Backend.AI.BaseURL,
+				cfg.Backend.AI.Model,
+				cfg.Backend.AI.ChatEndpoint,
+			)
 			learningService = learning.NewService(database.Pool)
 			skillsService = skills.NewService(database.Pool, aiService)
 
@@ -61,7 +66,12 @@ func main() {
 		}
 	} else {
 		log.Println("   Database: Not configured (running in standalone mode)")
-		aiService = ai.NewService(cfg.Backend.AI.APIKey)
+		aiService = ai.NewServiceWithConfig(
+			cfg.Backend.AI.APIKey,
+			cfg.Backend.AI.BaseURL,
+			cfg.Backend.AI.Model,
+			cfg.Backend.AI.ChatEndpoint,
+		)
 	}
 
 	// Initialize router with possibly nil database

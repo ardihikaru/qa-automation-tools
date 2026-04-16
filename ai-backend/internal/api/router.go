@@ -342,21 +342,36 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Check if AI service is available
+	if r.aiService == nil {
+		http.Error(w, "AI service not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Generate embedding for query
 	embedding, err := r.aiService.GenerateEmbedding(query)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Search: GenerateEmbedding error: %v", err)
+		http.Error(w, fmt.Sprintf("AI service error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check if database is available
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
 		return
 	}
 
 	// Search in learning cache
-	rows, err := r.db.Query(req.Context(), `
+	rows, err := db.Query(req.Context(), `
 		SELECT intent, action, page, success_score, usage_count
 		FROM learning_cache
 		ORDER BY embedding <-> $1::vector
 		LIMIT 10
 	`, embedding)
 	if err != nil {
+		log.Printf("Search: Database query error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -390,6 +405,14 @@ func (r *Router) handleCostOverview(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var overview models.CostOverview
+	var totalRequests int64
+	var totalTokens int64
+	var inputTokens int64
+	var outputTokens int64
+	var totalCost float64
+	var cacheHits int64
+	var totalCount int64
+
 	err := r.db.QueryRow(req.Context(), `
 		SELECT 
 			COUNT(*),
@@ -397,16 +420,28 @@ func (r *Router) handleCostOverview(w http.ResponseWriter, req *http.Request) {
 			COALESCE(SUM(input_tokens), 0),
 			COALESCE(SUM(output_tokens), 0),
 			COALESCE(SUM(cost_estimate), 0),
-			COUNT(*) FILTER (WHERE cache_hit = true)::float / NULLIF(COUNT(*), 0)
+			COUNT(*) FILTER (WHERE cache_hit = true),
+			COUNT(*)
 		FROM request_logs
 	`).Scan(
-		&overview.TotalRequests, &overview.TotalTokens, &overview.InputTokens, &overview.OutputTokens,
-		&overview.TotalCost, &overview.CacheHitRate,
+		&totalRequests, &totalTokens, &inputTokens, &outputTokens,
+		&totalCost, &cacheHits, &totalCount,
 	)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	overview.TotalRequests = int(totalRequests)
+	overview.TotalTokens = int(totalTokens)
+	overview.InputTokens = int(inputTokens)
+	overview.OutputTokens = int(outputTokens)
+	overview.TotalCost = totalCost
+	if totalCount > 0 {
+		overview.CacheHitRate = float64(cacheHits) / float64(totalCount)
+	} else {
+		overview.CacheHitRate = 0
 	}
 
 	json.NewEncoder(w).Encode(overview)

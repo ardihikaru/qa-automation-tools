@@ -1,0 +1,33 @@
+# Search API Endpoints
+
+### GET /api/search - Search learning cache
+GET {{base_url}}/api/search?q=login+click
+
+> {%
+  client.test("Search returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}
+
+### GET /api/search - Search with different query
+GET {{base_url}}/api/search?q=patient+search
+
+> {%
+  client.test("Search with different query returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}
+
+### GET /api/search - Missing query parameter (should fail)
+GET {{base_url}}/api/search
+
+> {%
+  client.test("Missing query returns 400", function() {
+    expect(response.status).to.equal(400);
+  });
+%}

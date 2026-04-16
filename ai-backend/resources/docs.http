@@ -1,0 +1,15 @@
+# Docs API Endpoints
+
+### GET /api/docs - List documentation
+GET {{base_url}}/api/docs
+
+> {%
+  client.test("Docs returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response contains docs data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("docs");
+  });
+%}
