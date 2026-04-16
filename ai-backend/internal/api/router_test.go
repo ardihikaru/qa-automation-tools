@@ -244,7 +244,7 @@ func TestVideosEndpoint(t *testing.T) {
 }
 
 func TestAnalyticsEndpoint(t *testing.T) {
-	// Create router
+	// Create router without database - now requires database
 	router := NewRouter(nil, nil, nil, nil)
 
 	// Create test request
@@ -254,18 +254,9 @@ func TestAnalyticsEndpoint(t *testing.T) {
 	// Serve request
 	router.ServeHTTP(w, req)
 
-	// Check response
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status OK, got %d", w.Code)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Errorf("Failed to parse response: %v", err)
-	}
-
-	if response["flows"] == nil {
-		t.Errorf("Expected flows key in response")
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
 	}
 }
 
