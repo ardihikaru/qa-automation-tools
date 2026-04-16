@@ -36,16 +36,25 @@ async function main(): Promise<void> {
 
   let browser: Browser | null = null;
 
+  // Check if video recording is enabled
+  const recordVideo = docsConfig.output.record_video || false;
+  console.log(`🎥 Video recording: ${recordVideo ? 'enabled' : 'disabled'}`);
+
   try {
     // Launch browser
     console.log('🚀 Launching browser...');
+    const browserConfig = docsConfig.browser;
     browser = await chromium.launch({
-      headless: docsConfig.browser.headless,
-      args: docsConfig.browser.args || [],
+      headless: browserConfig.headless,
+      args: browserConfig.args || [],
+      executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome',
     });
 
     const context = await browser.newContext({
       viewport: docsConfig.browser.viewport,
+      recordVideo: recordVideo ? {
+        dir: path.join(docsConfig.output.video_dir, staging.url.replace(/https?:\/\//, '')),
+      } : undefined,
     });
 
     const page = await context.newPage();
@@ -57,6 +66,41 @@ async function main(): Promise<void> {
     // Get roles from config
     const roles = docsConfig.flows.roles;
 
+    // Map role names to flow roles
+    const roleMapping: Record<string, string> = {
+      'doctor_sp': 'doctor',
+      'doctor_gp': 'doctor',
+      'doctor_sp_og': 'doctor',
+      'doctor_sp_kfr': 'doctor',
+      'doctor_sp_tht': 'doctor',
+      'doctor_radiolog': 'doctor',
+      'doctor_professor': 'doctor',
+      'nurse': 'nurse',
+      'nurse_coordinator': 'nurse',
+      'nurse_igd': 'nurse',
+      'nurse_hd': 'nurse',
+      'nurse_icu': 'nurse',
+      'nurse_ok': 'nurse',
+      'nurse_mcu': 'nurse',
+      'admission': 'admission',
+      'admission_rj': 'admission',
+      'admission_coordinator': 'admission',
+      'cashier': 'cashier',
+      'admin': 'admin',
+      'super_admin': 'super_admin',
+      'pharmacy': 'pharmacy',
+      'pharmacy_coordinator': 'pharmacy',
+      'laboratory': 'laboratory',
+      'lab_coordinator': 'laboratory',
+      'radiographer': 'laboratory',
+      'finance': 'admin',
+      'marketing': 'admin',
+      'medical_coordinator': 'admin',
+      'case_manager': 'admin',
+      'quality': 'admin',
+      'bod': 'admin',
+    };
+
     // Run each role's flows
     for (const roleName of roles) {
       const creds = getCredentials(roleName);
@@ -66,10 +110,12 @@ async function main(): Promise<void> {
         continue;
       }
 
-      console.log(`\n👤 Processing role: ${roleName}`);
+      // Get the flow role for this credential role
+      const flowRole = roleMapping[roleName] || roleName;
+      console.log(`\n👤 Processing role: ${roleName} (mapped to: ${flowRole})`);
 
       for (const flow of flows) {
-        if (flow.role !== roleName && roleName !== 'all') continue;
+        if (flow.role !== flowRole && roleName !== 'all') continue;
 
         console.log(`  📝 Running flow: ${flow.name}`);
 

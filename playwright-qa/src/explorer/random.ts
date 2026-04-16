@@ -112,6 +112,7 @@ async function main(): Promise<void> {
 
 /**
  * Login as a specific role
+ * Uses the correct selectors for HIS frontend login form
  */
 async function loginAs(
   page: Page,
@@ -119,28 +120,46 @@ async function loginAs(
   credentials: { username: string; password: string }
 ): Promise<boolean> {
   try {
-    await page.goto(baseUrl + '/login', { timeout: 30000 });
-
-    const emailInput = await page.$(
-      'input[name="email"], input[type="email"], #email'
-    );
-    const passwordInput = await page.$(
-      'input[name="password"], input[type="password"], #password'
-    );
-    const submitButton = await page.$(
-      'button[type="submit"], button:has-text("Login")'
-    );
-
-    if (emailInput && passwordInput && submitButton) {
-      await emailInput.fill(credentials.username);
+    // Navigate to login page - using correct path for HIS frontend
+    await page.goto(baseUrl + '/auth/login', { timeout: 30000, waitUntil: 'networkidle' });
+    
+    // Wait for the login form to be visible
+    await page.waitForSelector('input[name="username"], input[name="password"]', { timeout: 5000 });
+    
+    // Wait a bit for JavaScript to initialize
+    await page.waitForTimeout(500);
+    
+    // Find input fields - using the correct selectors for HIS frontend
+    // Username field uses name="username", NOT name="email"
+    const usernameInput = await page.$('input[name="username"]');
+    const passwordInput = await page.$('input[name="password"]');
+    const submitButton = await page.$('button[type="submit"], button:has-text("Login")');
+    
+    if (usernameInput && passwordInput && submitButton) {
+      // Clear any existing values first
+      await usernameInput.fill('');
+      await passwordInput.fill('');
+      
+      // Fill in credentials with small delay between each
+      await usernameInput.fill(credentials.username);
+      await page.waitForTimeout(100); // Small delay
       await passwordInput.fill(credentials.password);
+      await page.waitForTimeout(100); // Small delay
+      
+      // Click submit
       await submitButton.click();
+      
+      // Wait for navigation or response
       await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1000); // Additional wait for auth to process
+      
       return true;
     }
-
+    
+    console.log('  ⚠️ Login form elements not found');
     return false;
-  } catch {
+  } catch (error) {
+    console.log('  ❌ Login error:', error);
     return false;
   }
 }
