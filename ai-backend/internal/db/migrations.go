@@ -230,6 +230,9 @@ var migrations = []string{
 	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_target ON navigation_edges(target_page);`,
 	`CREATE INDEX IF NOT EXISTS idx_action_sequences_goal ON action_sequences(goal);`,
 	`CREATE INDEX IF NOT EXISTS idx_context_cache_key ON context_cache(context_key);`,
+	`CREATE INDEX IF NOT EXISTS idx_skill_logs_skill_id ON skill_logs(skill_id);`,
+	`CREATE INDEX IF NOT EXISTS idx_skill_logs_created ON skill_logs(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_skill_logs_passed ON skill_logs(is_passed);`,
 }
 
 // RunMigrations executes all database migrations

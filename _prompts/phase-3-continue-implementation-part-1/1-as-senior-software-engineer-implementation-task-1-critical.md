@@ -31,7 +31,7 @@ Do NOT skip Phase 1.
 ## Execution details
 
 * we are working on this codebase: `ai-backend`
-* you can use `mysql` to connect into Neon database and other related credentials
+* you can use `psql` to connect into Neon database and other related credentials
   * IMPORTANT: database we are talking about in this project is only **Neon database**
   * you can also found Neon related config here: `_docs/markdown-results/by-roles/.env`
   * you may find other related config here: `config.yaml`
