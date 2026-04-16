@@ -5,6 +5,8 @@ node_modules
 
 config.yaml
 deployment-result.json
+ai-backend/server
+ai-backend/cmd/verifyminimax/result.json
 
 *.pdf
 

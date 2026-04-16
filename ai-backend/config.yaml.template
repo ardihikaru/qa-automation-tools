@@ -77,10 +77,10 @@ backend:
   # Minimax AI API
   ai:
     api_key: "your-minimax-api-key"
-    model: "abab6.5s-chat"
-    embedding_model: "emb-embedding-01"
+    model: "MiniMax-M2.5"
     # Optional: Custom API endpoint
-    # base_url: "https://api.minimax.chat/v1"
+    # base_url: "https://api.minimax.io/v1"
+    # chat_endpoint: "/chat/completions"
   
   # Security settings
   security:

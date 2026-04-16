@@ -1,0 +1,15 @@
+# Learning API Endpoints
+
+### GET /api/learning - Get learning data
+GET {{base_url}}/api/learning
+
+> {%
+  client.test("Learning returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response contains learning data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("learning_records");
+  });
+%}

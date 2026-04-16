@@ -1,0 +1,15 @@
+# Cost Trend API Endpoints
+
+### GET /api/cost/trend - Get cost trend (last 30 days)
+GET {{base_url}}/api/cost/trend
+
+> {%
+  client.test("Cost trend returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}

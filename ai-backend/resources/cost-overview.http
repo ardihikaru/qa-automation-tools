@@ -1,0 +1,17 @@
+# Cost Overview API Endpoints
+
+### GET /api/cost/overview - Get cost overview
+GET {{base_url}}/api/cost/overview
+
+> {%
+  client.test("Cost overview returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response contains cost data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("total_requests");
+    expect(body).to.have.property("total_tokens");
+    expect(body).to.have.property("total_cost");
+  });
+%}

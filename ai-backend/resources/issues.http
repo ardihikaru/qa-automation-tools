@@ -1,0 +1,48 @@
+# Issues API Endpoints
+
+### GET /api/issues - List all issues
+GET {{base_url}}/api/issues
+
+> {%
+  client.test("List issues returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}
+
+### GET /api/issues?is_fixed=true - List fixed issues
+GET {{base_url}}/api/issues?is_fixed=true
+
+> {%
+  client.test("List fixed issues returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}
+
+### POST /api/issues - Create a new issue
+POST {{base_url}}/api/issues
+Content-Type: application/json
+
+{
+  "page": "login",
+  "action": "click_submit",
+  "error_type": "validation_error",
+  "error_text": "Required field missing: username",
+  "category": "validation",
+  "severity": "high"
+}
+
+> {%
+  client.test("Create issue returns 201", function() {
+    expect(response.status).to.equal(201);
+  });
+  
+  client.test("Response contains issue data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("id");
+  });
+%}

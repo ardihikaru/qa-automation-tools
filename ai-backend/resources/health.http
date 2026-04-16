@@ -1,0 +1,30 @@
+# Health Check Endpoints
+
+### GET /health - Health check without database
+GET {{base_url}}/health
+
+> {%
+  client.test("Health check returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Health check returns ok status", function() {
+    var body = JSON.parse(response.body);
+    expect(body.status).to.equal("ok");
+  });
+  
+  client.test("Health check returns database status", function() {
+    var body = JSON.parse(response.body);
+    expect(body.database).to.be.oneOf(["connected", "disconnected"]);
+  });
+ %}
+
+### GET /health - Health check with database
+GET {{base_url}}/health
+
+> {%
+  client.test("Response has status", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("status");
+  });
+%}
