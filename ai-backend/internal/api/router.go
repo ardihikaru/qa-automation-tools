@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -314,38 +315,86 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 	case "GET":
 		// List issues with optional filters
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		query := req.URL.Query()
 		filterFixed := query.Get("is_fixed")
+		category := query.Get("category")
 		target := query.Get("target")
+		search := query.Get("search")
+		sortBy := query.Get("sort_by")
+		page := 1
+		limit := 20
 
-		sql := `
-			SELECT i.id, i.page, i.action, i.error_type, i.error_text, 
-			       i.category, i.severity, i.is_fixed, i.notes, i.created_at,
-			       s.id, s.suggestion, s.confidence, s.target, s.file_path, s.diff
+		// Parse pagination
+		if p := query.Get("page"); p != "" {
+			fmt.Sscanf(p, "%d", &page)
+			if page < 1 {
+				page = 1
+			}
+		}
+		if l := query.Get("limit"); l != "" {
+			fmt.Sscanf(l, "%d", &limit)
+			if limit < 1 || limit > 100 {
+				limit = 20
+			}
+		}
+
+		// Base SQL query
+		sql := `SELECT i.id, i.page, i.action, i.error_type, i.error_text, 
+			       i.category, i.severity, i.is_fixed, i.notes, i.created_at
 			FROM raw_issues i
-			LEFT JOIN issue_suggestions s ON i.id = s.issue_id
-			WHERE 1=1
-		`
+			WHERE 1=1`
 		args := []interface{}{}
 		argNum := 1
 
+		// Filter by fixed status
 		if filterFixed != "" {
 			sql += fmt.Sprintf(" AND i.is_fixed = $%d", argNum)
 			args = append(args, filterFixed == "true")
 			argNum++
 		}
 
+		// Filter by category
+		if category != "" && category != "all" {
+			sql += fmt.Sprintf(" AND i.category = $%d", argNum)
+			args = append(args, category)
+			argNum++
+		}
+
+		// Filter by target (frontend/backend via suggestions)
 		if target != "" {
-			sql += fmt.Sprintf(" AND s.target = $%d", argNum)
+			sql += fmt.Sprintf(" AND i.id IN (SELECT issue_id FROM issue_suggestions WHERE target = $%d)", argNum)
 			args = append(args, target)
 			argNum++
 		}
 
-		sql += " ORDER BY i.created_at DESC"
+		// Search by page, action, or error text
+		if search != "" {
+			sql += fmt.Sprintf(" AND (i.page ILIKE '%%' || $%d || '%%' OR i.action ILIKE '%%' || $%d || '%%' OR i.error_text ILIKE '%%' || $%d || '%%')", argNum, argNum, argNum)
+			args = append(args, search)
+			argNum++
+		}
+
+		// Sorting
+		switch sortBy {
+		case "date_oldest":
+			sql += " ORDER BY i.created_at ASC"
+		case "severity_high":
+			sql += " ORDER BY CASE i.severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC"
+		case "severity_low":
+			sql += " ORDER BY CASE i.severity WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE 4 END ASC"
+		default:
+			sql += " ORDER BY i.created_at DESC"
+		}
+
+		// Calculate offset for pagination
+		offset := (page - 1) * limit
+		sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argNum, argNum+1)
+		args = append(args, limit, offset)
 
 		rows, err := r.db.Query(req.Context(), sql, args...)
 		if err != nil {
+			log.Printf("Error querying issues: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -356,49 +405,74 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			Suggestions []models.IssueSuggestion `json:"suggestions"`
 		}
 
-		issuesMap := make(map[int]*IssueWithSuggestions)
-
+		var issues []IssueWithSuggestions
 		for rows.Next() {
 			var issue models.RawIssue
-			var sug models.IssueSuggestion
-			var sugID, sugIssueID *int
-
-			err := rows.Scan(
+			if err := rows.Scan(
 				&issue.ID, &issue.Page, &issue.Action, &issue.ErrorType, &issue.ErrorText,
 				&issue.Category, &issue.Severity, &issue.IsFixed, &issue.Notes, &issue.CreatedAt,
-				&sugID, &sug.Suggestion, &sug.Confidence, &sug.Target, &sug.FilePath, &sug.Diff,
-			)
-			if err != nil {
-				log.Println("Scan error:", err)
+			); err != nil {
+				log.Printf("Scan error: %v", err)
 				continue
 			}
 
-			if _, ok := issuesMap[issue.ID]; !ok {
-				issuesMap[issue.ID] = &IssueWithSuggestions{
-					RawIssue:   issue,
-					Suggestions: []models.IssueSuggestion{},
-				}
+			// Fetch suggestions for this issue
+			suggestions, err := r.getSuggestionsForIssue(issue.ID)
+			if err != nil {
+				log.Printf("Error fetching suggestions: %v", err)
 			}
 
-			if sugID != nil {
-				if sugIssueID != nil && *sugIssueID == issue.ID {
-					sug.IssueID = issue.ID
-					issuesMap[issue.ID].Suggestions = append(issuesMap[issue.ID].Suggestions, sug)
-				}
-			}
+			issues = append(issues, IssueWithSuggestions{
+				RawIssue:    issue,
+				Suggestions: suggestions,
+			})
 		}
 
-		var result []IssueWithSuggestions
-		for _, issue := range issuesMap {
-			result = append(result, *issue)
+		// Get total count for pagination
+		var totalCount int
+		countSql := `SELECT COUNT(*) FROM raw_issues WHERE 1=1`
+		countArgs := []interface{}{}
+		countArgNum := 1
+
+		if filterFixed != "" {
+			countSql += fmt.Sprintf(" AND is_fixed = $%d", countArgNum)
+			countArgs = append(countArgs, filterFixed == "true")
+			countArgNum++
+		}
+		if category != "" && category != "all" {
+			countSql += fmt.Sprintf(" AND category = $%d", countArgNum)
+			countArgs = append(countArgs, category)
+			countArgNum++
+		}
+		if search != "" {
+			countSql += fmt.Sprintf(" AND (page ILIKE '%%' || $%d || '%%' OR action ILIKE '%%' || $%d || '%%' OR error_text ILIKE '%%' || $%d || '%%')", countArgNum, countArgNum, countArgNum)
+			countArgs = append(countArgs, search)
+		}
+
+		r.db.QueryRow(req.Context(), countSql, countArgs...).Scan(&totalCount)
+
+		// Calculate pagination info
+		totalPages := (totalCount + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
 		}
 
 		// Return empty array instead of null if no results
-		if result == nil {
-			result = []IssueWithSuggestions{}
+		if issues == nil {
+			issues = []IssueWithSuggestions{}
 		}
 
-		json.NewEncoder(w).Encode(result)
+		// Return with pagination info
+		response := map[string]interface{}{
+			"data":        issues,
+			"pagination": map[string]interface{}{
+				"page":        page,
+				"limit":       limit,
+				"total":       totalCount,
+				"total_pages": totalPages,
+			},
+		}
+		json.NewEncoder(w).Encode(response)
 
 	case "POST":
 		// Create issue
@@ -434,6 +508,34 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// getSuggestionsForIssue fetches suggestions for a specific issue
+func (r *Router) getSuggestionsForIssue(issueID int) ([]models.IssueSuggestion, error) {
+	rows, err := r.db.Query(context.Background(), `
+		SELECT id, issue_id, suggestion, confidence, target, file_path, diff
+		FROM issue_suggestions
+		WHERE issue_id = $1
+	`, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var suggestions []models.IssueSuggestion
+	for rows.Next() {
+		var sug models.IssueSuggestion
+		if err := rows.Scan(&sug.ID, &sug.IssueID, &sug.Suggestion, &sug.Confidence, &sug.Target, &sug.FilePath, &sug.Diff); err != nil {
+			log.Printf("Scan suggestion error: %v", err)
+			continue
+		}
+		suggestions = append(suggestions, sug)
+	}
+
+	if suggestions == nil {
+		suggestions = []models.IssueSuggestion{}
+	}
+	return suggestions, nil
 }
 
 // handleSkills handles /api/skills
