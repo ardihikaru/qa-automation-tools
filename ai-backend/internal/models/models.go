@@ -191,3 +191,13 @@ type ContextRecord struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+// GoalEvent represents a goal completion tracking event
+type GoalEvent struct {
+	ID         int       `json:"id"`
+	GoalName   string    `json:"goal_name"`
+	Confidence float64  `json:"confidence"`
+	Page       string    `json:"page,omitempty"`
+	Action     string    `json:"action,omitempty"`
+	DetectedAt time.Time `json:"detected_at"`
+}
