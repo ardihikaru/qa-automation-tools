@@ -10,9 +10,10 @@ import (
 
 // migrations contains all database migrations
 var migrations = []string{
-	// Create extensions
+	// Create extensions (uuid-ossp is standard in PostgreSQL)
 	`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`,
-	`CREATE EXTENSION IF NOT EXISTS "vector";`,
+	// Note: vector extension removed for Neon PostgreSQL compatibility
+	// `CREATE EXTENSION IF NOT EXISTS "vector";`,
 
 	// Core tables - Roles
 	`CREATE TABLE IF NOT EXISTS roles (
@@ -58,16 +59,16 @@ var migrations = []string{
 		id SERIAL PRIMARY KEY,
 		text_hash TEXT NOT NULL UNIQUE,
 		text TEXT NOT NULL,
-		embedding VECTOR(1536),
+		embedding JSONB,
 		model TEXT DEFAULT 'emb-embedding-01',
 		created_at TIMESTAMP DEFAULT NOW()
 	);`,
 
-	// Learning Cache (context-aware)
+	// Learning Cache (context-aware) - using JSONB for embedding for compatibility
 	`CREATE TABLE IF NOT EXISTS learning_cache (
 		id SERIAL PRIMARY KEY,
 		intent TEXT NOT NULL,
-		embedding VECTOR(1536),
+		embedding JSONB,
 		action TEXT NOT NULL,
 		page TEXT NOT NULL,
 		success_score DECIMAL(3, 2) DEFAULT 0.5,
@@ -172,16 +173,63 @@ var migrations = []string{
 		detected_at TIMESTAMP DEFAULT NOW()
 	);`,
 
+	// Learning System - Navigation Edges (for navigation graph)
+	`CREATE TABLE IF NOT EXISTS navigation_edges (
+		id SERIAL PRIMARY KEY,
+		source_page TEXT NOT NULL,
+		target_page TEXT NOT NULL,
+		action TEXT NOT NULL,
+		success_count INTEGER DEFAULT 0,
+		failure_count INTEGER DEFAULT 0,
+		success_rate DECIMAL(3, 2) DEFAULT 0.5,
+		avg_duration_ms INTEGER DEFAULT 0,
+		last_used TIMESTAMP,
+		created_at TIMESTAMP DEFAULT NOW(),
+		updated_at TIMESTAMP DEFAULT NOW()
+	);`,
+
+	// Learning System - Action Sequences (for multi-step plans)
+	`CREATE TABLE IF NOT EXISTS action_sequences (
+		id SERIAL PRIMARY KEY,
+		goal TEXT NOT NULL,
+		steps JSONB NOT NULL,
+		success_count INTEGER DEFAULT 0,
+		failure_count INTEGER DEFAULT 0,
+		avg_duration_ms INTEGER,
+		last_used TIMESTAMP,
+		is_valid BOOLEAN DEFAULT TRUE,
+		created_at TIMESTAMP DEFAULT NOW(),
+		updated_at TIMESTAMP DEFAULT NOW()
+	);`,
+
+	// Learning System - Context Cache (context-aware learning)
+	`CREATE TABLE IF NOT EXISTS context_cache (
+		id SERIAL PRIMARY KEY,
+		context_key TEXT NOT NULL,
+		context_value TEXT NOT NULL,
+		best_action TEXT,
+		success_score DECIMAL(3, 2) DEFAULT 0.5,
+		usage_count INTEGER DEFAULT 1,
+		last_success TIMESTAMP,
+		created_at TIMESTAMP DEFAULT NOW(),
+		updated_at TIMESTAMP DEFAULT NOW()
+	);`,
+
 	// Create indices for better performance
 	`CREATE INDEX IF NOT EXISTS idx_ai_cache_hash ON ai_cache(input_hash);`,
 	`CREATE INDEX IF NOT EXISTS idx_embedding_cache_hash ON embedding_cache(text_hash);`,
 	`CREATE INDEX IF NOT EXISTS idx_learning_cache_intent ON learning_cache(intent);`,
-	`CREATE INDEX IF NOT EXISTS idx_learning_cache_embedding ON learning_cache embedding vector_cosine_ops;`,
+	// Note: vector index removed for Neon PostgreSQL compatibility
+	// `CREATE INDEX IF NOT EXISTS idx_learning_cache_embedding ON learning_cache embedding vector_cosine_ops;`,
 	`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);`,
 	`CREATE INDEX IF NOT EXISTS idx_raw_issues_page ON raw_issues(page);`,
 	`CREATE INDEX IF NOT EXISTS idx_raw_issues_fixed ON raw_issues(is_fixed);`,
 	`CREATE INDEX IF NOT EXISTS idx_request_logs_endpoint ON request_logs(endpoint);`,
 	`CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_source ON navigation_edges(source_page);`,
+	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_target ON navigation_edges(target_page);`,
+	`CREATE INDEX IF NOT EXISTS idx_action_sequences_goal ON action_sequences(goal);`,
+	`CREATE INDEX IF NOT EXISTS idx_context_cache_key ON context_cache(context_key);`,
 }
 
 // RunMigrations executes all database migrations
