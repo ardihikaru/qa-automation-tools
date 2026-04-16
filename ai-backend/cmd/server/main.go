@@ -31,7 +31,8 @@ func main() {
 
 	// Try to initialize database if credentials are available
 	dbURL := cfg.GetDatabaseURL()
-	if dbURL != "" && cfg.Backend.Database.Host != "" {
+	// Check both ConnectionString (from DATABASE_URL env var) and Host (from config)
+	if dbURL != "" || cfg.Backend.Database.Host != "" {
 		var err error
 		database, err = db.NewConnection(cfg)
 		if err != nil {
