@@ -78,6 +78,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/api/flows":
 		r.handleFlows(w, req)
 
+	// Role endpoints
+	case "/api/roles":
+		r.handleRoles(w, req)
+
 	// Docs endpoints
 	case "/api/docs":
 		r.handleDocs(w, req)
@@ -206,6 +210,96 @@ func (r *Router) handleFlows(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(flow)
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleRoles handles /api/roles
+func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	switch req.Method {
+	case "GET":
+		rows, err := db.Query(req.Context(), `
+			SELECT id, name, description, created_at
+			FROM roles
+			ORDER BY name
+		`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var roles []models.Role
+		for rows.Next() {
+			var role models.Role
+			if err := rows.Scan(&role.ID, &role.Name, &role.Description, &role.CreatedAt); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			roles = append(roles, role)
+		}
+
+		if roles == nil {
+			roles = []models.Role{}
+		}
+		json.NewEncoder(w).Encode(roles)
+
+	case "POST":
+		var role models.Role
+		if err := json.NewDecoder(req.Body).Decode(&role); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if role.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+
+		err := db.QueryRow(req.Context(), `
+			INSERT INTO roles (name, description)
+			VALUES ($1, $2)
+			RETURNING id, created_at
+		`, role.Name, role.Description).Scan(&role.ID, &role.CreatedAt)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(role)
+
+	case "DELETE":
+		id := req.URL.Query().Get("id")
+		if id == "" {
+			http.Error(w, "id parameter required", http.StatusBadRequest)
+			return
+		}
+
+		var intID int
+		fmt.Sscanf(id, "%d", &intID)
+
+		_, err := db.Exec(req.Context(), `DELETE FROM roles WHERE id = $1`, intID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deleted": true,
+			"id":     intID,
+		})
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

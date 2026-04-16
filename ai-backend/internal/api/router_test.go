@@ -464,3 +464,39 @@ func TestLearningSequencesPostNoDB(t *testing.T) {
 		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
 	}
 }
+
+func TestRolesEndpointNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request
+	req := httptest.NewRequest("GET", "/api/roles", nil)
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}
+
+func TestRolesPostNoDB(t *testing.T) {
+	// Create router without database
+	router := NewRouter(nil, nil, nil, nil)
+
+	// Create test request with JSON body
+	body := strings.NewReader(`{"name": "nurse", "description": "Nursing staff"}`)
+	req := httptest.NewRequest("POST", "/api/roles", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	// Serve request
+	router.ServeHTTP(w, req)
+
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	}
+}
