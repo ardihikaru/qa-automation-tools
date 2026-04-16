@@ -924,18 +924,70 @@ func (r *Router) handleVideos(w http.ResponseWriter, req *http.Request) {
 
 // handleAnalytics handles /api/analytics
 func (r *Router) handleAnalytics(w http.ResponseWriter, req *http.Request) {
-	// Return basic stats
+	if req.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
 	type AnalyticsResponse struct {
-		Flows  int `json:"flows"`
-		Issues int `json:"issues"`
+		Flows           int `json:"flows"`
+		Issues          int `json:"issues"`
+		Skills          int `json:"skills"`
+		GoalEvents      int `json:"goal_events"`
+		NavigationEdges int `json:"navigation_edges"`
+		ActionSequences int `json:"action_sequences"`
+		TotalRecords    int `json:"total_records"`
 	}
 
-	response := AnalyticsResponse{
-		Flows:  0,
-		Issues: 0,
+	response := AnalyticsResponse{}
+
+	// Get flows count
+	err := db.QueryRow(req.Context(), `SELECT COUNT(*) FROM flows`).Scan(&response.Flows)
+	if err != nil {
+		log.Printf("Error counting flows: %v", err)
 	}
+
+	// Get issues count
+	err = db.QueryRow(req.Context(), `SELECT COUNT(*) FROM raw_issues`).Scan(&response.Issues)
+	if err != nil {
+		log.Printf("Error counting issues: %v", err)
+	}
+
+	// Get skills count
+	err = db.QueryRow(req.Context(), `SELECT COUNT(*) FROM skills`).Scan(&response.Skills)
+	if err != nil {
+		log.Printf("Error counting skills: %v", err)
+	}
+
+	// Get goal events count
+	err = db.QueryRow(req.Context(), `SELECT COUNT(*) FROM goal_events`).Scan(&response.GoalEvents)
+	if err != nil {
+		log.Printf("Error counting goal events: %v", err)
+	}
+
+	// Get navigation edges count
+	err = db.QueryRow(req.Context(), `SELECT COUNT(*) FROM navigation_edges`).Scan(&response.NavigationEdges)
+	if err != nil {
+		log.Printf("Error counting navigation edges: %v", err)
+	}
+
+	// Get action sequences count
+	err = db.QueryRow(req.Context(), `SELECT COUNT(*) FROM action_sequences`).Scan(&response.ActionSequences)
+	if err != nil {
+		log.Printf("Error counting action sequences: %v", err)
+	}
+
+	// Calculate total records
+	response.TotalRecords = response.Flows + response.Issues + response.Skills + 
+		response.GoalEvents + response.NavigationEdges + response.ActionSequences
 
 	json.NewEncoder(w).Encode(response)
 }
