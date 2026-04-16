@@ -1,40 +1,76 @@
 # Playwright Documentation Generator
 
-Record flows and generate documentation.
+Record browser flows and generate documentation automatically using Playwright.
 
-## Structure
+## Requirements
 
-| Module | Responsibility |
-|--------|-------------|
-| `flows/` | Role-based flow definitions (admin.ts, doctor.ts, cashier.ts) |
-| `recorder/` | Video and screenshot capture |
-| `summarizer/` | Call Minimax for flow description |
-| `output/videos/` | Generated MP4 files |
-| `output/docs/` | Generated markdown files |
-| `config/` | Configuration (credentials.yaml - gitignored) |
+- **Node.js**: >= 18.0.0 (LTS recommended)
+- **npm**: >= 9.0.0
 
-## Key Feature
-
-Lightweight - no issue detection, just documentation generation.
-
-## Test Scenarios
-
-### Production API
-
-Production API: https://ai-backend-000000000000.asia-southeast1.run.app
-
-See `TEST-SCENARIO.md.example` for complete test scenarios.
-
-### Documentation
-
-Run recorder to capture flows:
+## Installation
 
 ```bash
-cd playwright-docs
+# Install dependencies
 npm install
-npm run recorder
+
+# Install Playwright browsers
+npx playwright install chromium
 ```
 
-Output files:
-- `output/videos/*.mp4` - Recorded videos
-- `output/docs/*.md` - Generated documentation
+> Note: This project uses a centralized configuration from the parent directory's `config.yaml` file. Ensure the parent directory has the required node_modules (yaml, dotenv).
+
+## Running
+
+```bash
+# Run using npx ts-node (recommended)
+npx ts-node src/index.ts
+
+# Or use the npm script
+npm run dev
+```
+
+## Configuration
+
+The project uses the centralized `config.yaml` from the parent directory. Update the following sections:
+
+- **staging.url**: Base URL for the application
+- **credentials**: Role-based login credentials
+- **playwright_docs.browser**: Browser settings (headless, viewport, etc.)
+- **playwright_docs.flows.roles**: Roles to generate docs for
+
+## Output
+
+Generated documentation is saved to:
+- `output/screenshots/`: Screenshot images
+- `output/docs/`: Documentation files
+- `output/videos/`: Recorded videos (if enabled)
+
+## Project Structure
+
+```
+playwright-docs/
+├── src/
+│   ├── index.ts          # Main entry point
+│   ├── flows/
+│   │   └── flowLoader.ts # Flow definitions
+│   ├── recorder/
+│   │   └── recordFlow.ts# Flow recorder
+│   └── summarizer/
+│       └── summarizeFlow.ts
+├── lib/
+│   └── config.ts        # Shared config loader (parent directory)
+├── output/             # Generated documentation
+├── config/            # Local config files
+├── package.json
+└── tsconfig.json
+```
+
+## Dependencies
+
+- **playwright**: Browser automation
+- **yaml**: YAML parsing
+- **dotenv**: Environment variables
+- **@types/node**: Node.js types
+- **@types/yaml**: YAML types
+- **ts-node**: TypeScript execution
+- **typescript**: TypeScript compiler
