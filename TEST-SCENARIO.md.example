@@ -1,0 +1,176 @@
+# Test Scenario - Local API Testing
+
+## Overview
+This file contains test scenarios for local API testing using Playwright.
+Copy this file to TEST-SCENARIO.md (gitignored) before running tests.
+
+## API Endpoints to Test
+
+### 1. Health Check
+- **Endpoint**: `GET /health`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK with database status
+  - [ ] Valid JSON response format
+
+### 2. Flows API
+- **Endpoint**: `GET /api/flows`
+- **Authentication**: Not required (configured but not enforced)
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON array response (may be empty)
+
+- **Endpoint**: `POST /api/flows`
+- **Headers**: `Content-Type: application/json`
+- **Body**:
+  ```json
+  {
+    "role_id": "super_admin",
+    "name": "Test Flow",
+    "description": "Test flow description"
+  }
+  ```
+- **Test Cases**:
+  - [ ] Returns 201 Created on valid payload
+  - [ ] Returns 400 Bad Request on invalid payload
+
+### 3. Docs API
+- **Endpoint**: `GET /api/docs`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON response
+
+### 4. Videos API
+- **Endpoint**: `GET /api/videos`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON response
+
+### 5. Issues API
+- **Endpoint**: `GET /api/issues`
+- **Authentication**: Not required
+- **Query Parameters**: `is_fixed`, `target`
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Filters work correctly
+
+- **Endpoint**: `POST /api/issues`
+- **Headers**: `Content-Type: application/json`
+- **Body**:
+  ```json
+  {
+    "page": "login",
+    "action": "click",
+    "error_type": "validation",
+    "error_text": "Invalid email format",
+    "category": "validation",
+    "severity": "medium"
+  }
+  ```
+- **Test Cases**:
+  - [ ] Returns 201 Created on valid payload
+  - [ ] Returns 400 Bad Request on invalid payload
+
+### 6. Skills API
+- **Endpoint**: `GET /api/skills`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON array response
+
+### 7. Search API
+- **Endpoint**: `GET /api/search?q=<query>`
+- **Authentication**: Not required
+- **Required Parameters**: `q` (search query)
+- **Test Cases**:
+  - [ ] Returns 200 OK with valid query
+  - [ ] Returns 400 Bad Request without query parameter
+  - [ ] Returns 503 Service Unavailable when AI service is unavailable
+
+### 8. Cost Analytics APIs
+- **Endpoint**: `GET /api/cost/overview`
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Contains total_requests, total_tokens, total_cost fields
+
+- **Endpoint**: `GET /api/cost/trend`
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Returns trend data for last 30 days
+
+- **Endpoint**: `GET /api/cost/efficiency`
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Contains hit/miss counts
+
+- **Endpoint**: `GET /api/cost/by-feature`
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Contains top 20 features by cost
+
+### 9. Analytics API
+- **Endpoint**: `GET /api/analytics`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON response with stats
+
+### 10. Learning API
+- **Endpoint**: `GET /api/learning`
+- **Authentication**: Not required
+- **Test Cases**:
+  - [ ] Returns 200 OK
+  - [ ] Valid JSON response
+
+## Test Execution
+
+### Prerequisites
+1. Start the ai-backend server:
+   ```bash
+   cd ai-backend
+   go build -o server ./cmd/server
+   ./server
+   ```
+
+2. Verify server is running:
+   ```bash
+   curl http://localhost:8080/health
+   ```
+
+### Testing with Playwright
+Run tests against the local API:
+
+```bash
+cd playwright-qa
+npm test
+```
+
+Or test manually with curl:
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# All flows
+curl http://localhost:8080/api/flows
+
+# Search (requires q parameter)
+curl "http://localhost:8080/api/search?q=login"
+```
+
+## Authentication Notes
+- API_SECRET_KEY is defined in config.yaml but NOT enforced in router.go
+- All endpoints are accessible without authentication
+- CORS is enabled for all origins (`*`)
+
+## Expected Issues
+1. Database may return 503 if not connected
+2. Search endpoint returns 503 if AI service is unavailable
+3. Some endpoints require database connection
+
+## Status
+- [ ] Create test scenarios
+- [ ] Run all API tests
+- [ ] Document results
