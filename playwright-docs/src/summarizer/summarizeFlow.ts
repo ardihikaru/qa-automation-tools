@@ -68,17 +68,17 @@ Generate:
       throw new Error(`Minimax API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content || '';
 
     // Parse response (simple parsing - could be improved)
-    const lines = content.split('\n').filter(l => l.trim());
+    const lines = content.split('\n').filter((l: string) => l.trim());
     
     return {
       feature_description: lines[0] || request.flow_description,
       user_flow: request.steps.join('\n'),
-      edge_cases: lines.filter(l => l.startsWith('-')).slice(0, 5),
-      key_points: lines.filter(l => l.startsWith('*')).slice(0, 5),
+      edge_cases: lines.filter((l: string) => l.startsWith('-')).slice(0, 5),
+      key_points: lines.filter((l: string) => l.startsWith('*')).slice(0, 5),
     };
   } catch (error) {
     console.error('❌ Minimax API error:', error);
@@ -163,4 +163,3 @@ ${summary.key_points.map(k => `- ${k}`).join('\n')}
 `;
 }
 
-export { MinimaxConfig, SummarizationRequest, SummarizationResponse };

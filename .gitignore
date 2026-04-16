@@ -9,6 +9,11 @@ ai-backend/server
 ai-backend/cmd/verifyminimax/result.json
 ai-backend/resources/http-client.env.json
 dashboard/nginx.conf
+ai-backend/env.yaml
+tutorial-playwright-docs.md
+
+playwright-docs/output/
+playwright-docs/recorder/
 
 *.pdf
 
