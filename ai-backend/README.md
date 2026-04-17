@@ -7,6 +7,7 @@ Processing, AI calls, database, APIs.
 | Service | Responsibility |
 |---------|-------------|
 | `cmd/server/` | Main entry point |
+| `cmd/databasemigration/` | Run Neon database migrations |
 | `internal/api/` | HTTP endpoints |
 | `internal/services/learning/` | Learning cache management |
 | `internal/services/skills/` | Skill generation |
@@ -15,7 +16,7 @@ Processing, AI calls, database, APIs.
 | `internal/services/ast/` | AST parsing for Go/TS |
 | `internal/db/` | Neon connection |
 | `internal/models/` | Data models |
-| `internal/migrations/` | Database migrations |
+| `internal/db/migrations.go` | Database migrations |
 
 ## API Endpoints
 

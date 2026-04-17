@@ -1,0 +1,9 @@
+2026/04/18 05:34:08 📦 QA Automation Backend - Configuration loaded from .env
+2026/04/18 05:34:08    Server Port: 8080
+2026/04/18 05:34:08    Database: 
+2026/04/18 05:34:08    AI: Enabled (Model: abab6.5s-chat)
+2026/04/18 05:34:08 📦 QA Automation Backend
+2026/04/18 05:34:08    Port: 8080
+2026/04/18 05:34:08    Database: 
+2026/04/18 05:34:08    Database: Connected ✓
+2026/04/18 05:34:08 🚀 Server starting on 0.0.0.0:8080...
