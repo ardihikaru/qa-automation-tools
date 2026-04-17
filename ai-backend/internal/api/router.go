@@ -600,7 +600,7 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 
 		sql := `
 			SELECT sl.id, sl.skill_id, sl.page, sl.action, sl.result, sl.is_passed, sl.error_message, sl.created_at,
-			       s.name as skill_name
+			       COALESCE(s.name, 'Unknown') as skill_name
 			FROM skill_logs sl
 			LEFT JOIN skills s ON sl.skill_id = s.id
 			WHERE 1=1

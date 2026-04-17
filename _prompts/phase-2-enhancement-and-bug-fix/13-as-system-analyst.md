@@ -8,7 +8,7 @@
 * read summary to understand the context: `_docs/markdown-results/summary/pdf-instruction-summary.md`
 * read detail to understand the context: `_docs/markdown-results/summary/pdf-instruction.md`
 * read the information given by System Analyst: `_docs/markdown-results/summary/system_analysis.md`
-* read this datahase's tables: `_docs/markdown-results/by-roles/database-admin.md`
+* read this database's tables: `_docs/markdown-results/by-roles/database-admin.md`
 
 ## Execution Strategy
 
@@ -44,8 +44,8 @@ Do NOT skip Phase 1.
   7. Automate testing and generate detailed logs of the testing results. The system will automatically query AI to analyze potential bugs—whether they originate from the frontend (FE), backend (BE), or both. It will also provide an estimated commit hash where the issue was introduced.
   8. Each testing iteration will be logged. For problematic parts (bugs), there will be an action checklist. Users accessing the dashboard can mark whether an issue has been fixed or not.
   9. The AI automation system has a set of basic skills, defining mandatory checks. As it is used more frequently, these skills will evolve. Each finding will be analyzed and added to the skill database, allowing continuous improvement over time.
-* ypu will have access to the real credentials inside `config.yaml`. you can login into database with `mysql` command
-  * when I checked on the database, it has four schemas: (1) `ai`, (2) `logging`, (3) `public`, and (4) qa.
+* you will have access to the real credentials inside `config.yaml`. you can login into database with `mysql` command
+  * when I checked on the database, it has four schemas: (1) `ai`, (2) `logging`, (3) `public`, and (4) `qa`.
   * please explain what each schema is used for
 * you will assess all possible implementation. what's have been implemented and what's not implemented yet.
 * create an objective file called `OBJECTIVES.md` to summarize all tables we have, and what's the usage of each table for.

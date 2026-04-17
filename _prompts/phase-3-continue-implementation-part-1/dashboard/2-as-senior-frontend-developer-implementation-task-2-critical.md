@@ -43,3 +43,17 @@ Do NOT skip Phase 1.
   * forget about other task implementation for now
 * if there is any missing page, search feature, filter feature, you will implement it accordingly
 * summarize your implementation summary here: `_docs/markdown-results/findings/202604/dashboard-implementation-summary-task-2.md`
+* if you found any bug on the API / backend side, expose the issue details, including which APIs, what payload used, and what's the response. store them in file: ``_docs/markdown-results/findings/202604/dashboard-implementation-summary-task-2-bugs.md``
+  * up to 3x times retry iterations, if bugs persist, skip and go to next task / sub-tasks after filling the details in the doc
+  * also add information, what's you detail tasks or sub-tasks here. in case BE do not implement it yet
+* Current State of FixTracking.tsx:
+  - Has basic filter by fixed/all/open
+  - Has toggle fixed status
+  - Has basic notes editing
+* What's Missing (Task 2 Requirements):
+  1. Filter by category (All / Frontend / Backend / Unknown)
+  2. Filter by search (page, action, error text)
+  3. Sort options (date newest/oldest, severity high/low)
+  4. Issue detail panel with full error text and suggestions
+  5. Pagination UI
+  6. Handle API response with pagination inf

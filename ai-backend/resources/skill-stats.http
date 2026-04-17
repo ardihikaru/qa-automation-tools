@@ -1,0 +1,23 @@
+# Skill Stats API Endpoints
+
+### GET /api/skills/stats - Get skill statistics
+GET {{base_url}}/api/skills/stats
+
+> {%
+  client.test("Get skill stats returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+  
+  client.test("Response contains stats data", function() {
+    var body = JSON.parse(response.body);
+    if (body.length > 0) {
+      expect(body[0]).to.have.property("total_runs");
+      expect(body[0]).to.have.property("pass_rate");
+    }
+  });
+%}

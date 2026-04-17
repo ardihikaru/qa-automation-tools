@@ -46,3 +46,43 @@ Content-Type: application/json
     expect(body).to.have.property("id");
   });
 %}
+
+### POST /api/issues/status - Mark issue as fixed/unfixed
+POST {{base_url}}/api/issues/status
+Content-Type: application/json
+
+{
+  "id": 1,
+  "is_fixed": true
+}
+
+> {%
+  client.test("Update issue status returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response confirms update", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("is_fixed", true);
+  });
+%}
+
+### POST /api/issues/notes - Add notes to an issue
+POST {{base_url}}/api/issues/notes
+Content-Type: application/json
+
+{
+  "id": 1,
+  "notes": "This was a false positive - the validation works correctly"
+}
+
+> {%
+  client.test("Add issue notes returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response contains notes", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("notes");
+  });
+%}

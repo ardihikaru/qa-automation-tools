@@ -37,6 +37,6 @@ Do NOT skip Phase 1.
 3. you will assess the wrote codes in `ai-backend` folder according to your tasks
 4. add unit tests
 5. codes are planned to be deployed into Google Cloud run. you have my full access to `gcloud` command. you will make sure that the codes are compatible for that purpose
-   * create a new project called `aq-automation-tools-sismedika` if does not exist yet
+   * create a new project called `qa-automation-tools-sismedika` if does not exist yet
    * link billing
    * do other related action with permissions
