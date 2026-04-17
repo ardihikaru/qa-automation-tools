@@ -7,7 +7,8 @@ import {
   DollarSign, 
   CheckCircle,
   Menu,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -20,6 +21,7 @@ const navItems = [
   { path: '/issues', label: 'Issue Debugger', icon: AlertTriangle },
   { path: '/cost', label: 'Cost Analytics', icon: DollarSign },
   { path: '/fixes', label: 'Fix Tracking', icon: CheckCircle },
+  { path: '/skills', label: 'Skills', icon: Zap },
 ];
 
 export default function Layout({ children }: LayoutProps) {
