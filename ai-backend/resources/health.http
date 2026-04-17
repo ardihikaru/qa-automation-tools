@@ -17,6 +17,11 @@ GET {{base_url}}/health
     var body = JSON.parse(response.body);
     expect(body.database).to.be.oneOf(["connected", "disconnected"]);
   });
+
+  client.test("Health check returns minimax status", function() {
+    var body = JSON.parse(response.body);
+    expect(body.minimax).to.be.oneOf(["configured", "not_configured"]);
+  });
  %}
 
 ### GET /health - Health check with database
