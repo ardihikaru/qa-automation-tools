@@ -1,0 +1,54 @@
+# Embedding Cache API Endpoints
+
+### GET /api/embedding-cache?hash=abc123 - Get cached embedding by hash
+GET {{base_url}}/api/embedding-cache?hash=abc123
+
+> {%
+  client.test("Get cached embedding returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response contains cached data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("text_hash");
+  });
+%}
+
+### POST /api/embedding-cache - Store embedding in cache
+POST {{base_url}}/api/embedding-cache
+Content-Type: application/json
+
+{
+  "text": "patient login flow",
+  "embedding": [0.123, -0.456, 0.789, -0.012, 0.345],
+  "model": "emb-embedding-01"
+}
+
+> {%
+  client.test("Store embedding cache returns 201", function() {
+    expect(response.status).to.equal(201);
+  });
+  
+  client.test("Response contains cache info", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("hash");
+  });
+%}
+
+### DELETE /api/embedding-cache?hash=abc123 - Delete specific cache entry
+DELETE {{base_url}}/api/embedding-cache?hash=abc123
+
+> {%
+  client.test("Delete cache entry returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}
+
+### DELETE /api/embedding-cache - Clear all cache
+DELETE {{base_url}}/api/embedding-cache
+
+> {%
+  client.test("Clear all cache returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}

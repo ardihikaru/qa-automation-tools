@@ -11,6 +11,9 @@ ai-backend/resources/http-client.env.json
 dashboard/nginx.conf
 ai-backend/env.yaml
 tutorial-playwright-docs.md
+ai-backend/vendor
+
+.codex
 
 playwright-docs/output/
 playwright-docs/recorder/

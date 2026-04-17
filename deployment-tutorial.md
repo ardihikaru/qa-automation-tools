@@ -71,7 +71,7 @@ gcloud run deploy ai-backend \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require" \
+  --set-env-vars "DATABASE_URL=postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" \
   --set-env-vars "MINIMAX_API_KEY=YOUR_API_KEY" \
   --set-env-vars "AI_MODEL=MiniMax-M2.5" \
   --set-env-vars "AI_BASE_URL=https://api.minimax.io/v1" \
@@ -80,7 +80,10 @@ gcloud run deploy ai-backend \
   --set-env-vars "CORS_ORIGINS=*"
 ```
 
-**Note**: The `PORT` environment variable is automatically set by Cloud Run - do not set it manually.
+**Important Notes:**
+- The `DATABASE_URL` must include `channel_binding=require` for Neon database connections
+- The `PORT` environment variable is automatically set by Cloud Run - do not set it manually
+- Replace `YOUR_PASSWORD` and `YOUR_API_KEY` with actual credentials from your `.env` file
 
 #### Deploy Dashboard
 
@@ -110,7 +113,7 @@ gcloud run services describe dashboard --platform managed --region asia-southeas
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | Neon PostgreSQL connection string | `postgresql://user:pass@host/db?sslmode=require` |
+| `DATABASE_URL` | Neon PostgreSQL connection string (include `channel_binding=require` for Neon) | `postgresql://user:pass@host/db?sslmode=require&channel_binding=require` |
 | `MINIMAX_API_KEY` | Minimax API key | `sk-api-...` |
 | `AI_MODEL` | AI model name | `MiniMax-M2.5` |
 | `AI_BASE_URL` | AI API base URL | `https://api.minimax.io/v1` |
