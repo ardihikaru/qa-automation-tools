@@ -6,6 +6,8 @@ import IssueDebugger from './views/IssueDebugger';
 import CostAnalytics from './views/CostAnalytics';
 import FixTracking from './views/FixTracking';
 import SkillsView from './views/SkillsView';
+import NavigationGraphView from './views/NavigationGraphView';
+import LearningProgressView from './views/LearningProgressView';
 
 function App() {
   return (
@@ -18,6 +20,8 @@ function App() {
         <Route path="/cost" element={<CostAnalytics />} />
         <Route path="/fixes" element={<FixTracking />} />
         <Route path="/skills" element={<SkillsView />} />
+        <Route path="/navigation" element={<NavigationGraphView />} />
+        <Route path="/learning" element={<LearningProgressView />} />
       </Routes>
     </Layout>
   );
