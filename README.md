@@ -5,6 +5,7 @@ A comprehensive QA automation system with AI-powered features for testing and mo
 ## Table of Contents
 
 - [Architecture](#architecture)
+- [Repository Components](#repository-components)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Git Hooks](#git-hooks)
@@ -43,6 +44,16 @@ A comprehensive QA automation system with AI-powered features for testing and mo
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Repository Components
+
+- `ai-backend/`: Go API service for analytics, learning, search, flows, skills, issues, and cost endpoints.
+- `dashboard/`: React + Vite dashboard UI that consumes backend APIs.
+- `playwright-docs/`: Playwright tooling used to explore product flows and generate documentation artifacts.
+- `playwright-qa/`: Main QA automation engine and exploratory automation implementation.
+- `this-qa-automation-system-playwright/`: Playwright self-verification suite for this project itself (API + dashboard regression checks).
+- `product-documentations/`: Functional documentation source for HIS v3 modules.
+- `_docs/` and root `*.md` files: Operational docs, plans, tutorials, assessments, and architecture notes.
 
 ## Prerequisites
 
@@ -404,15 +415,32 @@ curl -s http://localhost:8080/api/flows | jq .
 ### Playwright Testing
 
 ```bash
-# Install Playwright
+# Install dependencies
 cd playwright-qa
 npm install
 
-# Run tests
+# Run core QA automation tests
 npm run test
 
 # Run with UI
 npm run test:ui
+```
+
+### Self-Verification Testing (System Under Test)
+
+```bash
+# Run end-to-end/API checks for this repository itself
+cd this-qa-automation-system-playwright
+npm install
+
+# Run all self-verification tests
+npm test
+
+# Run only API coverage
+npm run test:api
+
+# Run only dashboard coverage
+npm run test:dashboard
 ```
 
 ---
@@ -509,7 +537,10 @@ qa-automation-tools/
 │   ├── .env               # Environment variables
 │   └── Dockerfile
 │
-├── playwright-qa/          # Playwright tests
+├── playwright-docs/         # Playwright-driven documentation generator
+├── playwright-qa/           # Core QA automation engine
+├── this-qa-automation-system-playwright/ # Self-verification tests (API + dashboard)
+├── product-documentations/  # Source docs for product modules
 ├── config.yaml             # Main configuration
 ├── docker-compose.yml      # Docker compose
 └── README.md             # This file

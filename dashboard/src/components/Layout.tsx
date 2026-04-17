@@ -8,7 +8,9 @@ import {
   CheckCircle,
   Menu,
   X,
-  Zap
+  Zap,
+  GitBranch,
+  Brain
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -22,6 +24,8 @@ const navItems = [
   { path: '/cost', label: 'Cost Analytics', icon: DollarSign },
   { path: '/fixes', label: 'Fix Tracking', icon: CheckCircle },
   { path: '/skills', label: 'Skills', icon: Zap },
+  { path: '/navigation', label: 'Navigation Graph', icon: GitBranch },
+  { path: '/learning', label: 'Learning Progress', icon: Brain },
 ];
 
 export default function Layout({ children }: LayoutProps) {

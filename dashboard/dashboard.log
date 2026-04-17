@@ -1,0 +1,15 @@
+
+> qa-dashboard@1.0.0 dev
+> vite
+
+
+  VITE v5.4.21  ready in 165 ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: use --host to expose
+5:41:30 AM [vite] Pre-transform error: Transform failed with 1 error:
+/home/ardi/devel/projects/sismedika/qa-automation-tools/dashboard/src/views/NavigationGraphView.tsx:58:38: ERROR: Expected ")" but found "{"
+5:43:31 AM [vite] page reload src/App.tsx
+5:43:37 AM [vite] page reload src/components/Layout.tsx
+5:43:50 AM [vite] page reload src/views/NavigationGraphView.tsx
+5:43:58 AM [vite] page reload src/views/NavigationGraphView.tsx

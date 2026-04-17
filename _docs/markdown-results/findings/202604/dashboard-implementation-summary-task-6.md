@@ -1,3 +1,58 @@
+## Task 8: Learning Progress Visualization (P3 - Low)
+
+### Status
+✅ COMPLETED  
+Date: 2026-04-18
+
+### Scope Implemented
+
+Implemented a new dedicated view for learning cache progress in the dashboard using `GET /api/learning`.
+
+### Frontend Changes
+
+1. Added new page: `dashboard/src/views/LearningProgressView.tsx`
+   - Success score over time chart (line chart)
+   - Usage statistics cards:
+     - Learning Records
+     - Total Usage
+     - Weighted Success
+     - High-Success Actions
+   - Top learned actions:
+     - Vertical bar chart (top actions by usage)
+     - Detailed table with intent/action/page/usage/avg success
+   - Search and filter support:
+     - Search by intent/action/page
+     - Filter by page
+   - Loading, empty state, error state, and retry support
+
+2. Routing updates
+   - `dashboard/src/App.tsx`
+   - Added route: `/learning`
+
+3. Navigation updates
+   - `dashboard/src/components/Layout.tsx`
+   - Added sidebar menu item: "Learning Progress"
+
+4. Build blocker fix found during Task 8 execution
+   - `dashboard/src/views/NavigationGraphView.tsx`
+   - Resolved syntax/export issues so dashboard build can pass
+
+### API Verification
+
+Backend was started locally and verified:
+- `GET /health` -> `{"status":"ok","database":"connected","minimax":"configured"}`
+- `GET /api/learning?limit=5` -> returned valid learning records with fields:
+  `id, intent, action, page, success_score, usage_count, last_success, created_at, updated_at`
+
+No backend/API bug found for Task 8.
+
+### Validation
+
+- Ran: `npm --prefix dashboard run build`
+- Result: ✅ Build success
+
+---
+
 # Dashboard Implementation Summary - Task 6: Skill Execution UI
 
 ## Task Overview
