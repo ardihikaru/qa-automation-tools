@@ -11,8 +11,7 @@ import {
   ChevronRight,
   ChevronDown,
   Info,
-  Target,
-  FlowChart
+  Target
 } from 'lucide-react';
 
 interface NavigationEdge {
@@ -55,7 +54,7 @@ export default function NavigationGraphView() {
       const learningRes = await fetch('/api/learning?limit=100');
       const learningData = await learningRes.json();
       
-      if (Array.isArray(learningData) {
+      if (Array.isArray(learningData)) {
         // Create unique nodes from the learning data
         const uniquePages = new Set<string>();
         const nodeList: NavigationNode[] = [];
@@ -205,7 +204,7 @@ export default function NavigationGraphView() {
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <FlowChart className="w-4 h-4" />
+            <GitBranch className="w-4 h-4" />
             Graph View
           </button>
         </div>
@@ -309,7 +308,7 @@ export default function NavigationGraphView() {
           <div className="card-body">
             {edges.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <FlowChart className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                <GitBranch className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                 <p>No graph data to display</p>
                 <p className="text-sm mt-2">Search for a specific page to see its connections</p>
               </div>
