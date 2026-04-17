@@ -25,7 +25,12 @@ func main() {
 
 	// Check for database connection - make optional for deployment without DB
 	var database *db.DB
-	var aiService *ai.Service
+	aiService := ai.NewServiceWithConfig(
+		cfg.Backend.AI.APIKey,
+		cfg.Backend.AI.BaseURL,
+		cfg.Backend.AI.Model,
+		cfg.Backend.AI.ChatEndpoint,
+	)
 	var learningService *learning.Service
 	var skillsService *skills.Service
 
@@ -42,20 +47,7 @@ func main() {
 			defer database.Close()
 			log.Println("   Database: Connected ✓")
 
-			// Run migrations
-			if err := db.RunMigrations(database.Pool); err != nil {
-				log.Printf("⚠️  Migration failed: %v", err)
-			} else {
-				log.Println("   Migrations: Applied ✓")
-			}
-
-			// Initialize services
-			aiService = ai.NewServiceWithConfig(
-				cfg.Backend.AI.APIKey,
-				cfg.Backend.AI.BaseURL,
-				cfg.Backend.AI.Model,
-				cfg.Backend.AI.ChatEndpoint,
-			)
+			// Initialize DB-backed services
 			learningService = learning.NewService(database.Pool)
 			skillsService = skills.NewService(database.Pool, aiService)
 
@@ -67,12 +59,6 @@ func main() {
 		}
 	} else {
 		log.Println("   Database: Not configured (running in standalone mode)")
-		aiService = ai.NewServiceWithConfig(
-			cfg.Backend.AI.APIKey,
-			cfg.Backend.AI.BaseURL,
-			cfg.Backend.AI.Model,
-			cfg.Backend.AI.ChatEndpoint,
-		)
 	}
 
 	// Initialize router with possibly nil database

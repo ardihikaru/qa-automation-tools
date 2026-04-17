@@ -21,6 +21,10 @@ import (
 // - config.yaml with Neon database credentials
 // - .env file with MINIMAX_API_KEY set
 func TestSearchIntegration(t *testing.T) {
+	loadIntegrationEnvFiles()
+	config.ClearCache()
+	t.Cleanup(config.ClearCache)
+
 	// Load configuration from config.yaml
 	cfg := config.LoadConfig()
 
@@ -32,7 +36,7 @@ func TestSearchIntegration(t *testing.T) {
 	// Initialize database connection
 	database, err := db.NewConnection(cfg)
 	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
+		t.Skipf("Skipping integration test: database not reachable: %v", err)
 	}
 	defer database.Close()
 
@@ -43,19 +47,16 @@ func TestSearchIntegration(t *testing.T) {
 	}
 	t.Log("✓ Database connected successfully")
 
-	// Initialize AI service if API key is available
-	var aiService *ai.Service
-	if cfg.Backend.AI.APIKey != "" {
-		aiService = ai.NewServiceWithConfig(
-			cfg.Backend.AI.APIKey,
-			cfg.Backend.AI.BaseURL,
-			cfg.Backend.AI.Model,
-			cfg.Backend.AI.ChatEndpoint,
-		)
-		t.Log("✓ AI service initialized")
-	} else {
-		t.Log("⚠ No AI API key found - AI features will be limited")
+	if cfg.Backend.AI.APIKey == "" {
+		t.Skip("Skipping integration test: MINIMAX API key is not configured")
 	}
+	aiService := ai.NewServiceWithConfig(
+		cfg.Backend.AI.APIKey,
+		cfg.Backend.AI.BaseURL,
+		cfg.Backend.AI.Model,
+		cfg.Backend.AI.ChatEndpoint,
+	)
+	t.Log("✓ AI service initialized")
 
 	// Initialize other services
 	learningService := learning.NewService(database.Pool)
@@ -129,6 +130,10 @@ func TestSearchIntegration(t *testing.T) {
 
 // TestSearchWithDatabase tests the search endpoint with the Neon database
 func TestSearchWithDatabase(t *testing.T) {
+	loadIntegrationEnvFiles()
+	config.ClearCache()
+	t.Cleanup(config.ClearCache)
+
 	// Get database URL from environment (supports DATABASE_URL format)
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -146,7 +151,7 @@ func TestSearchWithDatabase(t *testing.T) {
 	// Connect to database
 	database, err := db.NewConnection(config.LoadConfig())
 	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
+		t.Skipf("Skipping integration test: database not reachable: %v", err)
 	}
 	defer database.Close()
 
@@ -166,15 +171,15 @@ func TestSearchWithDatabase(t *testing.T) {
 
 	// Initialize AI service
 	cfg := config.LoadConfig()
-	var aiService *ai.Service
-	if cfg.Backend.AI.APIKey != "" {
-		aiService = ai.NewServiceWithConfig(
-			cfg.Backend.AI.APIKey,
-			cfg.Backend.AI.BaseURL,
-			cfg.Backend.AI.Model,
-			cfg.Backend.AI.ChatEndpoint,
-		)
+	if cfg.Backend.AI.APIKey == "" {
+		t.Skip("Skipping integration test: MINIMAX API key is not configured")
 	}
+	aiService := ai.NewServiceWithConfig(
+		cfg.Backend.AI.APIKey,
+		cfg.Backend.AI.BaseURL,
+		cfg.Backend.AI.Model,
+		cfg.Backend.AI.ChatEndpoint,
+	)
 
 	// Create router
 	learningService := learning.NewService(database.Pool)
@@ -197,6 +202,10 @@ func TestSearchWithDatabase(t *testing.T) {
 
 // TestHealthEndpointWithDB tests the health endpoint with database connection
 func TestHealthEndpointWithDB(t *testing.T) {
+	loadIntegrationEnvFiles()
+	config.ClearCache()
+	t.Cleanup(config.ClearCache)
+
 	// Get database URL
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -211,7 +220,7 @@ func TestHealthEndpointWithDB(t *testing.T) {
 	// Connect to database
 	database, err := db.NewConnection(config.LoadConfig())
 	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
+		t.Skipf("Skipping integration test: database not reachable: %v", err)
 	}
 	defer database.Close()
 
