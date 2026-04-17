@@ -1,0 +1,57 @@
+# Skill Logs API Endpoints
+
+### GET /api/skills/logs - List skill logs
+GET {{base_url}}/api/skills/logs
+
+> {%
+  client.test("List skill logs returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}
+
+### GET /api/skills/logs?skill_id=1 - List logs for specific skill
+GET {{base_url}}/api/skills/logs?skill_id=1
+
+> {%
+  client.test("List skill logs by skill returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}
+
+### GET /api/skills/logs?passed=true - List passed logs
+GET {{base_url}}/api/skills/logs?passed=true
+
+> {%
+  client.test("List passed skill logs returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+%}
+
+### POST /api/skills/logs - Create a new skill log entry
+POST {{base_url}}/api/skills/logs
+Content-Type: application/json
+
+{
+  "skill_id": 1,
+  "page": "login",
+  "action": "fill_form",
+  "result": "Field validation passed",
+  "is_passed": true,
+  "error_message": ""
+}
+
+> {%
+  client.test("Create skill log returns 201", function() {
+    expect(response.status).to.equal(201);
+  });
+  
+  client.test("Response contains skill log data", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("id");
+  });
+%}

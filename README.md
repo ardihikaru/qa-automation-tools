@@ -7,6 +7,7 @@ A comprehensive QA automation system with AI-powered features for testing and mo
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
+- [Git Hooks](#git-hooks)
 - [Running Backend Locally](#running-backend-locally)
 - [Running Dashboard Locally](#running-dashboard-locally)
 - [Running Both Services](#running-both-services)
@@ -92,6 +93,20 @@ cd dashboard
 npm install
 npm run dev
 ```
+
+---
+
+## Git Hooks
+
+Enable repo hooks once to block filenames that break Git on Windows:
+
+```bash
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit scripts/check-windows-paths.sh
+```
+
+The pre-commit hook will reject staged paths with Windows-invalid names
+(`\`, `:`, `*`, reserved names like `CON`, trailing dot/space, etc.).
 
 ---
 
