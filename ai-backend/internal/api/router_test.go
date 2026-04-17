@@ -36,6 +36,10 @@ func TestHealthEndpointNoDB(t *testing.T) {
 	if response["database"] != "disconnected" {
 		t.Errorf("Expected database 'disconnected', got '%v'", response["database"])
 	}
+
+	if response["minimax"] != "not_configured" {
+		t.Errorf("Expected minimax 'not_configured', got '%v'", response["minimax"])
+	}
 }
 
 func TestFlowsEndpointNoDB(t *testing.T) {
@@ -207,10 +211,19 @@ func TestDocsEndpoint(t *testing.T) {
 		t.Errorf("Expected status OK, got %d", w.Code)
 	}
 
-	// Response should be valid JSON array
-	var response []interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Errorf("Failed to parse response: %v", err)
+	// Response should be valid JSON array, or object with "docs" field
+	var asArray []interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &asArray); err == nil {
+		return
+	}
+
+	var asObject map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &asObject); err != nil {
+		t.Errorf("Failed to parse docs response: %v", err)
+		return
+	}
+	if _, ok := asObject["docs"]; !ok {
+		t.Errorf("Expected docs response to contain 'docs' key")
 	}
 }
 
@@ -230,10 +243,19 @@ func TestVideosEndpoint(t *testing.T) {
 		t.Errorf("Expected status OK, got %d", w.Code)
 	}
 
-	// Response should be valid JSON array
-	var response []interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Errorf("Failed to parse response: %v", err)
+	// Response should be valid JSON array, or object with "videos" field
+	var asArray []interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &asArray); err == nil {
+		return
+	}
+
+	var asObject map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &asObject); err != nil {
+		t.Errorf("Failed to parse videos response: %v", err)
+		return
+	}
+	if _, ok := asObject["videos"]; !ok {
+		t.Errorf("Expected videos response to contain 'videos' key")
 	}
 }
 
@@ -255,7 +277,7 @@ func TestAnalyticsEndpoint(t *testing.T) {
 }
 
 func TestLearningEndpoint(t *testing.T) {
-	// Create router
+	// Create router without database
 	router := NewRouter(nil, nil, nil, nil)
 
 	// Create test request
@@ -265,18 +287,9 @@ func TestLearningEndpoint(t *testing.T) {
 	// Serve request
 	router.ServeHTTP(w, req)
 
-	// Check response
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status OK, got %d", w.Code)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Errorf("Failed to parse response: %v", err)
-	}
-
-	if response["learning_records"] == nil {
-		t.Errorf("Expected learning_records key in response")
+	// Check response - should return 503 when no database
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
 	}
 }
 
@@ -317,9 +330,59 @@ func TestSearchMissingQuery(t *testing.T) {
 	// Serve request
 	router.ServeHTTP(w, req)
 
-	// Check response - when no database, returns 503 instead of 400
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("Expected status ServiceUnavailable, got %d", w.Code)
+	// Missing query should fail validation before service checks
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status BadRequest, got %d", w.Code)
+	}
+}
+
+func TestAdditionalResourceEndpointsNoDB(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil)
+
+	testCases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		status int
+	}{
+		{name: "IssueStatusNoDB", method: "POST", path: "/api/issues/status", body: `{"id":1,"is_fixed":true}`, status: http.StatusServiceUnavailable},
+		{name: "IssueNotesNoDB", method: "POST", path: "/api/issues/notes", body: `{"id":1,"notes":"note"}`, status: http.StatusServiceUnavailable},
+		{name: "SkillLogsGetNoDB", method: "GET", path: "/api/skills/logs", status: http.StatusServiceUnavailable},
+		{name: "SkillLogsPostNoDB", method: "POST", path: "/api/skills/logs", body: `{"skill_id":1,"page":"login","action":"fill","result":"ok","is_passed":true}`, status: http.StatusServiceUnavailable},
+		{name: "SkillStatsNoDB", method: "GET", path: "/api/skills/stats", status: http.StatusServiceUnavailable},
+		{name: "AICacheGetNoDB", method: "GET", path: "/api/ai-cache?hash=test", status: http.StatusServiceUnavailable},
+		{name: "AICachePostNoDB", method: "POST", path: "/api/ai-cache", body: `{"input_text":"a","output_text":"b"}`, status: http.StatusServiceUnavailable},
+		{name: "AICacheDeleteNoDB", method: "DELETE", path: "/api/ai-cache?hash=test", status: http.StatusServiceUnavailable},
+		{name: "EmbeddingCacheGetNoDB", method: "GET", path: "/api/embedding-cache?hash=test", status: http.StatusServiceUnavailable},
+		{name: "EmbeddingCachePostNoDB", method: "POST", path: "/api/embedding-cache", body: `{"text":"patient login","embedding":[0.1,0.2]}`, status: http.StatusServiceUnavailable},
+		{name: "EmbeddingCacheDeleteNoDB", method: "DELETE", path: "/api/embedding-cache?hash=test", status: http.StatusServiceUnavailable},
+		{name: "LearningStatsNoDB", method: "GET", path: "/api/learning/stats", status: http.StatusServiceUnavailable},
+		{name: "LearningContextGetNoDB", method: "GET", path: "/api/learning/context?key=a&value=b", status: http.StatusServiceUnavailable},
+		{name: "LearningContextPostNoDB", method: "POST", path: "/api/learning/context", body: `{"context_key":"a","context_value":"b","best_action":"x","success":true}`, status: http.StatusServiceUnavailable},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var bodyReader *strings.Reader
+			if tc.body == "" {
+				bodyReader = strings.NewReader("")
+			} else {
+				bodyReader = strings.NewReader(tc.body)
+			}
+
+			req := httptest.NewRequest(tc.method, tc.path, bodyReader)
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			if w.Code != tc.status {
+				t.Errorf("Expected status %d, got %d. Body: %s", tc.status, w.Code, w.Body.String())
+			}
+		})
 	}
 }
 

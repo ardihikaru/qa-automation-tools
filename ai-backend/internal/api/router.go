@@ -67,10 +67,15 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Health check - always available
 	if req.URL.Path == "/health" {
 		w.WriteHeader(http.StatusOK)
+		minimaxStatus := "not_configured"
+		if r.aiService != nil && r.aiService.APIKey != "" {
+			minimaxStatus = "configured"
+		}
+
 		if r.db != nil {
-			fmt.Fprint(w, `{"status": "ok", "database": "connected"}`)
+			fmt.Fprintf(w, `{"status":"ok","database":"connected","minimax":"%s"}`, minimaxStatus)
 		} else {
-			fmt.Fprint(w, `{"status": "ok", "database": "disconnected"}`)
+			fmt.Fprintf(w, `{"status":"ok","database":"disconnected","minimax":"%s"}`, minimaxStatus)
 		}
 		return
 	}
@@ -198,6 +203,16 @@ func (r *Router) handleFlows(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		// Validate required fields
+		if flow.RoleID == 0 {
+			http.Error(w, "role_id is required", http.StatusBadRequest)
+			return
+		}
+		if flow.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+
 		err := db.QueryRow(req.Context(), `
 			INSERT INTO flows (role_id, name, description)
 			VALUES ($1, $2, $3)
@@ -301,7 +316,7 @@ func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"deleted": true,
-			"id":     intID,
+			"id":      intID,
 		})
 
 	default:
@@ -311,6 +326,12 @@ func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
 
 // handleIssues handles /api/issues
 func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	switch req.Method {
 	case "GET":
 		// List issues with optional filters
@@ -392,7 +413,7 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argNum, argNum+1)
 		args = append(args, limit, offset)
 
-		rows, err := r.db.Query(req.Context(), sql, args...)
+		rows, err := db.Query(req.Context(), sql, args...)
 		if err != nil {
 			log.Printf("Error querying issues: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -449,7 +470,7 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			countArgs = append(countArgs, search)
 		}
 
-		r.db.QueryRow(req.Context(), countSql, countArgs...).Scan(&totalCount)
+		db.QueryRow(req.Context(), countSql, countArgs...).Scan(&totalCount)
 
 		// Calculate pagination info
 		totalPages := (totalCount + limit - 1) / limit
@@ -464,7 +485,7 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 
 		// Return with pagination info
 		response := map[string]interface{}{
-			"data":        issues,
+			"data": issues,
 			"pagination": map[string]interface{}{
 				"page":        page,
 				"limit":       limit,
@@ -482,7 +503,17 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		err := r.db.QueryRow(req.Context(), `
+		// Validate required fields - page and action are required
+		if issue.Page == "" {
+			http.Error(w, "page is required", http.StatusBadRequest)
+			return
+		}
+		if issue.Action == "" {
+			http.Error(w, "action is required", http.StatusBadRequest)
+			return
+		}
+
+		err := db.QueryRow(req.Context(), `
 			INSERT INTO raw_issues (page, action, error_type, error_text, category, severity)
 			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id, created_at
@@ -493,11 +524,11 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		// Generate suggestions using AI
-		if issue.Category == "" && issue.ErrorText != "" {
+		// Generate category using AI only when service is available
+		if issue.Category == "" && issue.ErrorText != "" && r.aiService != nil {
 			category, _ := r.aiService.ClassifyIssue(issue.ErrorText)
 			issue.Category = category
-			r.db.Exec(req.Context(), `UPDATE raw_issues SET category = $1 WHERE id = $2`, category, issue.ID)
+			db.Exec(req.Context(), `UPDATE raw_issues SET category = $1 WHERE id = $2`, category, issue.ID)
 		}
 
 		// Set proper headers and status before encoding
@@ -512,7 +543,12 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 
 // getSuggestionsForIssue fetches suggestions for a specific issue
 func (r *Router) getSuggestionsForIssue(issueID int) ([]models.IssueSuggestion, error) {
-	rows, err := r.db.Query(context.Background(), `
+	db := r.getDB()
+	if db == nil {
+		return []models.IssueSuggestion{}, nil
+	}
+
+	rows, err := db.Query(context.Background(), `
 		SELECT id, issue_id, suggestion, confidence, target, file_path, diff
 		FROM issue_suggestions
 		WHERE issue_id = $1
@@ -545,7 +581,13 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rows, err := r.db.Query(req.Context(), `
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	rows, err := db.Query(req.Context(), `
 		SELECT id, name, description, check_type, check_query, severity, is_builtin, is_active, created_at
 		FROM skills
 		WHERE is_active = true
@@ -560,7 +602,7 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 	var skills []models.Skill
 	for rows.Next() {
 		var skill models.Skill
-		if err := rows.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.CheckType, &skill.CheckQuery, 
+		if err := rows.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.CheckType, &skill.CheckQuery,
 			&skill.Severity, &skill.IsBuiltin, &skill.IsActive, &skill.CreatedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -657,7 +699,7 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 		var skillLogs []SkillLogWithName
 		for rows.Next() {
 			var entry SkillLogWithName
-			if err := rows.Scan(&entry.ID, &entry.SkillID, &entry.Page, &entry.Action, &entry.Result, 
+			if err := rows.Scan(&entry.ID, &entry.SkillID, &entry.Page, &entry.Action, &entry.Result,
 				&entry.IsPassed, &entry.ErrorMsg, &entry.CreatedAt, &entry.SkillName); err != nil {
 				log.Printf("Scan error: %v", err)
 				continue
@@ -673,12 +715,12 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 	case "POST":
 		// Create skill log entry
 		var payload struct {
-			SkillID      int    `json:"skill_id"`
-			Page        string `json:"page"`
-			Action      string `json:"action"`
-			Result      string `json:"result"`
-			IsPassed    bool   `json:"is_passed"`
-			ErrorMsg    string `json:"error_message,omitempty"`
+			SkillID  int    `json:"skill_id"`
+			Page     string `json:"page"`
+			Action   string `json:"action"`
+			Result   string `json:"result"`
+			IsPassed bool   `json:"is_passed"`
+			ErrorMsg string `json:"error_message,omitempty"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -737,12 +779,12 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 
 	// Get aggregated stats for skills
 	type SkillStats struct {
-		SkillID     int     `json:"skill_id"`
-		SkillName   string  `json:"skill_name"`
-		TotalRuns   int     `json:"total_runs"`
-		PassedRuns  int     `json:"passed_runs"`
-		FailedRuns  int     `json:"failed_runs"`
-		PassRate   float64 `json:"pass_rate"`
+		SkillID    int        `json:"skill_id"`
+		SkillName  string     `json:"skill_name"`
+		TotalRuns  int        `json:"total_runs"`
+		PassedRuns int        `json:"passed_runs"`
+		FailedRuns int        `json:"failed_runs"`
+		PassRate   float64    `json:"pass_rate"`
 		LastRun    *time.Time `json:"last_run,omitempty"`
 	}
 
@@ -770,7 +812,7 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 
 	for rows.Next() {
 		var stat SkillStats
-		if err := rows.Scan(&stat.SkillID, &stat.SkillName, &stat.TotalRuns, &stat.PassedRuns, 
+		if err := rows.Scan(&stat.SkillID, &stat.SkillName, &stat.TotalRuns, &stat.PassedRuns,
 			&stat.FailedRuns, &stat.PassRate, &stat.LastRun); err != nil {
 			log.Printf("Scan error: %v", err)
 			continue
@@ -797,20 +839,6 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Check if AI service is available
-	if r.aiService == nil {
-		http.Error(w, "AI service not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Generate embedding for query
-	embedding, err := r.aiService.GenerateEmbedding(query)
-	if err != nil {
-		log.Printf("Search: GenerateEmbedding error: %v", err)
-		http.Error(w, fmt.Sprintf("AI service error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
 	// Check if database is available
 	db := r.getDB()
 	if db == nil {
@@ -818,13 +846,14 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Search in learning cache
+	// Search in learning cache - use text matching since vector extension not available in Neon
 	rows, err := db.Query(req.Context(), `
 		SELECT intent, action, page, success_score, usage_count
 		FROM learning_cache
-		ORDER BY embedding <-> $1::vector
+		WHERE intent ILIKE '%' || $1 || '%'
+		ORDER BY success_score DESC, usage_count DESC
 		LIMIT 10
-	`, embedding)
+	`, query)
 	if err != nil {
 		log.Printf("Search: Database query error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -833,7 +862,7 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 	defer rows.Close()
 
 	type SearchResult struct {
-		Intent      string  `json:"intent"`
+		Intent     string  `json:"intent"`
 		Action     string  `json:"action"`
 		Page       string  `json:"page"`
 		Score      float64 `json:"score"`
@@ -873,7 +902,13 @@ func (r *Router) handleCostOverview(w http.ResponseWriter, req *http.Request) {
 	var cacheHits int64
 	var totalCount int64
 
-	err := r.db.QueryRow(req.Context(), `
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	err := db.QueryRow(req.Context(), `
 		SELECT 
 			COUNT(*),
 			COALESCE(SUM(input_tokens + output_tokens), 0),
@@ -916,7 +951,13 @@ func (r *Router) handleCostTrend(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	rows, err := r.db.Query(req.Context(), `
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	rows, err := db.Query(req.Context(), `
 		SELECT DATE(created_at) as date, SUM(cost_estimate) as cost
 		FROM request_logs
 		WHERE created_at > NOW() - INTERVAL '30 days'
@@ -954,11 +995,17 @@ func (r *Router) handleCostEfficiency(w http.ResponseWriter, req *http.Request) 
 	}
 
 	var stats struct {
-		Hit int `json:"hit"`
+		Hit  int `json:"hit"`
 		Miss int `json:"miss"`
 	}
 
-	err := r.db.QueryRow(req.Context(), `
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	err := db.QueryRow(req.Context(), `
 		SELECT 
 			COUNT(*) FILTER (WHERE cache_hit = true),
 			COUNT(*) FILTER (WHERE cache_hit = false)
@@ -982,7 +1029,13 @@ func (r *Router) handleCostByFeature(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	rows, err := r.db.Query(req.Context(), `
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	rows, err := db.Query(req.Context(), `
 		SELECT COALESCE(endpoint, 'unknown') as feature, SUM(cost_estimate) as cost
 		FROM request_logs
 		GROUP BY endpoint
@@ -1080,9 +1133,9 @@ func (r *Router) handleVideos(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	type VideoInfo struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
-		Size    int64  `json:"size,omitempty"`
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Size int64  `json:"size,omitempty"`
 	}
 
 	var videos []VideoInfo
@@ -1116,7 +1169,7 @@ func (r *Router) handleVideos(w http.ResponseWriter, req *http.Request) {
 				if err == nil {
 					size = fileInfo.Size()
 				}
-				
+
 				videos = append(videos, VideoInfo{
 					Name: videoFile.Name(),
 					Path: filepath.Join(domainPath, videoFile.Name()),
@@ -1196,7 +1249,7 @@ func (r *Router) handleAnalytics(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Calculate total records
-	response.TotalRecords = response.Flows + response.Issues + response.Skills + 
+	response.TotalRecords = response.Flows + response.Issues + response.Skills +
 		response.GoalEvents + response.NavigationEdges + response.ActionSequences
 
 	json.NewEncoder(w).Encode(response)
@@ -1273,10 +1326,10 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 	case "POST":
 		// Add new learning record
 		var payload struct {
-			Intent      string  `json:"intent"`
-			Action     string  `json:"action"`
-			Page       string  `json:"page"`
-			Success    bool    `json:"success"`
+			Intent  string `json:"intent"`
+			Action  string `json:"action"`
+			Page    string `json:"page"`
+			Success bool   `json:"success"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1364,7 +1417,7 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"deleted": true,
-			"id":     intID,
+			"id":      intID,
 		})
 
 	default:
@@ -1442,7 +1495,7 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 		if err == nil {
 			// Return existing without inserting
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"cached":   true,
+				"cached":  true,
 				"id":      existingID,
 				"hash":    hash,
 				"message": "Cache hit",
@@ -1523,9 +1576,9 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 
 		var cached struct {
 			ID        int       `json:"id"`
-			TextHash string    `json:"text_hash"`
-			Text     string    `json:"text"`
-			Model    string    `json:"model"`
+			TextHash  string    `json:"text_hash"`
+			Text      string    `json:"text"`
+			Model     string    `json:"model"`
 			CreatedAt time.Time `json:"created_at"`
 		}
 
@@ -1547,7 +1600,7 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 		var payload struct {
 			Text      string    `json:"text"`
 			Embedding []float64 `json:"embedding"`
-			Model     string   `json:"model,omitempty"`
+			Model     string    `json:"model,omitempty"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1568,24 +1621,12 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 
 		if err == nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"cached":   true,
+				"cached":  true,
 				"id":      existingID,
 				"hash":    hash,
 				"message": "Cache hit",
 			})
 			return
-		}
-
-		// Convert embedding to string for storage (vector type)
-		var embeddingStr string
-		if len(payload.Embedding) > 0 {
-			embeddingStr = fmt.Sprintf("[%s]", strings.Join(func() []string {
-				s := make([]string, len(payload.Embedding))
-				for i, v := range payload.Embedding {
-					s[i] = fmt.Sprintf("%.6f", v)
-				}
-				return s
-			}(), ","))
 		}
 
 		model := payload.Model
@@ -1595,24 +1636,17 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 
 		var id int
 		var createdAt time.Time
+		// Store embedding as JSONB since vector extension is not available in Neon
 		err = db.QueryRow(req.Context(), `
 			INSERT INTO embedding_cache (text_hash, text, embedding, model)
-			VALUES ($1, $2, $3::vector, $4)
+			VALUES ($1, $2, $3, $4)
 			RETURNING id, created_at
-		`, hash, payload.Text, embeddingStr, model).Scan(&id, &createdAt)
+		`, hash, payload.Text, payload.Embedding, model).Scan(&id, &createdAt)
 
 		if err != nil {
 			log.Printf("Embedding cache insert error: %v", err)
-			// Fallback: insert without vector
-			err = db.QueryRow(req.Context(), `
-				INSERT INTO embedding_cache (text_hash, text, model)
-				VALUES ($1, $2, $3)
-				RETURNING id, created_at
-			`, hash, payload.Text, model).Scan(&id, &createdAt)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
 		w.WriteHeader(http.StatusCreated)
@@ -1703,9 +1737,9 @@ func (r *Router) handleLearningNavigation(w http.ResponseWriter, req *http.Reque
 		var payload struct {
 			SourcePage string `json:"source_page"`
 			TargetPage string `json:"target_page"`
-			Action    string `json:"action"`
-			Success  bool   `json:"success"`
-			DurationMs int  `json:"duration_ms"`
+			Action     string `json:"action"`
+			Success    bool   `json:"success"`
+			DurationMs int    `json:"duration_ms"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1717,7 +1751,7 @@ func (r *Router) handleLearningNavigation(w http.ResponseWriter, req *http.Reque
 			return
 		}
 
-		err := r.learningService.AddNavigationEdge(req.Context(), 
+		err := r.learningService.AddNavigationEdge(req.Context(),
 			payload.SourcePage, payload.TargetPage, payload.Action, payload.Success, payload.DurationMs)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1725,7 +1759,7 @@ func (r *Router) handleLearningNavigation(w http.ResponseWriter, req *http.Reque
 		}
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"added": true,
+			"added":       true,
 			"source_page": payload.SourcePage,
 			"target_page": payload.TargetPage,
 		})
@@ -1765,10 +1799,10 @@ func (r *Router) handleLearningSequences(w http.ResponseWriter, req *http.Reques
 	case "POST":
 		// Add action sequence
 		var payload struct {
-			Goal      string `json:"goal"`
-			Steps     string `json:"steps"`
-			Success  bool   `json:"success"`
-			DurationMs int  `json:"duration_ms"`
+			Goal       string `json:"goal"`
+			Steps      string `json:"steps"`
+			Success    bool   `json:"success"`
+			DurationMs int    `json:"duration_ms"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1780,7 +1814,7 @@ func (r *Router) handleLearningSequences(w http.ResponseWriter, req *http.Reques
 			return
 		}
 
-		err := r.learningService.AddActionSequence(req.Context(), 
+		err := r.learningService.AddActionSequence(req.Context(),
 			payload.Goal, payload.Steps, payload.Success, payload.DurationMs)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1789,7 +1823,7 @@ func (r *Router) handleLearningSequences(w http.ResponseWriter, req *http.Reques
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"added": true,
-			"goal": payload.Goal,
+			"goal":  payload.Goal,
 		})
 
 	default:
@@ -1831,7 +1865,7 @@ func (r *Router) handleLearningContext(w http.ResponseWriter, req *http.Request)
 			ContextKey   string `json:"context_key"`
 			ContextValue string `json:"context_value"`
 			BestAction   string `json:"best_action"`
-			Success     bool   `json:"success"`
+			Success      bool   `json:"success"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1843,7 +1877,7 @@ func (r *Router) handleLearningContext(w http.ResponseWriter, req *http.Request)
 			return
 		}
 
-		err := r.learningService.AddContextRecord(req.Context(), 
+		err := r.learningService.AddContextRecord(req.Context(),
 			payload.ContextKey, payload.ContextValue, payload.BestAction, payload.Success)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1851,7 +1885,7 @@ func (r *Router) handleLearningContext(w http.ResponseWriter, req *http.Request)
 		}
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"added": true,
+			"added":       true,
 			"context_key": payload.ContextKey,
 		})
 
@@ -1867,10 +1901,16 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
 	var payload struct {
-		ID        int  `json:"id"`
+		ID      int  `json:"id"`
 		IsFixed bool `json:"is_fixed"`
 	}
 
@@ -1884,7 +1924,7 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err := r.db.Exec(req.Context(), `
+	_, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
 		SET is_fixed = $1
 		WHERE id = $2
@@ -1897,7 +1937,7 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":        payload.ID,
+		"id":       payload.ID,
 		"is_fixed": payload.IsFixed,
 	})
 }
@@ -1906,6 +1946,12 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	db := r.getDB()
+	if db == nil {
+		http.Error(w, "Database not available", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -1926,7 +1972,7 @@ func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err := r.db.Exec(req.Context(), `
+	_, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
 		SET notes = $1
 		WHERE id = $2
@@ -2090,7 +2136,7 @@ func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"deleted": true,
-			"id":     intID,
+			"id":      intID,
 		})
 
 	default:
