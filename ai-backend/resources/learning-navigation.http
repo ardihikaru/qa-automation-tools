@@ -1,0 +1,38 @@
+# Learning Navigation API Endpoints
+
+### GET /api/learning/navigation?source=login - Get navigation edges from source page
+GET {{base_url}}/api/learning/navigation?source=login
+
+> {%
+  client.test("Get navigation edges returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response is an array", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.be.an("array");
+  });
+%}
+
+### POST /api/learning/navigation - Add a new navigation edge
+POST {{base_url}}/api/learning/navigation
+Content-Type: application/json
+
+{
+  "source_page": "login",
+  "target_page": "dashboard",
+  "action": "click_login_button",
+  "success": true,
+  "duration_ms": 1500
+}
+
+> {%
+  client.test("Add navigation edge returns 200", function() {
+    expect(response.status).to.equal(200);
+  });
+  
+  client.test("Response confirms addition", function() {
+    var body = JSON.parse(response.body);
+    expect(body).to.have.property("added", true);
+  });
+%}

@@ -8,8 +8,34 @@ GET {{base_url}}/api/learning
     expect(response.status).to.equal(200);
   });
   
-  client.test("Response contains learning data", function() {
+  client.test("Response is an array", function() {
     var body = JSON.parse(response.body);
-    expect(body).to.have.property("learning_records");
+    expect(body).to.be.an("array");
+  });
+%}
+
+### POST /api/learning - Add new learning record
+POST {{base_url}}/api/learning
+Content-Type: application/json
+
+{
+  "intent": "patient_login",
+  "action": "fill_username_password",
+  "page": "login",
+  "success": true
+}
+
+> {%
+  client.test("Add learning record returns 201", function() {
+    expect(response.status).to.equal(201);
+  });
+%}
+
+### DELETE /api/learning?id=1 - Delete learning record
+DELETE {{base_url}}/api/learning?id=1
+
+> {%
+  client.test("Delete learning record returns 200", function() {
+    expect(response.status).to.equal(200);
   });
 %}
