@@ -38,7 +38,7 @@ Do NOT skip Phase 1.
 
 ## Execution details
 
-* we are working on this codebase: `_docs/this-qa-automation-system-playwright`
+* we are working on this codebase: `_this-qa-automation-system-playwright`
 * you will run backend REST api in `ai-backend` folder
 * you will run dashboard in `dashboard` folder
 * you can use `psql` to connect into Neon database and other related credentials
