@@ -5,6 +5,7 @@ import QAInsights from './views/QAInsights';
 import IssueDebugger from './views/IssueDebugger';
 import CostAnalytics from './views/CostAnalytics';
 import FixTracking from './views/FixTracking';
+import SkillsView from './views/SkillsView';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/issues" element={<IssueDebugger />} />
         <Route path="/cost" element={<CostAnalytics />} />
         <Route path="/fixes" element={<FixTracking />} />
+        <Route path="/skills" element={<SkillsView />} />
       </Routes>
     </Layout>
   );
