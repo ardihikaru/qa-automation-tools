@@ -177,14 +177,6 @@ export default function LearningProgressView() {
     [topActions],
   );
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div>
@@ -231,7 +223,17 @@ export default function LearningProgressView() {
         </select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="card p-4 animate-pulse">
+              <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
+              <div className="h-8 w-20 bg-gray-100 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -269,8 +271,15 @@ export default function LearningProgressView() {
           </div>
         </div>
       </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="card h-72 animate-pulse bg-gray-50" />
+          <div className="card h-72 animate-pulse bg-gray-50" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="card">
           <div className="card-header">
             <h3 className="font-semibold">Success Score Over Time</h3>
@@ -320,6 +329,7 @@ export default function LearningProgressView() {
           </div>
         </div>
       </div>
+      )}
 
       <div className="card">
         <div className="card-header">
@@ -337,7 +347,13 @@ export default function LearningProgressView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {topActions.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    Loading learned actions...
+                  </td>
+                </tr>
+              ) : topActions.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                     No learned actions found
