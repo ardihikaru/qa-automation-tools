@@ -81,14 +81,6 @@ export default function CostAnalytics() {
     cost: item.cost,
   }));
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="mb-6">
@@ -97,6 +89,16 @@ export default function CostAnalytics() {
       </div>
 
       {/* Overview cards */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="card p-4 animate-pulse">
+              <div className="h-4 w-20 bg-gray-200 rounded mb-3" />
+              <div className="h-8 w-24 bg-gray-100 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-sm text-gray-500">Total Requests</div>
@@ -127,8 +129,15 @@ export default function CostAnalytics() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Charts row 1 */}
+      {loading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="card h-64 animate-pulse bg-gray-50" />
+          <div className="card h-64 animate-pulse bg-gray-50" />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Cost trend */}
         <div className="card">
@@ -196,6 +205,7 @@ export default function CostAnalytics() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Cost by feature - bar chart */}
       <div className="card">
@@ -203,7 +213,9 @@ export default function CostAnalytics() {
           <h3 className="font-semibold">Cost by Feature (Top 10)</h3>
         </div>
         <div className="card-body h-80">
-          {topFeatures.length > 0 ? (
+          {loading ? (
+            <div className="h-full animate-pulse bg-gray-50 rounded" />
+          ) : topFeatures.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topFeatures} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />

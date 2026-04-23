@@ -155,14 +155,6 @@ export default function NavigationGraphView() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="mb-6">
@@ -211,6 +203,16 @@ export default function NavigationGraphView() {
       </div>
 
       {/* Stats Overview */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="card p-4 animate-pulse">
+              <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
+              <div className="h-8 w-20 bg-gray-100 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <div className="text-sm text-gray-500">Total Pages</div>
@@ -235,11 +237,14 @@ export default function NavigationGraphView() {
           </div>
         </div>
       </div>
+      )}
 
       {/* List View */}
       {viewMode === 'list' && (
         <div className="space-y-4">
-          {getUniqueSources().length === 0 ? (
+          {loading ? (
+            <div className="card p-8 animate-pulse bg-gray-50 h-64" />
+          ) : getUniqueSources().length === 0 ? (
             <div className="card p-8 text-center text-gray-500">
               <MapPin className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>No navigation data available</p>
@@ -306,7 +311,9 @@ export default function NavigationGraphView() {
             <h3 className="font-semibold">Visual Graph</h3>
           </div>
           <div className="card-body">
-            {edges.length === 0 ? (
+            {loading ? (
+              <div className="h-56 animate-pulse bg-gray-50 rounded" />
+            ) : edges.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <GitBranch className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                 <p>No graph data to display</p>
