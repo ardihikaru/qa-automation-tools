@@ -408,6 +408,72 @@ func TestSkillsQueryContractIntegration(t *testing.T) {
 	}
 }
 
+func TestSkillStatsAndLogsQueryContractIntegration(t *testing.T) {
+	router, database := setupCRUDIntegrationRouter(t)
+	ctx := context.Background()
+
+	skillName := fmt.Sprintf("integration-stats-skill-%d", time.Now().UnixNano())
+	var skillID int
+	err := database.QueryRow(ctx, `
+		INSERT INTO skills (name, description, check_type, check_query, severity, is_builtin, is_active)
+		VALUES ($1, 'integration stats/logs seed', 'validation', '.integration', 'medium', false, true)
+		RETURNING id
+	`, skillName).Scan(&skillID)
+	if err != nil {
+		t.Fatalf("Failed creating skill seed: %v", err)
+	}
+	defer database.Exec(ctx, `DELETE FROM skills WHERE id = $1`, skillID)
+
+	_, err = database.Exec(ctx, `
+		INSERT INTO skill_logs (skill_id, page, action, result, is_passed, error_message)
+		VALUES ($1, '/integration/seed-a', 'click', 'ok', true, NULL),
+		       ($1, '/integration/seed-b', 'type', 'error', false, 'failed seed log')
+	`, skillID)
+	if err != nil {
+		t.Fatalf("Failed inserting skill logs seed: %v", err)
+	}
+
+	statsResp := doJSONRequest(t, router, http.MethodGet, "/api/skills/stats?search="+url.QueryEscape(skillName)+"&limit=1&page=1&sort_by=total_runs_desc", nil)
+	if statsResp.Code != http.StatusOK {
+		t.Fatalf("Skill stats query failed. status=%d body=%s", statsResp.Code, statsResp.Body.String())
+	}
+
+	var statsPayload map[string]interface{}
+	if err := json.Unmarshal(statsResp.Body.Bytes(), &statsPayload); err != nil {
+		t.Fatalf("Failed parsing skill stats payload: %v", err)
+	}
+	statsData, ok := statsPayload["data"].([]interface{})
+	if !ok {
+		t.Fatalf("Skill stats payload missing data array")
+	}
+	if len(statsData) > 1 {
+		t.Fatalf("Expected stats limit=1 to return at most 1 row, got %d", len(statsData))
+	}
+	if _, ok := statsPayload["pagination"].(map[string]interface{}); !ok {
+		t.Fatalf("Skill stats payload missing pagination object")
+	}
+
+	logsResp := doJSONRequest(t, router, http.MethodGet, "/api/skills/logs?search="+url.QueryEscape("/integration/seed-")+"&limit=1&page=1", nil)
+	if logsResp.Code != http.StatusOK {
+		t.Fatalf("Skill logs query failed. status=%d body=%s", logsResp.Code, logsResp.Body.String())
+	}
+
+	var logsPayload map[string]interface{}
+	if err := json.Unmarshal(logsResp.Body.Bytes(), &logsPayload); err != nil {
+		t.Fatalf("Failed parsing skill logs payload: %v", err)
+	}
+	logsData, ok := logsPayload["data"].([]interface{})
+	if !ok {
+		t.Fatalf("Skill logs payload missing data array")
+	}
+	if len(logsData) > 1 {
+		t.Fatalf("Expected logs limit=1 to return at most 1 row, got %d", len(logsData))
+	}
+	if _, ok := logsPayload["pagination"].(map[string]interface{}); !ok {
+		t.Fatalf("Skill logs payload missing pagination object")
+	}
+}
+
 func TestDocsQueryContractIntegration(t *testing.T) {
 	router, _ := setupCRUDIntegrationRouter(t)
 
@@ -468,6 +534,38 @@ func TestJobsEndpointsIntegration(t *testing.T) {
 
 	if latest["status"] != "completed" {
 		t.Fatalf("Expected job to complete, final status=%v", latest["status"])
+	}
+
+	list := doJSONRequest(t, router, http.MethodGet, "/api/jobs?type=qa_run&status=completed&limit=5&page=1", nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("List jobs failed. status=%d body=%s", list.Code, list.Body.String())
+	}
+
+	var listPayload map[string]interface{}
+	if err := json.Unmarshal(list.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("Failed parsing jobs list response: %v", err)
+	}
+	data, ok := listPayload["data"].([]interface{})
+	if !ok {
+		t.Fatalf("Jobs list payload missing data array")
+	}
+	if len(data) == 0 {
+		t.Fatalf("Expected at least one job in /api/jobs list")
+	}
+	if _, ok := listPayload["pagination"].(map[string]interface{}); !ok {
+		t.Fatalf("Jobs list payload missing pagination object")
+	}
+
+	found := false
+	for _, raw := range data {
+		item := raw.(map[string]interface{})
+		if id, ok := item["id"].(string); ok && id == jobID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected created job id=%s to appear in /api/jobs list", jobID)
 	}
 }
 

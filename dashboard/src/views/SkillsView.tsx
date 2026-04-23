@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Zap, BarChart3, History, Search, Play, CheckCircle, XCircle, Clock } from 'lucide-react';
 
@@ -47,6 +47,14 @@ interface SkillsResponse {
   data?: Skill[];
   pagination?: Pagination;
 }
+interface SkillStatsResponse {
+  data?: SkillStats[];
+  pagination?: Pagination;
+}
+interface SkillLogsResponse {
+  data?: SkillLog[];
+  pagination?: Pagination;
+}
 
 const DEFAULT_LIMIT = 10;
 
@@ -75,6 +83,8 @@ export default function SkillsView() {
   const [skillStats, setSkillStats] = useState<SkillStats[]>([]);
   const [skillLogs, setSkillLogs] = useState<SkillLog[]>([]);
   const [skillsPagination, setSkillsPagination] = useState<Pagination>({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
+  const [statsPagination, setStatsPagination] = useState<Pagination>({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
+  const [logsPagination, setLogsPagination] = useState<Pagination>({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
 
   const [loadingSkills, setLoadingSkills] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
@@ -142,12 +152,32 @@ export default function SkillsView() {
   const fetchStats = async () => {
     try {
       setLoadingStats(true);
-      const res = await fetch('/api/skills/stats');
-      const data = await res.json();
-      setSkillStats(Array.isArray(data) ? data : []);
+      const params = new URLSearchParams();
+      params.set('page', String(Math.max(1, pageParam)));
+      params.set('limit', String(DEFAULT_LIMIT));
+      if (searchParam.trim()) params.set('search', searchParam.trim());
+      params.set('sort_by', 'total_runs_desc');
+
+      const res = await fetch(`/api/skills/stats?${params.toString()}`);
+      const payload: SkillStatsResponse | SkillStats[] = await res.json();
+      if (Array.isArray(payload)) {
+        setSkillStats(payload);
+        setStatsPagination({ page: pageParam, limit: DEFAULT_LIMIT, total: payload.length, total_pages: 1 });
+      } else {
+        const data = Array.isArray(payload.data) ? payload.data : [];
+        const pg = payload.pagination;
+        setSkillStats(data);
+        setStatsPagination({
+          page: pg?.page ?? pageParam,
+          limit: pg?.limit ?? DEFAULT_LIMIT,
+          total: pg?.total ?? data.length,
+          total_pages: pg?.total_pages ?? 1,
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch skill stats:', error);
       setSkillStats([]);
+      setStatsPagination({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
     } finally {
       setLoadingStats(false);
     }
@@ -157,26 +187,35 @@ export default function SkillsView() {
     try {
       setLoadingLogs(true);
       const params = new URLSearchParams();
-      params.set('limit', '100');
+      params.set('page', String(Math.max(1, pageParam)));
+      params.set('limit', String(DEFAULT_LIMIT));
       if (passedParam === 'passed') params.set('passed', 'true');
       if (passedParam === 'failed') params.set('passed', 'false');
-      if (searchParam.trim()) params.set('page', searchParam.trim());
+      if (searchParam.trim()) params.set('search', searchParam.trim());
       const res = await fetch(`/api/skills/logs?${params.toString()}`);
-      const data = await res.json();
-      setSkillLogs(Array.isArray(data) ? data : []);
+      const payload: SkillLogsResponse | SkillLog[] = await res.json();
+      if (Array.isArray(payload)) {
+        setSkillLogs(payload);
+        setLogsPagination({ page: pageParam, limit: DEFAULT_LIMIT, total: payload.length, total_pages: 1 });
+      } else {
+        const data = Array.isArray(payload.data) ? payload.data : [];
+        const pg = payload.pagination;
+        setSkillLogs(data);
+        setLogsPagination({
+          page: pg?.page ?? pageParam,
+          limit: pg?.limit ?? DEFAULT_LIMIT,
+          total: pg?.total ?? data.length,
+          total_pages: pg?.total_pages ?? 1,
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch skill logs:', error);
       setSkillLogs([]);
+      setLogsPagination({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
     } finally {
       setLoadingLogs(false);
     }
   };
-
-  const filteredStats = useMemo(() => {
-    const q = searchParam.trim().toLowerCase();
-    if (!q) return skillStats;
-    return skillStats.filter((s) => s.skill_name?.toLowerCase().includes(q));
-  }, [skillStats, searchParam]);
 
   const applySearch = () => {
     updateParams({ search: searchInput.trim(), page: '1' });
@@ -298,40 +337,56 @@ export default function SkillsView() {
       {activeTab === 'stats' && (
         <div className="card overflow-hidden">
           <div className="card-header">
-            <h3 className="font-semibold">Statistics ({filteredStats.length})</h3>
-            <p className="text-xs text-amber-700 mt-1">Server-side search/pagination for stats is not available in current backend contract.</p>
+            <h3 className="font-semibold">Statistics ({statsPagination.total})</h3>
           </div>
           {loadingStats ? (
             <div className="p-4"><SkillsSkeleton /></div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Skill</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Runs</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Passed</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Failed</th>
-                    <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Pass Rate</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredStats.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No stats found</td></tr>
-                  ) : (
-                    filteredStats.map((s) => (
-                      <tr key={s.skill_id}>
-                        <td className="px-4 py-3 text-sm text-gray-900">{s.skill_name || 'Unknown skill'}</td>
-                        <td className="px-4 py-3 text-sm">{s.total_runs}</td>
-                        <td className="px-4 py-3 text-sm text-green-700">{s.passed_runs}</td>
-                        <td className="px-4 py-3 text-sm text-red-700">{s.failed_runs}</td>
-                        <td className="px-4 py-3 text-sm">{Math.round((s.pass_rate || 0) * 100)}%</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Skill</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Runs</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Passed</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Failed</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Pass Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {skillStats.length === 0 ? (
+                      <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No stats found</td></tr>
+                    ) : (
+                      skillStats.map((s) => (
+                        <tr key={s.skill_id}>
+                          <td className="px-4 py-3 text-sm text-gray-900">{s.skill_name || 'Unknown skill'}</td>
+                          <td className="px-4 py-3 text-sm">{s.total_runs}</td>
+                          <td className="px-4 py-3 text-sm text-green-700">{s.passed_runs}</td>
+                          <td className="px-4 py-3 text-sm text-red-700">{s.failed_runs}</td>
+                          <td className="px-4 py-3 text-sm">{Math.round((s.pass_rate || 0) * 100)}%</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t bg-gray-50 px-4 py-3 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Page {statsPagination.page} / {Math.max(1, statsPagination.total_pages)} | Total {statsPagination.total}</div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded border bg-white text-gray-700 disabled:opacity-50"
+                    disabled={statsPagination.page <= 1 || loadingStats}
+                    onClick={() => updateParams({ page: String(Math.max(1, statsPagination.page - 1)) })}
+                  >Prev</button>
+                  <button
+                    className="px-3 py-1.5 rounded border bg-white text-gray-700 disabled:opacity-50"
+                    disabled={statsPagination.page >= statsPagination.total_pages || loadingStats}
+                    onClick={() => updateParams({ page: String(Math.min(statsPagination.total_pages || 1, statsPagination.page + 1)) })}
+                  >Next</button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -339,36 +394,52 @@ export default function SkillsView() {
       {activeTab === 'logs' && (
         <div className="card overflow-hidden">
           <div className="card-header">
-            <h3 className="font-semibold">Execution Logs ({skillLogs.length})</h3>
-            <p className="text-xs text-amber-700 mt-1">Server-side pagination metadata for logs is not available; using backend limit.</p>
+            <h3 className="font-semibold">Execution Logs ({logsPagination.total})</h3>
           </div>
           {loadingLogs ? (
             <div className="p-4"><SkillsSkeleton /></div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {skillLogs.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">No logs found</div>
-              ) : (
-                skillLogs.map((log) => (
-                  <div key={log.id} className="p-4 flex items-start justify-between gap-3 hover:bg-gray-50">
-                    <div>
-                      <div className="font-medium text-gray-900">{log.skill_name || `Skill #${log.skill_id}`}</div>
-                      <div className="text-sm text-gray-600">{log.action || 'Unknown action'} on {log.page || 'Unknown page'}</div>
-                      {log.error_message && <div className="text-xs text-red-600 mt-1">{log.error_message}</div>}
-                    </div>
-                    <div className="text-right text-sm text-gray-600">
-                      <div className="flex items-center gap-1 justify-end">
-                        {log.is_passed ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
-                        <span>{log.is_passed ? 'passed' : 'failed'}</span>
+            <>
+              <div className="divide-y divide-gray-200">
+                {skillLogs.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500">No logs found</div>
+                ) : (
+                  skillLogs.map((log) => (
+                    <div key={log.id} className="p-4 flex items-start justify-between gap-3 hover:bg-gray-50">
+                      <div>
+                        <div className="font-medium text-gray-900">{log.skill_name || `Skill #${log.skill_id}`}</div>
+                        <div className="text-sm text-gray-600">{log.action || 'Unknown action'} on {log.page || 'Unknown page'}</div>
+                        {log.error_message && <div className="text-xs text-red-600 mt-1">{log.error_message}</div>}
                       </div>
-                      <div className="flex items-center gap-1 justify-end text-xs mt-1">
-                        <Clock className="w-3 h-3" />{log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'}
+                      <div className="text-right text-sm text-gray-600">
+                        <div className="flex items-center gap-1 justify-end">
+                          {log.is_passed ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+                          <span>{log.is_passed ? 'passed' : 'failed'}</span>
+                        </div>
+                        <div className="flex items-center gap-1 justify-end text-xs mt-1">
+                          <Clock className="w-3 h-3" />{log.created_at ? new Date(log.created_at).toLocaleString() : 'N/A'}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
+              <div className="border-t bg-gray-50 px-4 py-3 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Page {logsPagination.page} / {Math.max(1, logsPagination.total_pages)} | Total {logsPagination.total}</div>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-1.5 rounded border bg-white text-gray-700 disabled:opacity-50"
+                    disabled={logsPagination.page <= 1 || loadingLogs}
+                    onClick={() => updateParams({ page: String(Math.max(1, logsPagination.page - 1)) })}
+                  >Prev</button>
+                  <button
+                    className="px-3 py-1.5 rounded border bg-white text-gray-700 disabled:opacity-50"
+                    disabled={logsPagination.page >= logsPagination.total_pages || loadingLogs}
+                    onClick={() => updateParams({ page: String(Math.min(logsPagination.total_pages || 1, logsPagination.page + 1)) })}
+                  >Next</button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
