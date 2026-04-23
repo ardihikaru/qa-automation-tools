@@ -198,6 +198,20 @@ var migrations = []string{
 		created_at TIMESTAMP DEFAULT NOW()
 	);`,
 
+	// Job runs - persisted quick-action audit history
+	`CREATE TABLE IF NOT EXISTS job_runs (
+		id TEXT PRIMARY KEY,
+		type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		payload JSONB,
+		result JSONB,
+		error TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		started_at TIMESTAMP,
+		completed_at TIMESTAMP,
+		duration_ms BIGINT
+	);`,
+
 	// Analytics - Goal Events
 	`CREATE TABLE IF NOT EXISTS goal_events (
 		id SERIAL PRIMARY KEY,
@@ -265,6 +279,9 @@ var migrations = []string{
 	`CREATE INDEX IF NOT EXISTS idx_raw_issues_fixed ON raw_issues(is_fixed);`,
 	`CREATE INDEX IF NOT EXISTS idx_request_logs_endpoint ON request_logs(endpoint);`,
 	`CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);`,
+	`CREATE INDEX IF NOT EXISTS idx_job_runs_type ON job_runs(type);`,
+	`CREATE INDEX IF NOT EXISTS idx_job_runs_status ON job_runs(status);`,
+	`CREATE INDEX IF NOT EXISTS idx_job_runs_created_at ON job_runs(created_at);`,
 	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_source ON navigation_edges(source_page);`,
 	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_target ON navigation_edges(target_page);`,
 	`CREATE INDEX IF NOT EXISTS idx_action_sequences_goal ON action_sequences(goal);`,
