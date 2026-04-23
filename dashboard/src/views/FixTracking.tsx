@@ -62,17 +62,13 @@ export default function FixTracking() {
   const [notesText, setNotesText] = useState('');
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setSearchQuery(searchInput.trim());
-      setPage(1);
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [searchInput]);
-
-  useEffect(() => {
     fetchIssues();
   }, [fixedFilter, categoryFilter, searchQuery, sortBy, page]);
+
+  const applySearch = () => {
+    setSearchQuery(searchInput.trim());
+    setPage(1);
+  };
 
   const fetchIssues = async () => {
     try {
@@ -224,6 +220,15 @@ export default function FixTracking() {
     }
   };
 
+  const fallbackText = (value: string | undefined, fallback: string) => {
+    const v = (value || '').trim();
+    return v ? v : fallback;
+  };
+
+  const isMalformedIssue = (issue: Issue) => {
+    return !issue.page?.trim() || !issue.action?.trim() || !issue.severity?.trim();
+  };
+
   const fixedCount = issues.filter((i) => i.is_fixed).length;
   const openCount = issues.filter((i) => !i.is_fixed).length;
   const fixRate = issues.length > 0 ? Math.round((fixedCount / issues.length) * 100) : 0;
@@ -306,10 +311,17 @@ export default function FixTracking() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applySearch();
+                }}
                 placeholder="Search page, action, or error text"
                 className="pl-10 pr-3 py-2 w-full border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               />
             </div>
+
+            <button onClick={applySearch} className="btn btn-primary">
+              Search
+            </button>
 
             <select
               value={sortBy}
@@ -370,19 +382,22 @@ export default function FixTracking() {
                       }`}
                     >
                       <td className="px-4 py-4 text-sm font-medium text-gray-900">#{issue.id}</td>
-                      <td className="px-4 py-4 text-sm text-gray-900 max-w-[180px] truncate">{issue.page}</td>
-                      <td className="px-4 py-4 text-sm text-gray-600 max-w-[160px] truncate">{issue.action}</td>
+                      <td className="px-4 py-4 text-sm text-gray-900 max-w-[180px] truncate">{fallbackText(issue.page, 'Unknown page')}</td>
+                      <td className="px-4 py-4 text-sm text-gray-600 max-w-[160px] truncate">{fallbackText(issue.action, 'Unknown action')}</td>
                       <td className="px-4 py-4 text-sm text-gray-600 max-w-[160px] truncate">
-                        {issue.error_type || 'N/A'}
+                        {fallbackText(issue.error_type, 'N/A')}
                       </td>
                       <td className="px-4 py-4 text-sm">
                         <span className="badge bg-gray-100 text-gray-800 capitalize">
                           {(issue.category || 'unknown').toLowerCase()}
                         </span>
+                        {isMalformedIssue(issue) && (
+                          <span className="badge badge-warning ml-2">Legacy / Malformed</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-sm">
                         <span className={`font-medium capitalize ${getSeverityColor(issue.severity)}`}>
-                          {issue.severity || 'unknown'}
+                          {fallbackText(issue.severity, 'Unknown severity')}
                         </span>
                       </td>
                       <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
@@ -482,8 +497,8 @@ export default function FixTracking() {
 
               <div>
                 <div className="text-xs text-gray-500">Page / Action</div>
-                <div className="font-medium text-gray-900 break-words">{selectedIssue.page}</div>
-                <div className="text-sm text-gray-600 break-words">{selectedIssue.action}</div>
+                <div className="font-medium text-gray-900 break-words">{fallbackText(selectedIssue.page, 'Unknown page')}</div>
+                <div className="text-sm text-gray-600 break-words">{fallbackText(selectedIssue.action, 'Unknown action')}</div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -494,14 +509,16 @@ export default function FixTracking() {
                 <div>
                   <div className="text-xs text-gray-500">Severity</div>
                   <div className={`text-sm font-medium capitalize ${getSeverityColor(selectedIssue.severity)}`}>
-                    {selectedIssue.severity || 'unknown'}
+                    {fallbackText(selectedIssue.severity, 'Unknown severity')}
                   </div>
                 </div>
               </div>
 
+              {isMalformedIssue(selectedIssue) && <div className="badge badge-warning">Legacy / Malformed issue row</div>}
+
               <div>
                 <div className="text-xs text-gray-500">Error Type</div>
-                <div className="text-sm text-gray-900">{selectedIssue.error_type || 'N/A'}</div>
+                <div className="text-sm text-gray-900">{fallbackText(selectedIssue.error_type, 'N/A')}</div>
               </div>
 
               <div>

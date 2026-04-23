@@ -1,56 +1,14 @@
-import { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  AlertTriangle, 
-  CheckCircle, 
-  XCircle, 
-  Play, 
-  FileText, 
-  Bug,
-  Zap,
-  Clock,
-  TrendingUp,
-  BarChart3
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Activity, AlertTriangle, CheckCircle, Play, FileText, Bug, Clock, TrendingUp, RefreshCcw } from 'lucide-react';
 
 interface AnalyticsData {
   flows: number;
   issues: number;
   skills: number;
-  goal_events: number;
-  navigation_edges: number;
-  action_sequences: number;
-  total_records: number;
 }
 
 interface CostOverview {
-  total_requests: number;
-  total_tokens: number;
   total_cost: number;
-  cache_hit_rate: number;
-}
-
-interface SkillStat {
-  id: number;
-  name: string;
-  description: string;
-  check_type: string;
-  check_query: string;
-  severity: string;
-  is_builtin: boolean;
-  is_active: boolean;
-  created_at: string;
-  pass_rate?: number;
-  total_runs?: number;
-  passed_runs?: number;
-  failed_runs?: number;
-}
-
-interface RecentActivity {
-  type: 'flow' | 'issue' | 'fix';
-  title: string;
-  description: string;
-  timestamp: string;
 }
 
 interface IssueCount {
@@ -59,13 +17,54 @@ interface IssueCount {
   fixed: number;
 }
 
+type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+
+type JobType = 'qa_run' | 'docs_generate';
+
+interface JobRecord {
+  id: string;
+  type: JobType;
+  status: JobStatus;
+  payload?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_ms?: number;
+}
+
+function QAInsightsSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {Array.from({ length: 4 }).map((_, idx) => (
+          <div key={idx} className="card p-4 animate-pulse">
+            <div className="h-4 w-20 bg-gray-200 rounded mb-3" />
+            <div className="h-8 w-24 bg-gray-100 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="card p-4 animate-pulse mb-6">
+        <div className="h-5 w-36 bg-gray-200 rounded mb-4" />
+        <div className="h-10 w-full bg-gray-100 rounded" />
+      </div>
+    </>
+  );
+}
+
 export default function QAInsights() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [cost, setCost] = useState<CostOverview | null>(null);
-  const [skillStats, setSkillStats] = useState<SkillStat[]>([]);
   const [issueCounts, setIssueCounts] = useState<IssueCount>({ total: 0, open: 0, fixed: 0 });
   const [loading, setLoading] = useState(true);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+
+  const [qaJob, setQaJob] = useState<JobRecord | null>(null);
+  const [docsJob, setDocsJob] = useState<JobRecord | null>(null);
+  const [qaActionStatus, setQaActionStatus] = useState<JobStatus>('idle');
+  const [docsActionStatus, setDocsActionStatus] = useState<JobStatus>('idle');
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [jobAudit, setJobAudit] = useState<JobRecord[]>([]);
 
   useEffect(() => {
     fetchAllData();
@@ -73,75 +72,132 @@ export default function QAInsights() {
 
   const fetchAllData = async () => {
     try {
-      // Fetch analytics
-      const analyticsRes = await fetch('/api/analytics');
-      const analyticsData = await analyticsRes.json();
-      setAnalytics(analyticsData);
-
-      // Fetch cost overview
-      const costRes = await fetch('/api/cost/overview');
-      const costData = await costRes.json();
-      setCost(costData);
-
-      // Fetch skill stats
-      const skillsRes = await fetch('/api/skills/stats');
-      const skillsData = await skillsRes.json();
-      setSkillStats(Array.isArray(skillsData) ? skillsData : []);
-
-      // Fetch issue counts
-      const allIssuesRes = await fetch('/api/issues?limit=1');
-      const allIssuesData = await allIssuesRes.json();
-      const pagination = allIssuesData?.pagination || {};
-      
-      const openRes = await fetch('/api/issues?is_fixed=false&limit=1');
-      const openData = await openRes.json();
-      const openPagination = openData?.pagination || {};
-
-      const fixedRes = await fetch('/api/issues?is_fixed=true&limit=1');
-      const fixedData = await fixedRes.json();
-      const fixedPagination = fixedData?.pagination || {};
-
-      setIssueCounts({
-        total: pagination.total || 0,
-        open: openPagination.total || 0,
-        fixed: fixedPagination.total || 0
-      });
-
-      // Generate recent activity from available data
-      setRecentActivity([
-        { type: 'issue', title: 'Issue detected', description: `Open issues: ${openPagination.total || 0}`, timestamp: new Date().toISOString() },
-        { type: 'fix', title: 'Fix applied', description: `Fixed issues: ${fixedPagination.total || 0}`, timestamp: new Date().toISOString() },
-        { type: 'flow', title: 'Flows recorded', description: `Total flows: ${analyticsData?.flows || 0}`, timestamp: new Date().toISOString() },
+      setLoading(true);
+      const [analyticsRes, costRes, allIssuesRes, openRes, fixedRes] = await Promise.all([
+        fetch('/api/analytics'),
+        fetch('/api/cost/overview'),
+        fetch('/api/issues?limit=1'),
+        fetch('/api/issues?is_fixed=false&limit=1'),
+        fetch('/api/issues?is_fixed=true&limit=1'),
       ]);
 
+      const analyticsData = await analyticsRes.json();
+      const costData = await costRes.json();
+      const allIssuesData = await allIssuesRes.json();
+      const openData = await openRes.json();
+      const fixedData = await fixedRes.json();
+
+      setAnalytics(analyticsData);
+      setCost(costData);
+      setIssueCounts({
+        total: allIssuesData?.pagination?.total || 0,
+        open: openData?.pagination?.total || 0,
+        fixed: fixedData?.pagination?.total || 0,
+      });
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      console.error('Failed to fetch QA insights:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const getPassRateColor = (rate: number) => {
-    if (rate >= 80) return 'text-green-600';
-    if (rate >= 60) return 'text-yellow-600';
-    return 'text-red-600';
+  const appendAudit = (job: JobRecord) => {
+    setJobAudit((prev) => {
+      const next = [job, ...prev.filter((x) => x.id !== job.id)];
+      return next.slice(0, 12);
+    });
   };
 
-  const getSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case 'high': return 'badge-error';
-      case 'medium': return 'badge-warning';
-      default: return 'badge-success';
+  const pollJob = async (jobId: string, onUpdate: (job: JobRecord) => void) => {
+    const started = Date.now();
+    while (Date.now() - started < 60000) {
+      const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+      if (!res.ok) {
+        throw new Error(`Failed to poll job ${jobId} (${res.status})`);
+      }
+      const payload: JobRecord = await res.json();
+      onUpdate(payload);
+      appendAudit(payload);
+
+      if (payload.status === 'completed' || payload.status === 'failed') {
+        return payload;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    throw new Error('Job polling timeout');
+  };
+
+  const runJob = async (type: JobType) => {
+    try {
+      setJobError(null);
+      if (type === 'qa_run') setQaActionStatus('queued');
+      if (type === 'docs_generate') setDocsActionStatus('queued');
+
+      const route = type === 'qa_run' ? '/api/jobs/qa/run' : '/api/jobs/docs/generate';
+      const res = await fetch(route, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ triggered_by: 'dashboard', source: 'qa_insights' }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to start ${type} job (${res.status})`);
+      }
+
+      const created: JobRecord = await res.json();
+      appendAudit(created);
+
+      if (type === 'qa_run') {
+        setQaJob(created);
+        setQaActionStatus(created.status);
+      } else {
+        setDocsJob(created);
+        setDocsActionStatus(created.status);
+      }
+
+      const finalJob = await pollJob(created.id, (job) => {
+        if (type === 'qa_run') {
+          setQaJob(job);
+          setQaActionStatus(job.status);
+        } else {
+          setDocsJob(job);
+          setDocsActionStatus(job.status);
+        }
+      });
+
+      if (finalJob.status === 'failed') {
+        setJobError(finalJob.error || 'Job failed');
+      }
+    } catch (error) {
+      console.error('Failed to run job:', error);
+      setJobError(error instanceof Error ? error.message : 'Failed to run job');
+      if (type === 'qa_run') setQaActionStatus('failed');
+      if (type === 'docs_generate') setDocsActionStatus('failed');
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  const retryJob = (job: JobRecord) => {
+    runJob(job.type);
+  };
+
+  const progress = useMemo(() => {
+    if (issueCounts.total === 0) return 0;
+    return Math.round((issueCounts.fixed / issueCounts.total) * 100);
+  }, [issueCounts]);
+
+  const statusBadge = (status: JobStatus) => {
+    switch (status) {
+      case 'completed':
+        return 'badge-success';
+      case 'failed':
+        return 'badge-error';
+      case 'running':
+      case 'queued':
+        return 'badge-warning';
+      default:
+        return 'badge';
+    }
+  };
 
   return (
     <div>
@@ -150,188 +206,140 @@ export default function QAInsights() {
         <p className="text-gray-600">Overview of QA automation activities and system health</p>
       </div>
 
-      {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
+      {loading ? (
+        <QAInsightsSkeleton />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="card p-4">
               <div className="text-sm text-gray-500">Total Flows</div>
               <div className="text-2xl font-bold">{analytics?.flows || 0}</div>
             </div>
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Activity className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
+            <div className="card p-4">
               <div className="text-sm text-gray-500">Open Issues</div>
               <div className="text-2xl font-bold text-red-600">{issueCounts.open}</div>
             </div>
-            <div className="p-3 bg-red-100 rounded-lg">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
+            <div className="card p-4">
               <div className="text-sm text-gray-500">Active Skills</div>
               <div className="text-2xl font-bold">{analytics?.skills || 0}</div>
             </div>
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <Zap className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
+            <div className="card p-4">
               <div className="text-sm text-gray-500">Total Cost</div>
-              <div className="text-2xl font-bold">${cost?.total_cost?.toFixed(4) || '0.0000'}</div>
-            </div>
-            <div className="p-3 bg-green-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-green-600" />
+              <div className="text-2xl font-bold text-green-600">${(cost?.total_cost || 0).toFixed(4)}</div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div className="card mb-6">
-        <div className="card-header">
-          <h3 className="text-lg font-semibold">Quick Actions</h3>
-        </div>
-        <div className="card-body flex flex-wrap gap-3">
-          <button className="btn btn-primary flex items-center gap-2">
-            <Play className="w-4 h-4" />
-            Run QA Test
-          </button>
-          <button className="btn btn-secondary flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Generate Docs
-          </button>
-          <button 
-            className="btn btn-secondary flex items-center gap-2"
-            onClick={() => window.location.href = '/issues'}
-          >
-            <Bug className="w-4 h-4" />
-            View All Issues
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Activity */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-semibold">Recent Activity</h3>
-          </div>
-          <div className="card-body">
-            {recentActivity.length > 0 ? (
-              <div className="space-y-3">
-                {recentActivity.map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                    <div className={`p-2 rounded-lg ${
-                      activity.type === 'flow' ? 'bg-blue-100' :
-                      activity.type === 'issue' ? 'bg-red-100' : 'bg-green-100'
-                    }`}>
-                      {activity.type === 'flow' ? <Activity className="w-4 h-4 text-blue-600" /> :
-                       activity.type === 'issue' ? <AlertTriangle className="w-4 h-4 text-red-600" /> :
-                       <CheckCircle className="w-4 h-4 text-green-600" />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{activity.title}</div>
-                      <div className="text-sm text-gray-500">{activity.description}</div>
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      <Clock className="w-3 h-3 inline mr-1" />
-                      {new Date(activity.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-gray-500 text-center py-4">No recent activity</div>
-            )}
-          </div>
-        </div>
-
-        {/* Skills Summary */}
-        <div className="card">
-          <div className="card-header">
-            <h3 className="text-lg font-semibold">Skills Performance</h3>
-          </div>
-          <div className="card-body">
-            {skillStats.length > 0 ? (
-              <div className="space-y-3">
-                {skillStats.slice(0, 5).map((skill) => (
-                  <div key={skill.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="font-medium">{skill.name}</div>
-                      <div className="text-sm text-gray-500">{skill.total_runs || 0} runs</div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`font-bold ${getPassRateColor(skill.pass_rate || 0)}`}>
-                        {Math.round((skill.pass_rate || 0) * 100)}%
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {skill.passed_runs || 0}/{skill.total_runs || 0} passed
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-gray-500 text-center py-4">No skill data available</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Issue Summary */}
-      <div className="mt-6 card">
-        <div className="card-header">
-          <h3 className="text-lg font-semibold">Issue Summary</h3>
-        </div>
-        <div className="card-body">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm text-gray-500">Total Issues</div>
-              <div className="text-2xl font-bold">{issueCounts.total}</div>
+          <div className="card mb-6">
+            <div className="card-header">
+              <h3 className="text-lg font-semibold">Quick Actions</h3>
             </div>
-            <div className="p-4 bg-red-50 rounded-lg">
-              <div className="text-sm text-gray-500">Open</div>
-              <div className="text-2xl font-bold text-red-600">{issueCounts.open}</div>
+            <div className="card-body flex flex-wrap gap-3 items-center">
+              <button
+                className="btn btn-primary flex items-center gap-2"
+                disabled={qaActionStatus === 'queued' || qaActionStatus === 'running'}
+                onClick={() => runJob('qa_run')}
+              >
+                <Play className="w-4 h-4" />
+                {qaActionStatus === 'queued' || qaActionStatus === 'running' ? 'Running QA...' : 'Run QA Test'}
+              </button>
+
+              <button
+                className="btn btn-secondary flex items-center gap-2"
+                disabled={docsActionStatus === 'queued' || docsActionStatus === 'running'}
+                onClick={() => runJob('docs_generate')}
+              >
+                <FileText className="w-4 h-4" />
+                {docsActionStatus === 'queued' || docsActionStatus === 'running' ? 'Generating...' : 'Generate Docs'}
+              </button>
+
+              <button className="btn btn-secondary flex items-center gap-2" onClick={() => (window.location.href = '/issues')}>
+                <Bug className="w-4 h-4" /> View All Issues
+              </button>
+
+              {qaJob && <span className={`badge ${statusBadge(qaJob.status)}`}>QA: {qaJob.status}</span>}
+              {docsJob && <span className={`badge ${statusBadge(docsJob.status)}`}>Docs: {docsJob.status}</span>}
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="text-sm text-gray-500">Fixed</div>
-              <div className="text-2xl font-bold text-green-600">{issueCounts.fixed}</div>
+            {jobError && <div className="px-6 pb-4 text-sm text-red-600">{jobError}</div>}
+          </div>
+
+          <div className="card mb-6">
+            <div className="card-header">
+              <h3 className="text-lg font-semibold">Action Audit</h3>
+            </div>
+            <div className="card-body overflow-x-auto">
+              {jobAudit.length === 0 ? (
+                <div className="text-gray-500 text-sm">No quick-action jobs executed yet.</div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs text-gray-500 uppercase">Type</th>
+                      <th className="px-4 py-2 text-left text-xs text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-2 text-left text-xs text-gray-500 uppercase">Started</th>
+                      <th className="px-4 py-2 text-left text-xs text-gray-500 uppercase">Duration</th>
+                      <th className="px-4 py-2 text-left text-xs text-gray-500 uppercase">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {jobAudit.map((job) => (
+                      <tr key={job.id}>
+                        <td className="px-4 py-3 text-sm text-gray-900">{job.type}</td>
+                        <td className="px-4 py-3 text-sm"><span className={`badge ${statusBadge(job.status)}`}>{job.status}</span></td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{job.started_at ? new Date(job.started_at).toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{typeof job.duration_ms === 'number' ? `${job.duration_ms} ms` : '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {job.status === 'failed' ? (
+                            <button className="btn btn-secondary px-2 py-1 text-xs flex items-center gap-1" onClick={() => retryJob(job)}>
+                              <RefreshCcw className="w-3 h-3" /> Retry
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
-          
-          {issueCounts.total > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-500">Fix Progress:</span>
-                <span className="font-medium">
-                  {Math.round((issueCounts.fixed / issueCounts.total) * 100)}%
-                </span>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="card p-4">
+              <h3 className="text-lg font-semibold mb-3">Issue Summary</h3>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div>
+                  <div className="text-sm text-gray-500">Total</div>
+                  <div className="text-xl font-bold">{issueCounts.total}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Open</div>
+                  <div className="text-xl font-bold text-red-600">{issueCounts.open}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Fixed</div>
+                  <div className="text-xl font-bold text-green-600">{issueCounts.fixed}</div>
+                </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-600 h-2 rounded-full transition-all"
-                  style={{ width: `${(issueCounts.fixed / issueCounts.total) * 100}%` }}
-                ></div>
+                <div className="bg-green-600 h-2 rounded-full" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="text-sm text-gray-500 mt-2">Fix progress: {progress}%</div>
+            </div>
+
+            <div className="card p-4">
+              <h3 className="text-lg font-semibold mb-3">Recent Health Signals</h3>
+              <div className="space-y-2 text-sm text-gray-700">
+                <div className="flex items-center gap-2"><Activity className="w-4 h-4 text-blue-600" /> Flows tracked: {analytics?.flows || 0}</div>
+                <div className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-600" /> Open issues: {issueCounts.open}</div>
+                <div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-600" /> Fixed issues: {issueCounts.fixed}</div>
+                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-gray-600" /> Last job: {jobAudit[0]?.type || 'N/A'}</div>
+                <div className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-green-600" /> Cost: ${(cost?.total_cost || 0).toFixed(4)}</div>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
