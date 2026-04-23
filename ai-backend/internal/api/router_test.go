@@ -211,7 +211,7 @@ func TestDocsEndpoint(t *testing.T) {
 		t.Errorf("Expected status OK, got %d", w.Code)
 	}
 
-	// Response should be valid JSON array, or object with "docs" field
+	// Response should be valid JSON array, or object with "docs"/"data" field
 	var asArray []interface{}
 	if err := json.Unmarshal(w.Body.Bytes(), &asArray); err == nil {
 		return
@@ -222,8 +222,11 @@ func TestDocsEndpoint(t *testing.T) {
 		t.Errorf("Failed to parse docs response: %v", err)
 		return
 	}
-	if _, ok := asObject["docs"]; !ok {
-		t.Errorf("Expected docs response to contain 'docs' key")
+	if _, ok := asObject["docs"]; ok {
+		return
+	}
+	if _, ok := asObject["data"]; !ok {
+		t.Errorf("Expected docs response to contain 'docs' or 'data' key")
 	}
 }
 
@@ -360,6 +363,9 @@ func TestAdditionalResourceEndpointsNoDB(t *testing.T) {
 		{name: "LearningStatsNoDB", method: "GET", path: "/api/learning/stats", status: http.StatusServiceUnavailable},
 		{name: "LearningContextGetNoDB", method: "GET", path: "/api/learning/context?key=a&value=b", status: http.StatusServiceUnavailable},
 		{name: "LearningContextPostNoDB", method: "POST", path: "/api/learning/context", body: `{"context_key":"a","context_value":"b","best_action":"x","success":true}`, status: http.StatusServiceUnavailable},
+		{name: "RunQAJobNoDB", method: "POST", path: "/api/jobs/qa/run", body: `{"triggered_by":"unit-test"}`, status: http.StatusAccepted},
+		{name: "RunDocsJobNoDB", method: "POST", path: "/api/jobs/docs/generate", body: `{"triggered_by":"unit-test"}`, status: http.StatusAccepted},
+		{name: "GetUnknownJobNoDB", method: "GET", path: "/api/jobs/non-existing-id", status: http.StatusNotFound},
 	}
 
 	for _, tc := range testCases {

@@ -14,6 +14,9 @@ var migrations = []string{
 	`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`,
 	// Note: vector extension removed for Neon PostgreSQL compatibility
 	// `CREATE EXTENSION IF NOT EXISTS "vector";`,
+	`CREATE SCHEMA IF NOT EXISTS qa;`,
+	`CREATE SCHEMA IF NOT EXISTS ai;`,
+	`CREATE SCHEMA IF NOT EXISTS logging;`,
 
 	// Core tables - Roles
 	`CREATE TABLE IF NOT EXISTS roles (
@@ -129,6 +132,36 @@ var migrations = []string{
 		notes TEXT,
 		created_at TIMESTAMP DEFAULT NOW()
 	);`,
+	`UPDATE raw_issues SET page = 'unknown-page' WHERE BTRIM(COALESCE(page, '')) = '';`,
+	`UPDATE raw_issues SET action = 'unknown-action' WHERE BTRIM(COALESCE(action, '')) = '';`,
+	`UPDATE raw_issues SET severity = 'medium' WHERE BTRIM(COALESCE(severity, '')) = '';`,
+	`DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_page_not_blank'
+		) THEN
+			ALTER TABLE raw_issues
+			ADD CONSTRAINT raw_issues_page_not_blank CHECK (BTRIM(page) <> '');
+		END IF;
+	END $$;`,
+	`DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_action_not_blank'
+		) THEN
+			ALTER TABLE raw_issues
+			ADD CONSTRAINT raw_issues_action_not_blank CHECK (BTRIM(action) <> '');
+		END IF;
+	END $$;`,
+	`DO $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_severity_not_blank'
+		) THEN
+			ALTER TABLE raw_issues
+			ADD CONSTRAINT raw_issues_severity_not_blank CHECK (BTRIM(severity) <> '');
+		END IF;
+	END $$;`,
 
 	// QA System - Issue Suggestions
 	`CREATE TABLE IF NOT EXISTS issue_suggestions (

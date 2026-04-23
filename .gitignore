@@ -13,6 +13,9 @@ ai-backend/env.yaml
 tutorial-playwright-docs.md
 ai-backend/vendor
 
+ai-backend/result.json
+ai-backend/server-binary
+
 this-qa-automation-system-playwright/test-results
 
 .codex

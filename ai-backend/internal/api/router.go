@@ -3,15 +3,21 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	stdsql "database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
@@ -26,6 +32,40 @@ type Router struct {
 	aiService       *ai.Service
 	learningService *learning.Service
 	skillsService   *skills.Service
+	jobs            *jobManager
+}
+
+type jobStatus string
+
+const (
+	jobStatusQueued    jobStatus = "queued"
+	jobStatusRunning   jobStatus = "running"
+	jobStatusCompleted jobStatus = "completed"
+	jobStatusFailed    jobStatus = "failed"
+)
+
+type jobRecord struct {
+	ID          string                 `json:"id"`
+	Type        string                 `json:"type"`
+	Status      jobStatus              `json:"status"`
+	Payload     map[string]interface{} `json:"payload,omitempty"`
+	Result      map[string]interface{} `json:"result,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	StartedAt   *time.Time             `json:"started_at,omitempty"`
+	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	DurationMs  int64                  `json:"duration_ms,omitempty"`
+}
+
+type jobManager struct {
+	mu   sync.RWMutex
+	jobs map[string]*jobRecord
+}
+
+func newJobManager() *jobManager {
+	return &jobManager{
+		jobs: map[string]*jobRecord{},
+	}
 }
 
 // NewRouter creates a new router
@@ -40,6 +80,7 @@ func NewRouter(
 		aiService:       aiService,
 		learningService: learningService,
 		skillsService:   skillsService,
+		jobs:            newJobManager(),
 	}
 }
 
@@ -49,6 +90,156 @@ func (r *Router) getDB() *pgxpool.Pool {
 		return nil
 	}
 	return r.db.Pool
+}
+
+func nullStringOrEmpty(value stdsql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.String
+}
+
+func parsePagination(queryLimit, queryPage string, defaultLimit int) (page int, limit int) {
+	page = 1
+	limit = defaultLimit
+
+	if p, err := strconv.Atoi(queryPage); err == nil && p > 0 {
+		page = p
+	}
+	if l, err := strconv.Atoi(queryLimit); err == nil && l > 0 {
+		limit = l
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	return page, limit
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error": message,
+	})
+}
+
+func (r *Router) handleJobs(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/api/jobs/qa/run":
+		r.handleRunQAJob(w, req)
+		return
+	case "/api/jobs/docs/generate":
+		r.handleGenerateDocsJob(w, req)
+		return
+	}
+
+	if !strings.HasPrefix(req.URL.Path, "/api/jobs/") {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	jobID := strings.TrimPrefix(req.URL.Path, "/api/jobs/")
+	if jobID == "" || strings.Contains(jobID, "/") {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	r.handleGetJob(w, req, jobID)
+}
+
+func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *jobRecord {
+	job := &jobRecord{
+		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
+		Type:      jobType,
+		Status:    jobStatusQueued,
+		Payload:   payload,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	r.jobs.mu.Lock()
+	r.jobs.jobs[job.ID] = job
+	r.jobs.mu.Unlock()
+
+	go func(id string) {
+		startedAt := time.Now().UTC()
+		r.jobs.mu.Lock()
+		record := r.jobs.jobs[id]
+		record.Status = jobStatusRunning
+		record.StartedAt = &startedAt
+		r.jobs.mu.Unlock()
+
+		// Simulate minimal async backend work.
+		time.Sleep(200 * time.Millisecond)
+
+		completedAt := time.Now().UTC()
+		r.jobs.mu.Lock()
+		record = r.jobs.jobs[id]
+		record.Status = jobStatusCompleted
+		record.CompletedAt = &completedAt
+		record.DurationMs = completedAt.Sub(startedAt).Milliseconds()
+		record.Result = map[string]interface{}{
+			"message": fmt.Sprintf("%s job completed", jobType),
+		}
+		r.jobs.mu.Unlock()
+	}(job.ID)
+
+	return job
+}
+
+func (r *Router) handleRunQAJob(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	payload := map[string]interface{}{}
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&payload)
+	}
+
+	job := r.enqueueJob("qa_run", payload)
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(job)
+}
+
+func (r *Router) handleGenerateDocsJob(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	payload := map[string]interface{}{}
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&payload)
+	}
+
+	job := r.enqueueJob("docs_generate", payload)
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(job)
+}
+
+func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID string) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	r.jobs.mu.RLock()
+	job, ok := r.jobs.jobs[jobID]
+	r.jobs.mu.RUnlock()
+
+	if !ok {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(job)
 }
 
 // ServeHTTP handles HTTP requests
@@ -61,6 +252,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Handle OPTIONS
 	if req.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Job endpoints include path params (/api/jobs/:id).
+	if strings.HasPrefix(req.URL.Path, "/api/jobs/") {
+		r.handleJobs(w, req)
 		return
 	}
 
@@ -155,6 +352,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Goal Events endpoints
 	case "/api/goal-events":
 		r.handleGoalEvents(w, req)
+
+	// Job endpoints
+	case "/api/jobs/qa/run":
+		r.handleRunQAJob(w, req)
+	case "/api/jobs/docs/generate":
+		r.handleGenerateDocsJob(w, req)
 
 	default:
 		http.Error(w, "Not Found", http.StatusNotFound)
@@ -308,9 +511,13 @@ func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		_, err := db.Exec(req.Context(), `DELETE FROM roles WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM roles WHERE id = $1`, intID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if result.RowsAffected() == 0 {
+			writeJSONError(w, http.StatusNotFound, "role not found")
 			return
 		}
 
@@ -370,9 +577,12 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 
 		// Filter by fixed status
 		if filterFixed != "" {
-			sql += fmt.Sprintf(" AND i.is_fixed = $%d", argNum)
-			args = append(args, filterFixed == "true")
-			argNum++
+			if strings.EqualFold(filterFixed, "true") {
+				sql += " AND i.is_fixed = TRUE"
+			} else {
+				// Legacy rows can have NULL is_fixed; treat them as open/unfixed.
+				sql += " AND (i.is_fixed = FALSE OR i.is_fixed IS NULL)"
+			}
 		}
 
 		// Filter by category
@@ -429,13 +639,25 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		var issues []IssueWithSuggestions
 		for rows.Next() {
 			var issue models.RawIssue
+			var errorType stdsql.NullString
+			var errorText stdsql.NullString
+			var categoryValue stdsql.NullString
+			var severityValue stdsql.NullString
+			var isFixed stdsql.NullBool
+			var notesValue stdsql.NullString
 			if err := rows.Scan(
-				&issue.ID, &issue.Page, &issue.Action, &issue.ErrorType, &issue.ErrorText,
-				&issue.Category, &issue.Severity, &issue.IsFixed, &issue.Notes, &issue.CreatedAt,
+				&issue.ID, &issue.Page, &issue.Action, &errorType, &errorText,
+				&categoryValue, &severityValue, &isFixed, &notesValue, &issue.CreatedAt,
 			); err != nil {
 				log.Printf("Scan error: %v", err)
 				continue
 			}
+			issue.ErrorType = nullStringOrEmpty(errorType)
+			issue.ErrorText = nullStringOrEmpty(errorText)
+			issue.Category = nullStringOrEmpty(categoryValue)
+			issue.Severity = nullStringOrEmpty(severityValue)
+			issue.IsFixed = isFixed.Valid && isFixed.Bool
+			issue.Notes = nullStringOrEmpty(notesValue)
 
 			// Fetch suggestions for this issue
 			suggestions, err := r.getSuggestionsForIssue(issue.ID)
@@ -456,9 +678,12 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		countArgNum := 1
 
 		if filterFixed != "" {
-			countSql += fmt.Sprintf(" AND is_fixed = $%d", countArgNum)
-			countArgs = append(countArgs, filterFixed == "true")
-			countArgNum++
+			if strings.EqualFold(filterFixed, "true") {
+				countSql += " AND is_fixed = TRUE"
+			} else {
+				// Keep count logic identical with list query semantics.
+				countSql += " AND (is_fixed = FALSE OR is_fixed IS NULL)"
+			}
 		}
 		if category != "" && category != "all" {
 			countSql += fmt.Sprintf(" AND category = $%d", countArgNum)
@@ -503,6 +728,10 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
+		issue.Page = strings.TrimSpace(issue.Page)
+		issue.Action = strings.TrimSpace(issue.Action)
+		issue.Severity = strings.TrimSpace(issue.Severity)
+
 		// Validate required fields - page and action are required
 		if issue.Page == "" {
 			http.Error(w, "page is required", http.StatusBadRequest)
@@ -511,6 +740,9 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		if issue.Action == "" {
 			http.Error(w, "action is required", http.StatusBadRequest)
 			return
+		}
+		if issue.Severity == "" {
+			issue.Severity = "medium"
 		}
 
 		err := db.QueryRow(req.Context(), `
@@ -587,12 +819,66 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rows, err := db.Query(req.Context(), `
+	w.Header().Set("Content-Type", "application/json")
+
+	query := req.URL.Query()
+	search := strings.TrimSpace(query.Get("search"))
+	severity := strings.TrimSpace(query.Get("severity"))
+	sortBy := strings.TrimSpace(query.Get("sort_by"))
+	page, limit := parsePagination(query.Get("limit"), query.Get("page"), 20)
+
+	var filterActive *bool
+	switch strings.ToLower(strings.TrimSpace(query.Get("is_active"))) {
+	case "true":
+		v := true
+		filterActive = &v
+	case "false":
+		v := false
+		filterActive = &v
+	}
+
+	sql := `
 		SELECT id, name, description, check_type, check_query, severity, is_builtin, is_active, created_at
 		FROM skills
-		WHERE is_active = true
-		ORDER BY is_builtin DESC, name
-	`)
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argNum := 1
+
+	if search != "" {
+		sql += fmt.Sprintf(" AND (name ILIKE '%%' || $%d || '%%' OR description ILIKE '%%' || $%d || '%%' OR check_query ILIKE '%%' || $%d || '%%')", argNum, argNum, argNum)
+		args = append(args, search)
+		argNum++
+	}
+	if severity != "" && !strings.EqualFold(severity, "all") {
+		sql += fmt.Sprintf(" AND severity = $%d", argNum)
+		args = append(args, severity)
+		argNum++
+	}
+	if filterActive != nil {
+		sql += fmt.Sprintf(" AND is_active = $%d", argNum)
+		args = append(args, *filterActive)
+		argNum++
+	}
+
+	switch sortBy {
+	case "name_desc":
+		sql += " ORDER BY name DESC"
+	case "severity_high":
+		sql += " ORDER BY CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ASC, name ASC"
+	case "severity_low":
+		sql += " ORDER BY CASE severity WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE 4 END ASC, name ASC"
+	case "date_oldest":
+		sql += " ORDER BY created_at ASC"
+	default:
+		sql += " ORDER BY is_builtin DESC, name ASC"
+	}
+
+	offset := (page - 1) * limit
+	sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argNum, argNum+1)
+	args = append(args, limit, offset)
+
+	rows, err := db.Query(req.Context(), sql, args...)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -610,7 +896,47 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 		skills = append(skills, skill)
 	}
 
-	json.NewEncoder(w).Encode(skills)
+	if skills == nil {
+		skills = []models.Skill{}
+	}
+
+	countSQL := "SELECT COUNT(*) FROM skills WHERE 1=1"
+	countArgs := []interface{}{}
+	countArgNum := 1
+	if search != "" {
+		countSQL += fmt.Sprintf(" AND (name ILIKE '%%' || $%d || '%%' OR description ILIKE '%%' || $%d || '%%' OR check_query ILIKE '%%' || $%d || '%%')", countArgNum, countArgNum, countArgNum)
+		countArgs = append(countArgs, search)
+		countArgNum++
+	}
+	if severity != "" && !strings.EqualFold(severity, "all") {
+		countSQL += fmt.Sprintf(" AND severity = $%d", countArgNum)
+		countArgs = append(countArgs, severity)
+		countArgNum++
+	}
+	if filterActive != nil {
+		countSQL += fmt.Sprintf(" AND is_active = $%d", countArgNum)
+		countArgs = append(countArgs, *filterActive)
+	}
+
+	totalCount := 0
+	if err := db.QueryRow(req.Context(), countSQL, countArgs...).Scan(&totalCount); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	totalPages := (totalCount + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": skills,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"limit":       limit,
+			"total":       totalCount,
+			"total_pages": totalPages,
+		},
+	})
 }
 
 // handleSkillLogs handles /api/skills/logs
@@ -1081,6 +1407,12 @@ func (r *Router) handleDocs(w http.ResponseWriter, req *http.Request) {
 		Description string `json:"description,omitempty"`
 	}
 
+	query := req.URL.Query()
+	search := strings.ToLower(strings.TrimSpace(query.Get("search")))
+	productFilter := strings.TrimSpace(query.Get("product"))
+	sortBy := strings.TrimSpace(query.Get("sort_by"))
+	page, limit := parsePagination(query.Get("limit"), query.Get("page"), 20)
+
 	var docs []DocInfo
 
 	// Walk through product-documentations directory
@@ -1088,7 +1420,15 @@ func (r *Router) handleDocs(w http.ResponseWriter, req *http.Request) {
 	entries, err := os.ReadDir(productDir)
 	if err != nil {
 		log.Printf("Error reading product-documentations: %v", err)
-		json.NewEncoder(w).Encode([]DocInfo{})
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []DocInfo{},
+			"pagination": map[string]interface{}{
+				"page":        page,
+				"limit":       limit,
+				"total":       0,
+				"total_pages": 1,
+			},
+		})
 		return
 	}
 
@@ -1117,10 +1457,73 @@ func (r *Router) handleDocs(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	if docs == nil {
-		docs = []DocInfo{}
+	filtered := make([]DocInfo, 0, len(docs))
+	for _, doc := range docs {
+		if productFilter != "" && !strings.EqualFold(doc.Product, productFilter) {
+			continue
+		}
+		if search != "" {
+			content := strings.ToLower(doc.Name + " " + doc.Product + " " + doc.Path + " " + doc.Description)
+			if !strings.Contains(content, search) {
+				continue
+			}
+		}
+		filtered = append(filtered, doc)
 	}
-	json.NewEncoder(w).Encode(docs)
+
+	switch sortBy {
+	case "name_desc":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return strings.ToLower(filtered[i].Name) > strings.ToLower(filtered[j].Name)
+		})
+	case "product_asc":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			if strings.EqualFold(filtered[i].Product, filtered[j].Product) {
+				return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+			}
+			return strings.ToLower(filtered[i].Product) < strings.ToLower(filtered[j].Product)
+		})
+	case "product_desc":
+		sort.SliceStable(filtered, func(i, j int) bool {
+			if strings.EqualFold(filtered[i].Product, filtered[j].Product) {
+				return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+			}
+			return strings.ToLower(filtered[i].Product) > strings.ToLower(filtered[j].Product)
+		})
+	default:
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name)
+		})
+	}
+
+	totalCount := len(filtered)
+	totalPages := (totalCount + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	offset := (page - 1) * limit
+	if offset > len(filtered) {
+		offset = len(filtered)
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	pageData := filtered[offset:end]
+	if pageData == nil {
+		pageData = []DocInfo{}
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": pageData,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"limit":       limit,
+			"total":       totalCount,
+			"total_pages": totalPages,
+		},
+	})
 }
 
 // handleVideos handles /api/videos
@@ -1350,18 +1753,18 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 
 		if err == nil {
 			// Update existing record
-			successBool := payload.Success
+			scoreDelta := -0.1
+			if payload.Success {
+				scoreDelta = 0.1
+			}
 			_, err = db.Exec(req.Context(), `
 				UPDATE learning_cache
-				SET success_score = CASE 
-					WHEN $4::bool THEN LEAST(success_score + 0.1, 1.0)
-					ELSE GREATEST(success_score - 0.1, 0.0)
-				END,
+				SET success_score = LEAST(GREATEST(success_score + $1, 0.0), 1.0),
 				usage_count = usage_count + 1,
-				last_success = CASE WHEN $4::bool THEN NOW() ELSE last_success END,
+				last_success = CASE WHEN $2 THEN NOW() ELSE last_success END,
 				updated_at = NOW()
-				WHERE id = $5
-			`, successBool, existingID)
+				WHERE id = $3
+			`, scoreDelta, payload.Success, existingID)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -1370,7 +1773,7 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 				"id":      existingID,
 				"updated": true,
 			})
-		} else {
+		} else if errors.Is(err, pgx.ErrNoRows) {
 			// Insert new record
 			score := 0.5
 			if payload.Success {
@@ -1396,6 +1799,9 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 				"success":    payload.Success,
 				"created_at": createdAt,
 			})
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 
 	case "DELETE":
@@ -1409,9 +1815,13 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		_, err := db.Exec(req.Context(), `DELETE FROM learning_cache WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM learning_cache WHERE id = $1`, intID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if result.RowsAffected() == 0 {
+			writeJSONError(w, http.StatusNotFound, "learning record not found")
 			return
 		}
 
@@ -1534,9 +1944,13 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 		// Clear cache or specific entry
 		hash := req.URL.Query().Get("hash")
 		if hash != "" {
-			_, err := db.Exec(req.Context(), `DELETE FROM ai_cache WHERE input_hash = $1`, hash)
+			result, err := db.Exec(req.Context(), `DELETE FROM ai_cache WHERE input_hash = $1`, hash)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if result.RowsAffected() == 0 {
+				writeJSONError(w, http.StatusNotFound, "ai cache entry not found")
 				return
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "hash": hash})
@@ -1661,9 +2075,13 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 		// Clear cache
 		hash := req.URL.Query().Get("hash")
 		if hash != "" {
-			_, err := db.Exec(req.Context(), `DELETE FROM embedding_cache WHERE text_hash = $1`, hash)
+			result, err := db.Exec(req.Context(), `DELETE FROM embedding_cache WHERE text_hash = $1`, hash)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if result.RowsAffected() == 0 {
+				writeJSONError(w, http.StatusNotFound, "embedding cache entry not found")
 				return
 			}
 			json.NewEncoder(w).Encode(map[string]interface{}{"deleted": true, "hash": hash})
@@ -1924,7 +2342,7 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err := db.Exec(req.Context(), `
+	result, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
 		SET is_fixed = $1
 		WHERE id = $2
@@ -1933,6 +2351,10 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Printf("Error updating issue status: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeJSONError(w, http.StatusNotFound, "issue not found")
 		return
 	}
 
@@ -1972,7 +2394,7 @@ func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, err := db.Exec(req.Context(), `
+	result, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
 		SET notes = $1
 		WHERE id = $2
@@ -1981,6 +2403,10 @@ func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Printf("Error updating issue notes: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeJSONError(w, http.StatusNotFound, "issue not found")
 		return
 	}
 
@@ -2127,10 +2553,14 @@ func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		_, err := db.Exec(req.Context(), `DELETE FROM goal_events WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM goal_events WHERE id = $1`, intID)
 		if err != nil {
 			log.Printf("Error deleting goal event: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if result.RowsAffected() == 0 {
+			writeJSONError(w, http.StatusNotFound, "goal event not found")
 			return
 		}
 

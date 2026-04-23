@@ -23,6 +23,11 @@ func NewConnection(cfg *config.Config) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database config: %w", err)
 	}
+	if poolConfig.ConnConfig.RuntimeParams == nil {
+		poolConfig.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	// Keep schema resolution consistent across environments.
+	poolConfig.ConnConfig.RuntimeParams["search_path"] = "public,qa,ai,logging"
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
