@@ -176,7 +176,41 @@ After deployment, the services will be available at:
 - **ai-backend**: `https://ai-backend-000000000000.asia-southeast1.run.app`
 - **Dashboard**: `https://dashboard-000000000000.asia-southeast1.run.app`
 
-## Architecture
+## Quick Deploy Commands
+
+### Rebuild and Deploy ai-backend
+
+```bash
+# Build
+cd ai-backend
+docker build -t gcr.io/qa-automation-tools-example-org/ai-backend:latest .
+docker push gcr.io/qa-automation-tools-example-org/ai-backend:latest
+
+# Deploy (with all environment variables)
+gcloud run deploy ai-backend \
+  --image gcr.io/qa-automation-tools-example-org/ai-backend:latest \
+  --platform managed \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-env-vars "DATABASE_URL=postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require,MINIMAX_API_KEY=YOUR_API_KEY,AI_MODEL=MiniMax-M2.5,AI_BASE_URL=https://api.minimax.io/v1,API_SECRET_KEY=your-secret-key,CORS_ENABLED=true,CORS_ORIGINS=*"
+```
+
+### Rebuild and Deploy Dashboard
+
+```bash
+# Build
+cd dashboard
+docker build -t gcr.io/qa-automation-tools-example-org/dashboard:latest .
+docker push gcr.io/qa-automation-tools-example-org/dashboard:latest
+
+# Deploy
+gcloud run deploy dashboard \
+  --image gcr.io/qa-automation-tools-example-org/dashboard:latest \
+  --platform managed \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --port=80
+```
 
 ```
 User → Dashboard (Cloud Run) → /api → ai-backend (Cloud Run)
