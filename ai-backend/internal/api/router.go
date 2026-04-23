@@ -125,6 +125,11 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 }
 
 func (r *Router) handleJobs(w http.ResponseWriter, req *http.Request) {
+	if req.URL.Path == "/api/jobs" {
+		r.handleListJobs(w, req)
+		return
+	}
+
 	switch req.URL.Path {
 	case "/api/jobs/qa/run":
 		r.handleRunQAJob(w, req)
@@ -159,6 +164,7 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 	r.jobs.mu.Lock()
 	r.jobs.jobs[job.ID] = job
 	r.jobs.mu.Unlock()
+	r.upsertJobRecord(context.Background(), job)
 
 	go func(id string) {
 		startedAt := time.Now().UTC()
@@ -181,6 +187,7 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 			"message": fmt.Sprintf("%s job completed", jobType),
 		}
 		r.jobs.mu.Unlock()
+		r.upsertJobRecord(context.Background(), record)
 	}(job.ID)
 
 	return job
@@ -234,12 +241,264 @@ func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID st
 	job, ok := r.jobs.jobs[jobID]
 	r.jobs.mu.RUnlock()
 
-	if !ok {
+	if ok {
+		json.NewEncoder(w).Encode(job)
+		return
+	}
+
+	db := r.getDB()
+	if db == nil {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
 
-	json.NewEncoder(w).Encode(job)
+	row := db.QueryRow(req.Context(), `
+		SELECT id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms
+		FROM job_runs
+		WHERE id = $1
+	`, jobID)
+
+	jobFromDB, err := scanJobRow(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "job not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(jobFromDB)
+}
+
+func (r *Router) handleListJobs(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	query := req.URL.Query()
+	typeFilter := strings.TrimSpace(query.Get("type"))
+	statusFilter := strings.TrimSpace(query.Get("status"))
+	sortBy := strings.TrimSpace(query.Get("sort_by"))
+	page, limit := parsePagination(query.Get("limit"), query.Get("page"), 20)
+	offset := (page - 1) * limit
+
+	db := r.getDB()
+	if db == nil {
+		r.jobs.mu.RLock()
+		records := make([]jobRecord, 0, len(r.jobs.jobs))
+		for _, item := range r.jobs.jobs {
+			if typeFilter != "" && item.Type != typeFilter {
+				continue
+			}
+			if statusFilter != "" && string(item.Status) != statusFilter {
+				continue
+			}
+			records = append(records, *item)
+		}
+		r.jobs.mu.RUnlock()
+
+		sort.Slice(records, func(i, j int) bool {
+			return records[i].CreatedAt.After(records[j].CreatedAt)
+		})
+
+		total := len(records)
+		totalPages := (total + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
+		start := offset
+		if start > total {
+			start = total
+		}
+		end := start + limit
+		if end > total {
+			end = total
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": records[start:end],
+			"pagination": map[string]interface{}{
+				"page":        page,
+				"limit":       limit,
+				"total":       total,
+				"total_pages": totalPages,
+			},
+		})
+		return
+	}
+
+	filters := []string{}
+	args := []interface{}{}
+	addArg := func(v interface{}) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if typeFilter != "" {
+		filters = append(filters, "type = "+addArg(typeFilter))
+	}
+	if statusFilter != "" {
+		filters = append(filters, "status = "+addArg(statusFilter))
+	}
+
+	whereSQL := ""
+	if len(filters) > 0 {
+		whereSQL = " WHERE " + strings.Join(filters, " AND ")
+	}
+
+	orderSQL := " ORDER BY created_at DESC"
+	switch sortBy {
+	case "created_oldest":
+		orderSQL = " ORDER BY created_at ASC"
+	case "started_newest":
+		orderSQL = " ORDER BY started_at DESC NULLS LAST, created_at DESC"
+	case "started_oldest":
+		orderSQL = " ORDER BY started_at ASC NULLS LAST, created_at ASC"
+	case "duration_high":
+		orderSQL = " ORDER BY duration_ms DESC NULLS LAST, created_at DESC"
+	case "duration_low":
+		orderSQL = " ORDER BY duration_ms ASC NULLS LAST, created_at DESC"
+	}
+
+	listSQL := `
+		SELECT id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms
+		FROM job_runs
+	` + whereSQL + orderSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	listArgs := append(append([]interface{}{}, args...), limit, offset)
+
+	rows, err := db.Query(req.Context(), listSQL, listArgs...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var jobs []jobRecord
+	for rows.Next() {
+		job, err := scanJobValues(rows)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jobs = append(jobs, job)
+	}
+	if jobs == nil {
+		jobs = []jobRecord{}
+	}
+
+	countSQL := "SELECT COUNT(*) FROM job_runs" + whereSQL
+	var total int
+	if err := db.QueryRow(req.Context(), countSQL, args...).Scan(&total); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	totalPages := (total + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": jobs,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"limit":       limit,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
+}
+
+func (r *Router) upsertJobRecord(ctx context.Context, job *jobRecord) {
+	db := r.getDB()
+	if db == nil || job == nil {
+		return
+	}
+
+	var payload interface{}
+	if len(job.Payload) > 0 {
+		raw, err := json.Marshal(job.Payload)
+		if err == nil {
+			payload = raw
+		}
+	}
+	var result interface{}
+	if len(job.Result) > 0 {
+		raw, err := json.Marshal(job.Result)
+		if err == nil {
+			result = raw
+		}
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO job_runs (id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (id)
+		DO UPDATE SET
+			type = EXCLUDED.type,
+			status = EXCLUDED.status,
+			payload = EXCLUDED.payload,
+			result = EXCLUDED.result,
+			error = EXCLUDED.error,
+			created_at = EXCLUDED.created_at,
+			started_at = EXCLUDED.started_at,
+			completed_at = EXCLUDED.completed_at,
+			duration_ms = EXCLUDED.duration_ms
+	`, job.ID, job.Type, string(job.Status), payload, result, job.Error, job.CreatedAt, job.StartedAt, job.CompletedAt, job.DurationMs); err != nil {
+		log.Printf("failed to upsert job record id=%s: %v", job.ID, err)
+	}
+}
+
+type dbRowScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+func scanJobRow(row pgx.Row) (jobRecord, error) {
+	return scanJobValues(row)
+}
+
+func scanJobValues(scanner dbRowScanner) (jobRecord, error) {
+	var job jobRecord
+	var status string
+	var payloadRaw []byte
+	var resultRaw []byte
+	var errorValue stdsql.NullString
+	var startedAt stdsql.NullTime
+	var completedAt stdsql.NullTime
+	var durationMs stdsql.NullInt64
+
+	if err := scanner.Scan(
+		&job.ID, &job.Type, &status, &payloadRaw, &resultRaw, &errorValue,
+		&job.CreatedAt, &startedAt, &completedAt, &durationMs,
+	); err != nil {
+		return job, err
+	}
+
+	job.Status = jobStatus(status)
+	if len(payloadRaw) > 0 {
+		_ = json.Unmarshal(payloadRaw, &job.Payload)
+	}
+	if len(resultRaw) > 0 {
+		_ = json.Unmarshal(resultRaw, &job.Result)
+	}
+	if errorValue.Valid {
+		job.Error = errorValue.String
+	}
+	if startedAt.Valid {
+		v := startedAt.Time
+		job.StartedAt = &v
+	}
+	if completedAt.Valid {
+		v := completedAt.Time
+		job.CompletedAt = &v
+	}
+	if durationMs.Valid {
+		job.DurationMs = durationMs.Int64
+	}
+
+	return job, nil
 }
 
 // ServeHTTP handles HTTP requests
@@ -354,6 +613,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		r.handleGoalEvents(w, req)
 
 	// Job endpoints
+	case "/api/jobs":
+		r.handleListJobs(w, req)
 	case "/api/jobs/qa/run":
 		r.handleRunQAJob(w, req)
 	case "/api/jobs/docs/generate":
@@ -951,19 +1212,54 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 
 	switch req.Method {
 	case "GET":
-		// Query skill logs with filters
 		query := req.URL.Query()
-		skillID := query.Get("skill_id")
-		page := query.Get("page")
-		passed := query.Get("passed")
-		fromDate := query.Get("from_date")
-		toDate := query.Get("to_date")
-		limit := 20
-		if l := query.Get("limit"); l != "" {
-			fmt.Sscanf(l, "%d", &limit)
+		skillID := strings.TrimSpace(query.Get("skill_id"))
+		passed := strings.TrimSpace(query.Get("passed"))
+		fromDate := strings.TrimSpace(query.Get("from_date"))
+		toDate := strings.TrimSpace(query.Get("to_date"))
+		search := strings.TrimSpace(query.Get("search"))
+		pageQuery := strings.TrimSpace(query.Get("page"))
+		pageFilter := strings.TrimSpace(query.Get("path"))
+		page, limit := parsePagination(query.Get("limit"), query.Get("page"), 20)
+		if pageQuery != "" {
+			if _, err := strconv.Atoi(pageQuery); err != nil && pageFilter == "" {
+				// Backward compatibility: old clients used page as exact path filter.
+				pageFilter = pageQuery
+				page = 1
+			}
 		}
-		if limit > 100 {
-			limit = 100
+		offset := (page - 1) * limit
+
+		filters := []string{}
+		args := []interface{}{}
+		addArg := func(v interface{}) string {
+			args = append(args, v)
+			return fmt.Sprintf("$%d", len(args))
+		}
+
+		if skillID != "" {
+			filters = append(filters, "sl.skill_id = "+addArg(skillID))
+		}
+		if pageFilter != "" {
+			filters = append(filters, "sl.page = "+addArg(pageFilter))
+		}
+		if passed != "" {
+			filters = append(filters, "sl.is_passed = "+addArg(strings.EqualFold(passed, "true")))
+		}
+		if fromDate != "" {
+			filters = append(filters, "sl.created_at >= "+addArg(fromDate))
+		}
+		if toDate != "" {
+			filters = append(filters, "sl.created_at <= "+addArg(toDate))
+		}
+		if search != "" {
+			arg := addArg(search)
+			filters = append(filters, "(COALESCE(s.name,'') ILIKE '%%' || "+arg+" || '%%' OR sl.page ILIKE '%%' || "+arg+" || '%%' OR sl.action ILIKE '%%' || "+arg+" || '%%' OR sl.result ILIKE '%%' || "+arg+" || '%%' OR COALESCE(sl.error_message,'') ILIKE '%%' || "+arg+" || '%%')")
+		}
+
+		whereSQL := ""
+		if len(filters) > 0 {
+			whereSQL = " AND " + strings.Join(filters, " AND ")
 		}
 
 		sql := `
@@ -972,44 +1268,10 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 			FROM skill_logs sl
 			LEFT JOIN skills s ON sl.skill_id = s.id
 			WHERE 1=1
-		`
-		args := []interface{}{}
-		argNum := 1
+		` + whereSQL + fmt.Sprintf(" ORDER BY sl.created_at DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+		listArgs := append(append([]interface{}{}, args...), limit, offset)
 
-		if skillID != "" {
-			sql += fmt.Sprintf(" AND sl.skill_id = $%d", argNum)
-			args = append(args, skillID)
-			argNum++
-		}
-
-		if page != "" {
-			sql += fmt.Sprintf(" AND sl.page = $%d", argNum)
-			args = append(args, page)
-			argNum++
-		}
-
-		if passed != "" {
-			sql += fmt.Sprintf(" AND sl.is_passed = $%d", argNum)
-			args = append(args, passed == "true")
-			argNum++
-		}
-
-		if fromDate != "" {
-			sql += fmt.Sprintf(" AND sl.created_at >= $%d", argNum)
-			args = append(args, fromDate)
-			argNum++
-		}
-
-		if toDate != "" {
-			sql += fmt.Sprintf(" AND sl.created_at <= $%d", argNum)
-			args = append(args, toDate)
-			argNum++
-		}
-
-		sql += fmt.Sprintf(" ORDER BY sl.created_at DESC LIMIT $%d", argNum)
-		args = append(args, limit)
-
-		rows, err := db.Query(req.Context(), sql, args...)
+		rows, err := db.Query(req.Context(), sql, listArgs...)
 		if err != nil {
 			log.Printf("Error querying skill logs: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1025,18 +1287,45 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 		var skillLogs []SkillLogWithName
 		for rows.Next() {
 			var entry SkillLogWithName
+			var errorMsg stdsql.NullString
 			if err := rows.Scan(&entry.ID, &entry.SkillID, &entry.Page, &entry.Action, &entry.Result,
-				&entry.IsPassed, &entry.ErrorMsg, &entry.CreatedAt, &entry.SkillName); err != nil {
+				&entry.IsPassed, &errorMsg, &entry.CreatedAt, &entry.SkillName); err != nil {
 				log.Printf("Scan error: %v", err)
 				continue
 			}
+			entry.ErrorMsg = nullStringOrEmpty(errorMsg)
 			skillLogs = append(skillLogs, entry)
 		}
 
 		if skillLogs == nil {
 			skillLogs = []SkillLogWithName{}
 		}
-		json.NewEncoder(w).Encode(skillLogs)
+
+		countSQL := `
+			SELECT COUNT(*)
+			FROM skill_logs sl
+			LEFT JOIN skills s ON sl.skill_id = s.id
+			WHERE 1=1
+		` + whereSQL
+		totalCount := 0
+		if err := db.QueryRow(req.Context(), countSQL, args...).Scan(&totalCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		totalPages := (totalCount + limit - 1) / limit
+		if totalPages < 1 {
+			totalPages = 1
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": skillLogs,
+			"pagination": map[string]interface{}{
+				"page":        page,
+				"limit":       limit,
+				"total":       totalCount,
+				"total_pages": totalPages,
+			},
+		})
 
 	case "POST":
 		// Create skill log entry
@@ -1103,7 +1392,6 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get aggregated stats for skills
 	type SkillStats struct {
 		SkillID    int        `json:"skill_id"`
 		SkillName  string     `json:"skill_name"`
@@ -1114,21 +1402,61 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 		LastRun    *time.Time `json:"last_run,omitempty"`
 	}
 
-	var stats []SkillStats
+	query := req.URL.Query()
+	search := strings.TrimSpace(query.Get("search"))
+	sortBy := strings.TrimSpace(query.Get("sort_by"))
+	page, limit := parsePagination(query.Get("limit"), query.Get("page"), 20)
+	offset := (page - 1) * limit
 
-	rows, err := db.Query(req.Context(), `
-		SELECT sl.skill_id, 
-		       COALESCE(s.name, 'Unknown') as skill_name,
-		       COUNT(*) as total_runs,
-		       COUNT(*) FILTER (WHERE sl.is_passed = true) as passed_runs,
-		       COUNT(*) FILTER (WHERE sl.is_passed = false) as failed_runs,
-		       CASE WHEN COUNT(*) > 0 THEN COUNT(*) FILTER (WHERE sl.is_passed = true) * 1.0 / COUNT(*) ELSE 0 END as pass_rate,
-		       MAX(sl.created_at) as last_run
+	whereSQL := ""
+	args := []interface{}{}
+	if search != "" {
+		whereSQL = " WHERE skill_name ILIKE '%' || $1 || '%'"
+		args = append(args, search)
+	}
+
+	orderSQL := " ORDER BY total_runs DESC, skill_name ASC"
+	switch sortBy {
+	case "name_asc":
+		orderSQL = " ORDER BY skill_name ASC"
+	case "name_desc":
+		orderSQL = " ORDER BY skill_name DESC"
+	case "pass_rate_desc":
+		orderSQL = " ORDER BY pass_rate DESC, total_runs DESC"
+	case "pass_rate_asc":
+		orderSQL = " ORDER BY pass_rate ASC, total_runs DESC"
+	case "last_run_newest":
+		orderSQL = " ORDER BY last_run DESC NULLS LAST, skill_name ASC"
+	case "last_run_oldest":
+		orderSQL = " ORDER BY last_run ASC NULLS LAST, skill_name ASC"
+	case "total_runs_asc":
+		orderSQL = " ORDER BY total_runs ASC, skill_name ASC"
+	}
+
+	aggregatedSQL := `
+		SELECT
+			sl.skill_id,
+			COALESCE(s.name, 'Unknown') AS skill_name,
+			COUNT(*) AS total_runs,
+			COUNT(*) FILTER (WHERE sl.is_passed = true) AS passed_runs,
+			COUNT(*) FILTER (WHERE sl.is_passed = false) AS failed_runs,
+			CASE WHEN COUNT(*) > 0
+				THEN COUNT(*) FILTER (WHERE sl.is_passed = true) * 1.0 / COUNT(*)
+				ELSE 0
+			END AS pass_rate,
+			MAX(sl.created_at) AS last_run
 		FROM skill_logs sl
 		LEFT JOIN skills s ON sl.skill_id = s.id
 		GROUP BY sl.skill_id, s.name
-		ORDER BY total_runs DESC
-	`)
+	`
+
+	sql := `
+		SELECT skill_id, skill_name, total_runs, passed_runs, failed_runs, pass_rate, last_run
+		FROM (` + aggregatedSQL + `) AS skill_stats
+	` + whereSQL + orderSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	listArgs := append(append([]interface{}{}, args...), limit, offset)
+
+	rows, err := db.Query(req.Context(), sql, listArgs...)
 	if err != nil {
 		log.Printf("Error querying skill stats: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1136,6 +1464,7 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 	}
 	defer rows.Close()
 
+	var stats []SkillStats
 	for rows.Next() {
 		var stat SkillStats
 		if err := rows.Scan(&stat.SkillID, &stat.SkillName, &stat.TotalRuns, &stat.PassedRuns,
@@ -1149,7 +1478,27 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 	if stats == nil {
 		stats = []SkillStats{}
 	}
-	json.NewEncoder(w).Encode(stats)
+
+	countSQL := "SELECT COUNT(*) FROM (" + aggregatedSQL + ") AS skill_stats" + whereSQL
+	totalCount := 0
+	if err := db.QueryRow(req.Context(), countSQL, args...).Scan(&totalCount); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	totalPages := (totalCount + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data": stats,
+		"pagination": map[string]interface{}{
+			"page":        page,
+			"limit":       limit,
+			"total":       totalCount,
+			"total_pages": totalPages,
+		},
+	})
 }
 
 // handleSearch handles /api/search

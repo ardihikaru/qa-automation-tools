@@ -33,6 +33,16 @@ interface JobRecord {
   completed_at?: string;
   duration_ms?: number;
 }
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+}
+interface JobsListResponse {
+  data?: JobRecord[];
+  pagination?: Pagination;
+}
 
 function QAInsightsSkeleton() {
   return (
@@ -73,12 +83,13 @@ export default function QAInsights() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [analyticsRes, costRes, allIssuesRes, openRes, fixedRes] = await Promise.all([
+      const [analyticsRes, costRes, allIssuesRes, openRes, fixedRes, jobsRes] = await Promise.all([
         fetch('/api/analytics'),
         fetch('/api/cost/overview'),
         fetch('/api/issues?limit=1'),
         fetch('/api/issues?is_fixed=false&limit=1'),
         fetch('/api/issues?is_fixed=true&limit=1'),
+        fetch('/api/jobs?page=1&limit=12&sort_by=created_newest'),
       ]);
 
       const analyticsData = await analyticsRes.json();
@@ -86,6 +97,7 @@ export default function QAInsights() {
       const allIssuesData = await allIssuesRes.json();
       const openData = await openRes.json();
       const fixedData = await fixedRes.json();
+      const jobsData: JobsListResponse | JobRecord[] = await jobsRes.json();
 
       setAnalytics(analyticsData);
       setCost(costData);
@@ -94,6 +106,12 @@ export default function QAInsights() {
         open: openData?.pagination?.total || 0,
         fixed: fixedData?.pagination?.total || 0,
       });
+
+      if (Array.isArray(jobsData)) {
+        setJobAudit(jobsData.slice(0, 12));
+      } else {
+        setJobAudit(Array.isArray(jobsData.data) ? jobsData.data : []);
+      }
     } catch (error) {
       console.error('Failed to fetch QA insights:', error);
     } finally {
