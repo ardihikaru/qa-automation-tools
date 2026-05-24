@@ -17,8 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
@@ -84,12 +82,14 @@ func NewRouter(
 	}
 }
 
-// getDB returns the database pool, or nil if not available
-func (r *Router) getDB() *pgxpool.Pool {
-	if r.db == nil {
+// getDB returns the database wrapper, or nil if not available.
+// The wrapper exposes pgx-compatible Query/QueryRow/Exec methods backed by
+// *sql.DB (MySQL).
+func (r *Router) getDB() *db.DB {
+	if r.db == nil || r.db.SQL == nil {
 		return nil
 	}
-	return r.db.Pool
+	return r.db
 }
 
 func nullStringOrEmpty(value stdsql.NullString) string {
@@ -97,6 +97,16 @@ func nullStringOrEmpty(value stdsql.NullString) string {
 		return ""
 	}
 	return value.String
+}
+
+// boolToInt converts a Go bool into 1/0 for MySQL TINYINT(1) bind parameters.
+// Some MySQL versions/drivers refuse to compare bool against TINYINT, so we
+// always send an int.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func parsePagination(queryLimit, queryPage string, defaultLimit int) (page int, limit int) {
@@ -255,12 +265,12 @@ func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID st
 	row := db.QueryRow(req.Context(), `
 		SELECT id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms
 		FROM job_runs
-		WHERE id = $1
+		WHERE id = ?
 	`, jobID)
 
 	jobFromDB, err := scanJobRow(row)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, stdsql.ErrNoRows) {
 			http.Error(w, "job not found", http.StatusNotFound)
 			return
 		}
@@ -335,7 +345,7 @@ func (r *Router) handleListJobs(w http.ResponseWriter, req *http.Request) {
 	args := []interface{}{}
 	addArg := func(v interface{}) string {
 		args = append(args, v)
-		return fmt.Sprintf("$%d", len(args))
+		return "?"
 	}
 	if typeFilter != "" {
 		filters = append(filters, "type = "+addArg(typeFilter))
@@ -349,24 +359,25 @@ func (r *Router) handleListJobs(w http.ResponseWriter, req *http.Request) {
 		whereSQL = " WHERE " + strings.Join(filters, " AND ")
 	}
 
+	// MySQL has no NULLS LAST; we emulate it by sorting the IS NULL flag first.
 	orderSQL := " ORDER BY created_at DESC"
 	switch sortBy {
 	case "created_oldest":
 		orderSQL = " ORDER BY created_at ASC"
 	case "started_newest":
-		orderSQL = " ORDER BY started_at DESC NULLS LAST, created_at DESC"
+		orderSQL = " ORDER BY started_at IS NULL, started_at DESC, created_at DESC"
 	case "started_oldest":
-		orderSQL = " ORDER BY started_at ASC NULLS LAST, created_at ASC"
+		orderSQL = " ORDER BY started_at IS NULL, started_at ASC, created_at ASC"
 	case "duration_high":
-		orderSQL = " ORDER BY duration_ms DESC NULLS LAST, created_at DESC"
+		orderSQL = " ORDER BY duration_ms IS NULL, duration_ms DESC, created_at DESC"
 	case "duration_low":
-		orderSQL = " ORDER BY duration_ms ASC NULLS LAST, created_at DESC"
+		orderSQL = " ORDER BY duration_ms IS NULL, duration_ms ASC, created_at DESC"
 	}
 
 	listSQL := `
 		SELECT id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms
 		FROM job_runs
-	` + whereSQL + orderSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	` + whereSQL + orderSQL + " LIMIT ? OFFSET ?"
 	listArgs := append(append([]interface{}{}, args...), limit, offset)
 
 	rows, err := db.Query(req.Context(), listSQL, listArgs...)
@@ -434,18 +445,17 @@ func (r *Router) upsertJobRecord(ctx context.Context, job *jobRecord) {
 
 	if _, err := db.Exec(ctx, `
 		INSERT INTO job_runs (id, type, status, payload, result, error, created_at, started_at, completed_at, duration_ms)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		ON CONFLICT (id)
-		DO UPDATE SET
-			type = EXCLUDED.type,
-			status = EXCLUDED.status,
-			payload = EXCLUDED.payload,
-			result = EXCLUDED.result,
-			error = EXCLUDED.error,
-			created_at = EXCLUDED.created_at,
-			started_at = EXCLUDED.started_at,
-			completed_at = EXCLUDED.completed_at,
-			duration_ms = EXCLUDED.duration_ms
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			type = VALUES(type),
+			status = VALUES(status),
+			payload = VALUES(payload),
+			result = VALUES(result),
+			error = VALUES(error),
+			created_at = VALUES(created_at),
+			started_at = VALUES(started_at),
+			completed_at = VALUES(completed_at),
+			duration_ms = VALUES(duration_ms)
 	`, job.ID, job.Type, string(job.Status), payload, result, job.Error, job.CreatedAt, job.StartedAt, job.CompletedAt, job.DurationMs); err != nil {
 		log.Printf("failed to upsert job record id=%s: %v", job.ID, err)
 	}
@@ -455,7 +465,9 @@ type dbRowScanner interface {
 	Scan(dest ...interface{}) error
 }
 
-func scanJobRow(row pgx.Row) (jobRecord, error) {
+// scanJobRow accepts the sql.Row returned by QueryRowContext (or any value
+// implementing Scan, which keeps existing call sites working).
+func scanJobRow(row dbRowScanner) (jobRecord, error) {
 	return scanJobValues(row)
 }
 
@@ -677,13 +689,18 @@ func (r *Router) handleFlows(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		err := db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO flows (role_id, name, description)
-			VALUES ($1, $2, $3)
-			RETURNING id, created_at, updated_at
-		`, flow.RoleID, flow.Name, flow.Description).Scan(&flow.ID, &flow.CreatedAt, &flow.UpdatedAt)
-
+			VALUES (?, ?, ?)
+		`, flow.RoleID, flow.Name, flow.Description)
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		flow.ID = int(res.LastInsertId())
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at, updated_at FROM flows WHERE id = ?`, flow.ID,
+		).Scan(&flow.CreatedAt, &flow.UpdatedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -748,13 +765,18 @@ func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		err := db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO roles (name, description)
-			VALUES ($1, $2)
-			RETURNING id, created_at
-		`, role.Name, role.Description).Scan(&role.ID, &role.CreatedAt)
-
+			VALUES (?, ?)
+		`, role.Name, role.Description)
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		role.ID = int(res.LastInsertId())
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at FROM roles WHERE id = ?`, role.ID,
+		).Scan(&role.CreatedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -772,7 +794,7 @@ func (r *Router) handleRoles(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		result, err := db.Exec(req.Context(), `DELETE FROM roles WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM roles WHERE id = ?`, intID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -828,43 +850,39 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 
-		// Base SQL query
-		sql := `SELECT i.id, i.page, i.action, i.error_type, i.error_text, 
+		// Base SQL query (MySQL: LIKE is case-insensitive on _ci collations).
+		sql := `SELECT i.id, i.page, i.action, i.error_type, i.error_text,
 			       i.category, i.severity, i.is_fixed, i.notes, i.created_at
 			FROM raw_issues i
 			WHERE 1=1`
 		args := []interface{}{}
-		argNum := 1
 
 		// Filter by fixed status
 		if filterFixed != "" {
 			if strings.EqualFold(filterFixed, "true") {
-				sql += " AND i.is_fixed = TRUE"
+				sql += " AND i.is_fixed = 1"
 			} else {
 				// Legacy rows can have NULL is_fixed; treat them as open/unfixed.
-				sql += " AND (i.is_fixed = FALSE OR i.is_fixed IS NULL)"
+				sql += " AND (i.is_fixed = 0 OR i.is_fixed IS NULL)"
 			}
 		}
 
 		// Filter by category
 		if category != "" && category != "all" {
-			sql += fmt.Sprintf(" AND i.category = $%d", argNum)
+			sql += " AND i.category = ?"
 			args = append(args, category)
-			argNum++
 		}
 
 		// Filter by target (frontend/backend via suggestions)
 		if target != "" {
-			sql += fmt.Sprintf(" AND i.id IN (SELECT issue_id FROM issue_suggestions WHERE target = $%d)", argNum)
+			sql += " AND i.id IN (SELECT issue_id FROM issue_suggestions WHERE target = ?)"
 			args = append(args, target)
-			argNum++
 		}
 
 		// Search by page, action, or error text
 		if search != "" {
-			sql += fmt.Sprintf(" AND (i.page ILIKE '%%' || $%d || '%%' OR i.action ILIKE '%%' || $%d || '%%' OR i.error_text ILIKE '%%' || $%d || '%%')", argNum, argNum, argNum)
-			args = append(args, search)
-			argNum++
+			sql += " AND (i.page LIKE CONCAT('%', ?, '%') OR i.action LIKE CONCAT('%', ?, '%') OR i.error_text LIKE CONCAT('%', ?, '%'))"
+			args = append(args, search, search, search)
 		}
 
 		// Sorting
@@ -881,7 +899,7 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 
 		// Calculate offset for pagination
 		offset := (page - 1) * limit
-		sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argNum, argNum+1)
+		sql += " LIMIT ? OFFSET ?"
 		args = append(args, limit, offset)
 
 		rows, err := db.Query(req.Context(), sql, args...)
@@ -936,24 +954,22 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		var totalCount int
 		countSql := `SELECT COUNT(*) FROM raw_issues WHERE 1=1`
 		countArgs := []interface{}{}
-		countArgNum := 1
 
 		if filterFixed != "" {
 			if strings.EqualFold(filterFixed, "true") {
-				countSql += " AND is_fixed = TRUE"
+				countSql += " AND is_fixed = 1"
 			} else {
 				// Keep count logic identical with list query semantics.
-				countSql += " AND (is_fixed = FALSE OR is_fixed IS NULL)"
+				countSql += " AND (is_fixed = 0 OR is_fixed IS NULL)"
 			}
 		}
 		if category != "" && category != "all" {
-			countSql += fmt.Sprintf(" AND category = $%d", countArgNum)
+			countSql += " AND category = ?"
 			countArgs = append(countArgs, category)
-			countArgNum++
 		}
 		if search != "" {
-			countSql += fmt.Sprintf(" AND (page ILIKE '%%' || $%d || '%%' OR action ILIKE '%%' || $%d || '%%' OR error_text ILIKE '%%' || $%d || '%%')", countArgNum, countArgNum, countArgNum)
-			countArgs = append(countArgs, search)
+			countSql += " AND (page LIKE CONCAT('%', ?, '%') OR action LIKE CONCAT('%', ?, '%') OR error_text LIKE CONCAT('%', ?, '%'))"
+			countArgs = append(countArgs, search, search, search)
 		}
 
 		db.QueryRow(req.Context(), countSql, countArgs...).Scan(&totalCount)
@@ -1006,13 +1022,18 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 			issue.Severity = "medium"
 		}
 
-		err := db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO raw_issues (page, action, error_type, error_text, category, severity)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, created_at
-		`, issue.Page, issue.Action, issue.ErrorType, issue.ErrorText, issue.Category, issue.Severity).Scan(&issue.ID, &issue.CreatedAt)
-
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, issue.Page, issue.Action, issue.ErrorType, issue.ErrorText, issue.Category, issue.Severity)
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		issue.ID = int(res.LastInsertId())
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at FROM raw_issues WHERE id = ?`, issue.ID,
+		).Scan(&issue.CreatedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1021,7 +1042,7 @@ func (r *Router) handleIssues(w http.ResponseWriter, req *http.Request) {
 		if issue.Category == "" && issue.ErrorText != "" && r.aiService != nil {
 			category, _ := r.aiService.ClassifyIssue(issue.ErrorText)
 			issue.Category = category
-			db.Exec(req.Context(), `UPDATE raw_issues SET category = $1 WHERE id = $2`, category, issue.ID)
+			db.Exec(req.Context(), `UPDATE raw_issues SET category = ? WHERE id = ?`, category, issue.ID)
 		}
 
 		// Set proper headers and status before encoding
@@ -1044,7 +1065,7 @@ func (r *Router) getSuggestionsForIssue(issueID int) ([]models.IssueSuggestion, 
 	rows, err := db.Query(context.Background(), `
 		SELECT id, issue_id, suggestion, confidence, target, file_path, diff
 		FROM issue_suggestions
-		WHERE issue_id = $1
+		WHERE issue_id = ?
 	`, issueID)
 	if err != nil {
 		return nil, err
@@ -1104,22 +1125,18 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 		WHERE 1=1
 	`
 	args := []interface{}{}
-	argNum := 1
 
 	if search != "" {
-		sql += fmt.Sprintf(" AND (name ILIKE '%%' || $%d || '%%' OR description ILIKE '%%' || $%d || '%%' OR check_query ILIKE '%%' || $%d || '%%')", argNum, argNum, argNum)
-		args = append(args, search)
-		argNum++
+		sql += " AND (name LIKE CONCAT('%', ?, '%') OR description LIKE CONCAT('%', ?, '%') OR check_query LIKE CONCAT('%', ?, '%'))"
+		args = append(args, search, search, search)
 	}
 	if severity != "" && !strings.EqualFold(severity, "all") {
-		sql += fmt.Sprintf(" AND severity = $%d", argNum)
+		sql += " AND severity = ?"
 		args = append(args, severity)
-		argNum++
 	}
 	if filterActive != nil {
-		sql += fmt.Sprintf(" AND is_active = $%d", argNum)
-		args = append(args, *filterActive)
-		argNum++
+		sql += " AND is_active = ?"
+		args = append(args, boolToInt(*filterActive))
 	}
 
 	switch sortBy {
@@ -1136,7 +1153,7 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 	}
 
 	offset := (page - 1) * limit
-	sql += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argNum, argNum+1)
+	sql += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := db.Query(req.Context(), sql, args...)
@@ -1163,20 +1180,17 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 
 	countSQL := "SELECT COUNT(*) FROM skills WHERE 1=1"
 	countArgs := []interface{}{}
-	countArgNum := 1
 	if search != "" {
-		countSQL += fmt.Sprintf(" AND (name ILIKE '%%' || $%d || '%%' OR description ILIKE '%%' || $%d || '%%' OR check_query ILIKE '%%' || $%d || '%%')", countArgNum, countArgNum, countArgNum)
-		countArgs = append(countArgs, search)
-		countArgNum++
+		countSQL += " AND (name LIKE CONCAT('%', ?, '%') OR description LIKE CONCAT('%', ?, '%') OR check_query LIKE CONCAT('%', ?, '%'))"
+		countArgs = append(countArgs, search, search, search)
 	}
 	if severity != "" && !strings.EqualFold(severity, "all") {
-		countSQL += fmt.Sprintf(" AND severity = $%d", countArgNum)
+		countSQL += " AND severity = ?"
 		countArgs = append(countArgs, severity)
-		countArgNum++
 	}
 	if filterActive != nil {
-		countSQL += fmt.Sprintf(" AND is_active = $%d", countArgNum)
-		countArgs = append(countArgs, *filterActive)
+		countSQL += " AND is_active = ?"
+		countArgs = append(countArgs, boolToInt(*filterActive))
 	}
 
 	totalCount := 0
@@ -1234,7 +1248,7 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 		args := []interface{}{}
 		addArg := func(v interface{}) string {
 			args = append(args, v)
-			return fmt.Sprintf("$%d", len(args))
+			return "?"
 		}
 
 		if skillID != "" {
@@ -1244,7 +1258,7 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 			filters = append(filters, "sl.page = "+addArg(pageFilter))
 		}
 		if passed != "" {
-			filters = append(filters, "sl.is_passed = "+addArg(strings.EqualFold(passed, "true")))
+			filters = append(filters, "sl.is_passed = "+addArg(boolToInt(strings.EqualFold(passed, "true"))))
 		}
 		if fromDate != "" {
 			filters = append(filters, "sl.created_at >= "+addArg(fromDate))
@@ -1253,8 +1267,18 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 			filters = append(filters, "sl.created_at <= "+addArg(toDate))
 		}
 		if search != "" {
-			arg := addArg(search)
-			filters = append(filters, "(COALESCE(s.name,'') ILIKE '%%' || "+arg+" || '%%' OR sl.page ILIKE '%%' || "+arg+" || '%%' OR sl.action ILIKE '%%' || "+arg+" || '%%' OR sl.result ILIKE '%%' || "+arg+" || '%%' OR COALESCE(sl.error_message,'') ILIKE '%%' || "+arg+" || '%%')")
+			// Three columns share the same parameter, so bind it three times.
+			a1 := addArg(search)
+			a2 := addArg(search)
+			a3 := addArg(search)
+			a4 := addArg(search)
+			a5 := addArg(search)
+			filters = append(filters,
+				"(COALESCE(s.name,'') LIKE CONCAT('%', "+a1+", '%')"+
+					" OR sl.page LIKE CONCAT('%', "+a2+", '%')"+
+					" OR sl.action LIKE CONCAT('%', "+a3+", '%')"+
+					" OR sl.result LIKE CONCAT('%', "+a4+", '%')"+
+					" OR COALESCE(sl.error_message,'') LIKE CONCAT('%', "+a5+", '%'))")
 		}
 
 		whereSQL := ""
@@ -1268,7 +1292,7 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 			FROM skill_logs sl
 			LEFT JOIN skills s ON sl.skill_id = s.id
 			WHERE 1=1
-		` + whereSQL + fmt.Sprintf(" ORDER BY sl.created_at DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+		` + whereSQL + " ORDER BY sl.created_at DESC LIMIT ? OFFSET ?"
 		listArgs := append(append([]interface{}{}, args...), limit, offset)
 
 		rows, err := db.Query(req.Context(), sql, listArgs...)
@@ -1347,16 +1371,20 @@ func (r *Router) handleSkillLogs(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		var id int
-		var createdAt time.Time
-		err := db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO skill_logs (skill_id, page, action, result, is_passed, error_message)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, created_at
-		`, payload.SkillID, payload.Page, payload.Action, payload.Result, payload.IsPassed, payload.ErrorMsg).Scan(&id, &createdAt)
-
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, payload.SkillID, payload.Page, payload.Action, payload.Result, boolToInt(payload.IsPassed), payload.ErrorMsg)
 		if err != nil {
 			log.Printf("Error inserting skill log: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		id := int(res.LastInsertId())
+		var createdAt time.Time
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at FROM skill_logs WHERE id = ?`, id,
+		).Scan(&createdAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1411,7 +1439,7 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 	whereSQL := ""
 	args := []interface{}{}
 	if search != "" {
-		whereSQL = " WHERE skill_name ILIKE '%' || $1 || '%'"
+		whereSQL = " WHERE skill_name LIKE CONCAT('%', ?, '%')"
 		args = append(args, search)
 	}
 
@@ -1426,22 +1454,23 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 	case "pass_rate_asc":
 		orderSQL = " ORDER BY pass_rate ASC, total_runs DESC"
 	case "last_run_newest":
-		orderSQL = " ORDER BY last_run DESC NULLS LAST, skill_name ASC"
+		orderSQL = " ORDER BY last_run IS NULL, last_run DESC, skill_name ASC"
 	case "last_run_oldest":
-		orderSQL = " ORDER BY last_run ASC NULLS LAST, skill_name ASC"
+		orderSQL = " ORDER BY last_run IS NULL, last_run ASC, skill_name ASC"
 	case "total_runs_asc":
 		orderSQL = " ORDER BY total_runs ASC, skill_name ASC"
 	}
 
+	// MySQL has no COUNT(*) FILTER (WHERE ...); use SUM(CASE WHEN ...).
 	aggregatedSQL := `
 		SELECT
 			sl.skill_id,
 			COALESCE(s.name, 'Unknown') AS skill_name,
 			COUNT(*) AS total_runs,
-			COUNT(*) FILTER (WHERE sl.is_passed = true) AS passed_runs,
-			COUNT(*) FILTER (WHERE sl.is_passed = false) AS failed_runs,
+			SUM(CASE WHEN sl.is_passed = 1 THEN 1 ELSE 0 END) AS passed_runs,
+			SUM(CASE WHEN sl.is_passed = 0 THEN 1 ELSE 0 END) AS failed_runs,
 			CASE WHEN COUNT(*) > 0
-				THEN COUNT(*) FILTER (WHERE sl.is_passed = true) * 1.0 / COUNT(*)
+				THEN SUM(CASE WHEN sl.is_passed = 1 THEN 1 ELSE 0 END) * 1.0 / COUNT(*)
 				ELSE 0
 			END AS pass_rate,
 			MAX(sl.created_at) AS last_run
@@ -1453,7 +1482,7 @@ func (r *Router) handleSkillStats(w http.ResponseWriter, req *http.Request) {
 	sql := `
 		SELECT skill_id, skill_name, total_runs, passed_runs, failed_runs, pass_rate, last_run
 		FROM (` + aggregatedSQL + `) AS skill_stats
-	` + whereSQL + orderSQL + fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	` + whereSQL + orderSQL + " LIMIT ? OFFSET ?"
 	listArgs := append(append([]interface{}{}, args...), limit, offset)
 
 	rows, err := db.Query(req.Context(), sql, listArgs...)
@@ -1521,11 +1550,11 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Search in learning cache - use text matching since vector extension not available in Neon
+	// Search in learning cache - simple substring match (no vector index in MySQL).
 	rows, err := db.Query(req.Context(), `
 		SELECT intent, action, page, success_score, usage_count
 		FROM learning_cache
-		WHERE intent ILIKE '%' || $1 || '%'
+		WHERE intent LIKE CONCAT('%', ?, '%')
 		ORDER BY success_score DESC, usage_count DESC
 		LIMIT 10
 	`, query)
@@ -1584,13 +1613,13 @@ func (r *Router) handleCostOverview(w http.ResponseWriter, req *http.Request) {
 	}
 
 	err := db.QueryRow(req.Context(), `
-		SELECT 
+		SELECT
 			COUNT(*),
 			COALESCE(SUM(input_tokens + output_tokens), 0),
 			COALESCE(SUM(input_tokens), 0),
 			COALESCE(SUM(output_tokens), 0),
 			COALESCE(SUM(cost_estimate), 0),
-			COUNT(*) FILTER (WHERE cache_hit = true),
+			COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0),
 			COUNT(*)
 		FROM request_logs
 	`).Scan(
@@ -1633,11 +1662,11 @@ func (r *Router) handleCostTrend(w http.ResponseWriter, req *http.Request) {
 	}
 
 	rows, err := db.Query(req.Context(), `
-		SELECT DATE(created_at) as date, SUM(cost_estimate) as cost
+		SELECT DATE(created_at) AS d, SUM(cost_estimate) AS cost
 		FROM request_logs
-		WHERE created_at > NOW() - INTERVAL '30 days'
+		WHERE created_at > NOW() - INTERVAL 30 DAY
 		GROUP BY DATE(created_at)
-		ORDER BY date
+		ORDER BY d
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1681,9 +1710,9 @@ func (r *Router) handleCostEfficiency(w http.ResponseWriter, req *http.Request) 
 	}
 
 	err := db.QueryRow(req.Context(), `
-		SELECT 
-			COUNT(*) FILTER (WHERE cache_hit = true),
-			COUNT(*) FILTER (WHERE cache_hit = false)
+		SELECT
+			COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN cache_hit = 0 THEN 1 ELSE 0 END), 0)
 		FROM request_logs
 	`).Scan(&stats.Hit, &stats.Miss)
 
@@ -2029,27 +2058,24 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 		}
 
 		sql := `
-			SELECT id, intent, action, page, success_score, usage_count, 
+			SELECT id, intent, action, page, success_score, usage_count,
 			       last_success, decay_factor, created_at, updated_at
 			FROM learning_cache
 			WHERE 1=1
 		`
 		args := []interface{}{}
-		argNum := 1
 
 		if intent != "" {
-			sql += fmt.Sprintf(" AND intent ILIKE '%%' || $%d || '%%'", argNum)
+			sql += " AND intent LIKE CONCAT('%', ?, '%')"
 			args = append(args, intent)
-			argNum++
 		}
 
 		if page != "" {
-			sql += fmt.Sprintf(" AND page = $%d", argNum)
+			sql += " AND page = ?"
 			args = append(args, page)
-			argNum++
 		}
 
-		sql += fmt.Sprintf(" ORDER BY success_score DESC, usage_count DESC LIMIT $%d", argNum)
+		sql += " ORDER BY success_score DESC, usage_count DESC LIMIT ?"
 		args = append(args, limit)
 
 		rows, err := db.Query(req.Context(), sql, args...)
@@ -2096,8 +2122,8 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 		// Check if record exists
 		var existingID int
 		err := db.QueryRow(req.Context(), `
-			SELECT id FROM learning_cache 
-			WHERE intent = $1 AND action = $2 AND page = $3
+			SELECT id FROM learning_cache
+			WHERE intent = ? AND action = ? AND page = ?
 		`, payload.Intent, payload.Action, payload.Page).Scan(&existingID)
 
 		if err == nil {
@@ -2106,14 +2132,15 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 			if payload.Success {
 				scoreDelta = 0.1
 			}
+			successFlag := boolToInt(payload.Success)
 			_, err = db.Exec(req.Context(), `
 				UPDATE learning_cache
-				SET success_score = LEAST(GREATEST(success_score + $1, 0.0), 1.0),
-				usage_count = usage_count + 1,
-				last_success = CASE WHEN $2 THEN NOW() ELSE last_success END,
-				updated_at = NOW()
-				WHERE id = $3
-			`, scoreDelta, payload.Success, existingID)
+				SET success_score = LEAST(GREATEST(success_score + ?, 0.0), 1.0),
+				    usage_count = usage_count + 1,
+				    last_success = CASE WHEN ? = 1 THEN NOW() ELSE last_success END,
+				    updated_at = NOW()
+				WHERE id = ?
+			`, scoreDelta, successFlag, existingID)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -2122,23 +2149,30 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 				"id":      existingID,
 				"updated": true,
 			})
-		} else if errors.Is(err, pgx.ErrNoRows) {
+		} else if errors.Is(err, stdsql.ErrNoRows) {
 			// Insert new record
 			score := 0.5
 			if payload.Success {
 				score = 1.0
 			}
-			var id int
-			var createdAt, updatedAt time.Time
-			err := db.QueryRow(req.Context(), `
+			successFlag := boolToInt(payload.Success)
+			res, err := db.Exec(req.Context(), `
 				INSERT INTO learning_cache (intent, action, page, success_score, usage_count, last_success)
-				VALUES ($1, $2, $3, $4, 1, CASE WHEN $5 THEN NOW() ELSE NULL END)
-				RETURNING id, created_at, updated_at
-			`, payload.Intent, payload.Action, payload.Page, score, payload.Success).Scan(&id, &createdAt, &updatedAt)
+				VALUES (?, ?, ?, ?, 1, CASE WHEN ? = 1 THEN NOW() ELSE NULL END)
+			`, payload.Intent, payload.Action, payload.Page, score, successFlag)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			id := int(res.LastInsertId())
+			var createdAt, updatedAt time.Time
+			if err := db.QueryRow(req.Context(),
+				`SELECT created_at, updated_at FROM learning_cache WHERE id = ?`, id,
+			).Scan(&createdAt, &updatedAt); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			_ = updatedAt
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"id":         id,
@@ -2164,7 +2198,7 @@ func (r *Router) handleLearning(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		result, err := db.Exec(req.Context(), `DELETE FROM learning_cache WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM learning_cache WHERE id = ?`, intID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -2216,7 +2250,7 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 		err := db.QueryRow(req.Context(), `
 			SELECT id, input_hash, input_text, output_text, model, cost_estimate, created_at
 			FROM ai_cache
-			WHERE input_hash = $1
+			WHERE input_hash = ?
 		`, hash).Scan(&cached.ID, &cached.InputHash, &cached.InputText, &cached.OutputText, &cached.Model, &cached.Cost, &cached.CreatedAt)
 
 		if err != nil {
@@ -2249,7 +2283,7 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 
 		// Check if exists
 		var existingID int
-		err := db.QueryRow(req.Context(), `SELECT id FROM ai_cache WHERE input_hash = $1`, hash).Scan(&existingID)
+		err := db.QueryRow(req.Context(), `SELECT id FROM ai_cache WHERE input_hash = ?`, hash).Scan(&existingID)
 
 		if err == nil {
 			// Return existing without inserting
@@ -2268,15 +2302,19 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 			model = "MiniMax-M2.5"
 		}
 
-		var id int
-		var createdAt time.Time
-		err = db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO ai_cache (input_hash, input_text, output_text, model, cost_estimate)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, created_at
-		`, hash, payload.InputText, payload.OutputText, model, payload.Cost).Scan(&id, &createdAt)
-
+			VALUES (?, ?, ?, ?, ?)
+		`, hash, payload.InputText, payload.OutputText, model, payload.Cost)
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		id := int(res.LastInsertId())
+		var createdAt time.Time
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at FROM ai_cache WHERE id = ?`, id,
+		).Scan(&createdAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -2293,7 +2331,7 @@ func (r *Router) handleAICache(w http.ResponseWriter, req *http.Request) {
 		// Clear cache or specific entry
 		hash := req.URL.Query().Get("hash")
 		if hash != "" {
-			result, err := db.Exec(req.Context(), `DELETE FROM ai_cache WHERE input_hash = $1`, hash)
+			result, err := db.Exec(req.Context(), `DELETE FROM ai_cache WHERE input_hash = ?`, hash)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -2348,7 +2386,7 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 		err := db.QueryRow(req.Context(), `
 			SELECT id, text_hash, text, model, created_at
 			FROM embedding_cache
-			WHERE text_hash = $1
+			WHERE text_hash = ?
 		`, hash).Scan(&cached.ID, &cached.TextHash, &cached.Text, &cached.Model, &cached.CreatedAt)
 
 		if err != nil {
@@ -2380,7 +2418,7 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 
 		// Check if exists
 		var existingID int
-		err := db.QueryRow(req.Context(), `SELECT id FROM embedding_cache WHERE text_hash = $1`, hash).Scan(&existingID)
+		err := db.QueryRow(req.Context(), `SELECT id FROM embedding_cache WHERE text_hash = ?`, hash).Scan(&existingID)
 
 		if err == nil {
 			json.NewEncoder(w).Encode(map[string]interface{}{
@@ -2397,17 +2435,27 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 			model = "emb-embedding-01"
 		}
 
-		var id int
-		var createdAt time.Time
-		// Store embedding as JSONB since vector extension is not available in Neon
-		err = db.QueryRow(req.Context(), `
-			INSERT INTO embedding_cache (text_hash, text, embedding, model)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id, created_at
-		`, hash, payload.Text, payload.Embedding, model).Scan(&id, &createdAt)
+		// MySQL JSON column requires a JSON-encoded string, not a Go slice.
+		embeddingJSON, err := json.Marshal(payload.Embedding)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
+		res, err := db.Exec(req.Context(), `
+			INSERT INTO embedding_cache (text_hash, text, embedding, model)
+			VALUES (?, ?, ?, ?)
+		`, hash, payload.Text, string(embeddingJSON), model)
 		if err != nil {
 			log.Printf("Embedding cache insert error: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		id := int(res.LastInsertId())
+		var createdAt time.Time
+		if err := db.QueryRow(req.Context(),
+			`SELECT created_at FROM embedding_cache WHERE id = ?`, id,
+		).Scan(&createdAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -2424,7 +2472,7 @@ func (r *Router) handleEmbeddingCache(w http.ResponseWriter, req *http.Request) 
 		// Clear cache
 		hash := req.URL.Query().Get("hash")
 		if hash != "" {
-			result, err := db.Exec(req.Context(), `DELETE FROM embedding_cache WHERE text_hash = $1`, hash)
+			result, err := db.Exec(req.Context(), `DELETE FROM embedding_cache WHERE text_hash = ?`, hash)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -2693,9 +2741,9 @@ func (r *Router) handleIssueStatus(w http.ResponseWriter, req *http.Request) {
 
 	result, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
-		SET is_fixed = $1
-		WHERE id = $2
-	`, payload.IsFixed, payload.ID)
+		SET is_fixed = ?
+		WHERE id = ?
+	`, boolToInt(payload.IsFixed), payload.ID)
 
 	if err != nil {
 		log.Printf("Error updating issue status: %v", err)
@@ -2745,8 +2793,8 @@ func (r *Router) handleIssueNotes(w http.ResponseWriter, req *http.Request) {
 
 	result, err := db.Exec(req.Context(), `
 		UPDATE raw_issues
-		SET notes = $1
-		WHERE id = $2
+		SET notes = ?
+		WHERE id = ?
 	`, payload.Notes, payload.ID)
 
 	if err != nil {
@@ -2796,27 +2844,23 @@ func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
 			WHERE 1=1
 		`
 		args := []interface{}{}
-		argNum := 1
 
 		if goalName != "" {
-			sql += fmt.Sprintf(" AND goal_name ILIKE '%%' || $%d || '%%'", argNum)
+			sql += " AND goal_name LIKE CONCAT('%', ?, '%')"
 			args = append(args, goalName)
-			argNum++
 		}
 
 		if fromDate != "" {
-			sql += fmt.Sprintf(" AND detected_at >= $%d", argNum)
+			sql += " AND detected_at >= ?"
 			args = append(args, fromDate)
-			argNum++
 		}
 
 		if toDate != "" {
-			sql += fmt.Sprintf(" AND detected_at <= $%d", argNum)
+			sql += " AND detected_at <= ?"
 			args = append(args, toDate)
-			argNum++
 		}
 
-		sql += fmt.Sprintf(" ORDER BY detected_at DESC LIMIT $%d", argNum)
+		sql += " ORDER BY detected_at DESC LIMIT ?"
 		args = append(args, limit)
 
 		rows, err := db.Query(req.Context(), sql, args...)
@@ -2867,16 +2911,20 @@ func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
 			confidence = 0.5 // Default to 0.5 if invalid
 		}
 
-		var id int
-		var detectedAt time.Time
-		err := db.QueryRow(req.Context(), `
+		res, err := db.Exec(req.Context(), `
 			INSERT INTO goal_events (goal_name, confidence, page, action)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id, detected_at
-		`, payload.GoalName, confidence, payload.Page, payload.Action).Scan(&id, &detectedAt)
-
+			VALUES (?, ?, ?, ?)
+		`, payload.GoalName, confidence, payload.Page, payload.Action)
 		if err != nil {
 			log.Printf("Error inserting goal event: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		id := int(res.LastInsertId())
+		var detectedAt time.Time
+		if err := db.QueryRow(req.Context(),
+			`SELECT detected_at FROM goal_events WHERE id = ?`, id,
+		).Scan(&detectedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -2902,7 +2950,7 @@ func (r *Router) handleGoalEvents(w http.ResponseWriter, req *http.Request) {
 		var intID int
 		fmt.Sscanf(id, "%d", &intID)
 
-		result, err := db.Exec(req.Context(), `DELETE FROM goal_events WHERE id = $1`, intID)
+		result, err := db.Exec(req.Context(), `DELETE FROM goal_events WHERE id = ?`, intID)
 		if err != nil {
 			log.Printf("Error deleting goal event: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
