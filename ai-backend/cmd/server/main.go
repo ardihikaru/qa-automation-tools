@@ -47,9 +47,9 @@ func main() {
 			defer database.Close()
 			log.Println("   Database: Connected ✓")
 
-			// Initialize DB-backed services
-			learningService = learning.NewService(database.Pool)
-			skillsService = skills.NewService(database.Pool, aiService)
+			// Initialize DB-backed services (MySQL-backed *db.DB wrapper).
+			learningService = learning.NewService(database)
+			skillsService = skills.NewService(database, aiService)
 
 			// Ensure built-in skills exist
 			ctx := context.Background()

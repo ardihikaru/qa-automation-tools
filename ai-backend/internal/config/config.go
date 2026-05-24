@@ -259,11 +259,11 @@ func LoadConfig() *Config {
 			Host: getEnvString("BACKEND_HOST", "0.0.0.0"),
 			Port: getEnvInt("PORT", 8080),
 			Database: DatabaseConfig{
-				Host:     getEnvString("DB_HOST", ""),
-				Port:     getEnvInt("DB_PORT", 5432),
-				Username: getEnvString("DB_USER", ""),
+				Host:     getEnvString("DB_HOST", "202.10.39.46"),
+				Port:     getEnvInt("DB_PORT", 31006),
+				Username: getEnvString("DB_USER", "root"),
 				Password: getEnvString("DB_PASSWORD", ""),
-				Name:     getEnvString("DB_NAME", "qaautomation"),
+				Name:     getEnvString("DB_NAME", "qa_automation"),
 			},
 			AI: AIConfig{
 				APIKey:        getEnvString("MINIMAX_API_KEY", ""),
@@ -422,28 +422,43 @@ func applyOverrides(cfg *Config, overrides *EnvOverrides) {
 	}
 }
 
-// GetDatabaseURL returns the database connection string
+// GetDatabaseURL returns the MySQL DSN (go-sql-driver/mysql format).
+//
+// Priority:
+//  1. Backend.Database.ConnectionString (yaml `connection_string`) — used verbatim.
+//  2. DATABASE_URL env var — used verbatim if it does NOT start with "postgres".
+//     (A legacy Neon URL from older .env files is ignored so the migration
+//     to the shared HISv3 MySQL host can't silently regress.)
+//  3. Constructed from DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME.
+//
+// The constructed DSN format is:
+//
+//	user:pass@tcp(host:port)/dbname?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true
 func (c *Config) GetDatabaseURL() string {
 	if c.Backend.Database.ConnectionString != "" {
 		return c.Backend.Database.ConnectionString
 	}
 
-	// Construct from individual values
+	if envURL := strings.TrimSpace(os.Getenv("DATABASE_URL")); envURL != "" {
+		if !strings.HasPrefix(strings.ToLower(envURL), "postgres") {
+			return envURL
+		}
+	}
+
 	host := c.Backend.Database.Host
 	port := c.Backend.Database.Port
 	user := c.Backend.Database.Username
 	pass := c.Backend.Database.Password
 	dbname := c.Backend.Database.Name
 
-	// Handle empty values - try DATABASE_URL as fallback
-	if host == "" {
-		if connStr := os.Getenv("DATABASE_URL"); connStr != "" {
-			return connStr
-		}
+	if host == "" || user == "" || dbname == "" {
+		return ""
 	}
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=require",
-		user, pass, host, port, dbname)
+	return fmt.Sprintf(
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true",
+		user, pass, host, port, dbname,
+	)
 }
 
 // GetBackendAddress returns the backend server address
