@@ -10,17 +10,17 @@ import (
 func main() {
 	cfg := config.LoadConfig()
 
-	log.Println("📦 QA Automation Database Migration")
+	log.Println("📦 QA Automation Database Migration (MySQL)")
 
 	database, err := db.NewConnection(cfg)
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to Neon database: %v", err)
+		log.Fatalf("❌ Failed to connect to MySQL database: %v", err)
 	}
 	defer database.Close()
 
-	log.Println("✅ Neon database connected")
+	log.Println("✅ MySQL database connected")
 
-	if err := db.RunMigrations(database.Pool); err != nil {
+	if err := db.RunMigrations(database.SQL); err != nil {
 		log.Fatalf("❌ Database migration failed: %v", err)
 	}
 

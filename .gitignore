@@ -6,6 +6,7 @@ node_modules
 config.yaml
 deployment-result.json
 ai-backend/server
+ai-backend/bin/
 ai-backend/cmd/verifyminimax/result.json
 ai-backend/resources/http-client.env.json
 dashboard/nginx.conf

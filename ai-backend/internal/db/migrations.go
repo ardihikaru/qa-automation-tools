@@ -2,306 +2,282 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	"strings"
 )
 
-// migrations contains all database migrations
+// migrations contains all MySQL DDL statements. Translated from the original
+// Neon PostgreSQL schema:
+//   - SERIAL                  → INT AUTO_INCREMENT PRIMARY KEY
+//   - TIMESTAMP DEFAULT NOW() → DATETIME DEFAULT CURRENT_TIMESTAMP
+//   - BOOLEAN/JSONB           → TINYINT(1)/JSON
+//   - Schemas (qa/ai/logging) → dropped; MySQL uses a single database
+//   - DECIMAL(p,s)            → DECIMAL(p,s) (same syntax)
+//   - DO $$ ... pg_constraint → handled in Go (see ensureCheckConstraint)
+//
+// Each migration is executed in order. Idempotent guards (IF NOT EXISTS,
+// INSERT IGNORE, ON DUPLICATE KEY) make repeated runs safe.
 var migrations = []string{
-	// Create extensions (uuid-ossp is standard in PostgreSQL)
-	`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`,
-	// Note: vector extension removed for Neon PostgreSQL compatibility
-	// `CREATE EXTENSION IF NOT EXISTS "vector";`,
-	`CREATE SCHEMA IF NOT EXISTS qa;`,
-	`CREATE SCHEMA IF NOT EXISTS ai;`,
-	`CREATE SCHEMA IF NOT EXISTS logging;`,
-
-	// Core tables - Roles
+	// Core tables — Roles
 	`CREATE TABLE IF NOT EXISTS roles (
-		id SERIAL PRIMARY KEY,
-		name TEXT NOT NULL UNIQUE,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(191) NOT NULL UNIQUE,
 		description TEXT,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Core tables - Flows
+	// Core tables — Flows
 	`CREATE TABLE IF NOT EXISTS flows (
-		id SERIAL PRIMARY KEY,
-		role_id INTEGER REFERENCES roles(id),
-		name TEXT NOT NULL,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		role_id INT NULL,
+		name VARCHAR(191) NOT NULL,
 		description TEXT,
-		created_at TIMESTAMP DEFAULT NOW(),
-		updated_at TIMESTAMP DEFAULT NOW()
-	);`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		INDEX idx_flows_role_id (role_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Core tables - Steps
+	// Core tables — Steps
 	`CREATE TABLE IF NOT EXISTS steps (
-		id SERIAL PRIMARY KEY,
-		flow_id INTEGER REFERENCES flows(id) ON DELETE CASCADE,
-		step_order INTEGER NOT NULL,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		flow_id INT NULL,
+		step_order INT NOT NULL,
 		action TEXT NOT NULL,
 		selector TEXT,
 		value TEXT,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_steps_flow_id (flow_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
 	// AI Cache tables
 	`CREATE TABLE IF NOT EXISTS ai_cache (
-		id SERIAL PRIMARY KEY,
-		input_hash TEXT NOT NULL UNIQUE,
-		input_text TEXT NOT NULL,
-		output_text TEXT NOT NULL,
-		model TEXT DEFAULT 'abab6.5s-chat',
-		cost_estimate DECIMAL(10, 6) DEFAULT 0,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		input_hash VARCHAR(191) NOT NULL UNIQUE,
+		input_text MEDIUMTEXT NOT NULL,
+		output_text MEDIUMTEXT NOT NULL,
+		model VARCHAR(128) DEFAULT 'MiniMax-M2.5',
+		cost_estimate DECIMAL(10,6) DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
 	`CREATE TABLE IF NOT EXISTS embedding_cache (
-		id SERIAL PRIMARY KEY,
-		text_hash TEXT NOT NULL UNIQUE,
-		text TEXT NOT NULL,
-		embedding JSONB,
-		model TEXT DEFAULT 'emb-embedding-01',
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		text_hash VARCHAR(191) NOT NULL UNIQUE,
+		text MEDIUMTEXT NOT NULL,
+		embedding JSON,
+		model VARCHAR(128) DEFAULT 'emb-embedding-01',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Learning Cache (context-aware) - using JSONB for embedding for compatibility
+	// Learning Cache (context-aware)
 	`CREATE TABLE IF NOT EXISTS learning_cache (
-		id SERIAL PRIMARY KEY,
+		id INT AUTO_INCREMENT PRIMARY KEY,
 		intent TEXT NOT NULL,
-		embedding JSONB,
+		embedding JSON,
 		action TEXT NOT NULL,
 		page TEXT NOT NULL,
-		success_score DECIMAL(3, 2) DEFAULT 0.5,
-		usage_count INTEGER DEFAULT 1,
-		last_success TIMESTAMP,
-		decay_factor DECIMAL(3, 2) DEFAULT 1.0,
-		created_at TIMESTAMP DEFAULT NOW(),
-		updated_at TIMESTAMP DEFAULT NOW()
-	);`,
+		success_score DECIMAL(3,2) DEFAULT 0.5,
+		usage_count INT DEFAULT 1,
+		last_success DATETIME NULL,
+		decay_factor DECIMAL(3,2) DEFAULT 1.0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// QA System - Skills
+	// QA System — Skills
 	`CREATE TABLE IF NOT EXISTS skills (
-		id SERIAL PRIMARY KEY,
-		name TEXT NOT NULL UNIQUE,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(191) NOT NULL UNIQUE,
 		description TEXT,
-		check_type TEXT NOT NULL,
+		check_type VARCHAR(64) NOT NULL,
 		check_query TEXT NOT NULL,
-		severity TEXT DEFAULT 'medium',
-		is_builtin BOOLEAN DEFAULT TRUE,
-		is_active BOOLEAN DEFAULT TRUE,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		severity VARCHAR(32) DEFAULT 'medium',
+		is_builtin TINYINT(1) DEFAULT 1,
+		is_active TINYINT(1) DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// QA System - Skill Logs
+	// QA System — Skill Logs
 	`CREATE TABLE IF NOT EXISTS skill_logs (
-		id SERIAL PRIMARY KEY,
-		skill_id INTEGER REFERENCES skills(id),
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		skill_id INT NULL,
 		page TEXT NOT NULL,
 		action TEXT NOT NULL,
 		result TEXT NOT NULL,
-		is_passed BOOLEAN DEFAULT FALSE,
+		is_passed TINYINT(1) DEFAULT 0,
 		error_message TEXT,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_skill_logs_skill_id (skill_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// QA System - Learned Skills
+	// QA System — Learned Skills
 	`CREATE TABLE IF NOT EXISTS learned_skills (
-		id SERIAL PRIMARY KEY,
-		name TEXT NOT NULL,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(191) NOT NULL,
 		description TEXT,
 		pattern TEXT NOT NULL,
-		check_type TEXT NOT NULL,
+		check_type VARCHAR(64) NOT NULL,
 		check_query TEXT NOT NULL,
-		frequency INTEGER DEFAULT 1,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		frequency INT DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// QA System - Raw Issues
+	// QA System — Raw Issues
 	`CREATE TABLE IF NOT EXISTS raw_issues (
-		id SERIAL PRIMARY KEY,
-		page TEXT NOT NULL,
-		action TEXT NOT NULL,
-		error_type TEXT,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		page VARCHAR(255) NOT NULL,
+		action VARCHAR(255) NOT NULL,
+		error_type VARCHAR(128),
 		error_text TEXT,
-		category TEXT,
-		severity TEXT DEFAULT 'medium',
-		is_fixed BOOLEAN DEFAULT FALSE,
+		category VARCHAR(64),
+		severity VARCHAR(32) DEFAULT 'medium',
+		is_fixed TINYINT(1) DEFAULT 0,
 		notes TEXT,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
-	`UPDATE raw_issues SET page = 'unknown-page' WHERE BTRIM(COALESCE(page, '')) = '';`,
-	`UPDATE raw_issues SET action = 'unknown-action' WHERE BTRIM(COALESCE(action, '')) = '';`,
-	`UPDATE raw_issues SET severity = 'medium' WHERE BTRIM(COALESCE(severity, '')) = '';`,
-	`DO $$
-	BEGIN
-		IF NOT EXISTS (
-			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_page_not_blank'
-		) THEN
-			ALTER TABLE raw_issues
-			ADD CONSTRAINT raw_issues_page_not_blank CHECK (BTRIM(page) <> '');
-		END IF;
-	END $$;`,
-	`DO $$
-	BEGIN
-		IF NOT EXISTS (
-			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_action_not_blank'
-		) THEN
-			ALTER TABLE raw_issues
-			ADD CONSTRAINT raw_issues_action_not_blank CHECK (BTRIM(action) <> '');
-		END IF;
-	END $$;`,
-	`DO $$
-	BEGIN
-		IF NOT EXISTS (
-			SELECT 1 FROM pg_constraint WHERE conname = 'raw_issues_severity_not_blank'
-		) THEN
-			ALTER TABLE raw_issues
-			ADD CONSTRAINT raw_issues_severity_not_blank CHECK (BTRIM(severity) <> '');
-		END IF;
-	END $$;`,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_raw_issues_page (page),
+		INDEX idx_raw_issues_fixed (is_fixed)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	`UPDATE raw_issues SET page = 'unknown-page' WHERE TRIM(COALESCE(page, '')) = '';`,
+	`UPDATE raw_issues SET action = 'unknown-action' WHERE TRIM(COALESCE(action, '')) = '';`,
+	`UPDATE raw_issues SET severity = 'medium' WHERE TRIM(COALESCE(severity, '')) = '';`,
 
-	// QA System - Issue Suggestions
+	// QA System — Issue Suggestions
 	`CREATE TABLE IF NOT EXISTS issue_suggestions (
-		id SERIAL PRIMARY KEY,
-		issue_id INTEGER REFERENCES raw_issues(id) ON DELETE CASCADE,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		issue_id INT NULL,
 		suggestion TEXT NOT NULL,
-		confidence DECIMAL(3, 2) DEFAULT 0.5,
-		target TEXT,
-		file_path TEXT,
-		diff TEXT,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		confidence DECIMAL(3,2) DEFAULT 0.5,
+		target VARCHAR(64),
+		file_path VARCHAR(512),
+		diff MEDIUMTEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_issue_suggestions_issue_id (issue_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Analytics - Request Logs
+	// Analytics — Request Logs
 	`CREATE TABLE IF NOT EXISTS request_logs (
-		id SERIAL PRIMARY KEY,
-		endpoint TEXT NOT NULL,
-		method TEXT NOT NULL,
-		input_tokens INTEGER DEFAULT 0,
-		output_tokens INTEGER DEFAULT 0,
-		cost_estimate DECIMAL(10, 6) DEFAULT 0,
-		cache_hit BOOLEAN DEFAULT FALSE,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		endpoint VARCHAR(255) NOT NULL,
+		method VARCHAR(16) NOT NULL,
+		input_tokens INT DEFAULT 0,
+		output_tokens INT DEFAULT 0,
+		cost_estimate DECIMAL(10,6) DEFAULT 0,
+		cache_hit TINYINT(1) DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_request_logs_endpoint (endpoint),
+		INDEX idx_request_logs_created (created_at)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Analytics - Flow Outcomes
+	// Analytics — Flow Outcomes
 	`CREATE TABLE IF NOT EXISTS flow_outcomes (
-		id SERIAL PRIMARY KEY,
-		flow_id INTEGER REFERENCES flows(id),
-		status TEXT NOT NULL,
-		duration_ms INTEGER,
-		steps_completed INTEGER,
-		issues_found INTEGER DEFAULT 0,
-		created_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		flow_id INT NULL,
+		status VARCHAR(64) NOT NULL,
+		duration_ms INT,
+		steps_completed INT,
+		issues_found INT DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_flow_outcomes_flow_id (flow_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Job runs - persisted quick-action audit history
+	// Job runs — persisted quick-action audit history
 	`CREATE TABLE IF NOT EXISTS job_runs (
-		id TEXT PRIMARY KEY,
-		type TEXT NOT NULL,
-		status TEXT NOT NULL,
-		payload JSONB,
-		result JSONB,
+		id VARCHAR(191) PRIMARY KEY,
+		type VARCHAR(64) NOT NULL,
+		status VARCHAR(32) NOT NULL,
+		payload JSON,
+		result JSON,
 		error TEXT,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		started_at TIMESTAMP,
-		completed_at TIMESTAMP,
-		duration_ms BIGINT
-	);`,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		started_at DATETIME NULL,
+		completed_at DATETIME NULL,
+		duration_ms BIGINT,
+		INDEX idx_job_runs_type (type),
+		INDEX idx_job_runs_status (status),
+		INDEX idx_job_runs_created_at (created_at)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Analytics - Goal Events
+	// Analytics — Goal Events
 	`CREATE TABLE IF NOT EXISTS goal_events (
-		id SERIAL PRIMARY KEY,
-		goal_name TEXT NOT NULL,
-		confidence DECIMAL(3, 2) DEFAULT 0,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		goal_name VARCHAR(191) NOT NULL,
+		confidence DECIMAL(3,2) DEFAULT 0,
 		page TEXT,
 		action TEXT,
-		detected_at TIMESTAMP DEFAULT NOW()
-	);`,
+		detected_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Analytics - Goal Events - Add missing columns (for existing tables)
-	`ALTER TABLE goal_events ADD COLUMN IF NOT EXISTS page TEXT;`,
-	`ALTER TABLE goal_events ADD COLUMN IF NOT EXISTS action TEXT;`,
-
-	// Learning System - Navigation Edges (for navigation graph)
+	// Learning System — Navigation Edges
 	`CREATE TABLE IF NOT EXISTS navigation_edges (
-		id SERIAL PRIMARY KEY,
-		source_page TEXT NOT NULL,
-		target_page TEXT NOT NULL,
-		action TEXT NOT NULL,
-		success_count INTEGER DEFAULT 0,
-		failure_count INTEGER DEFAULT 0,
-		success_rate DECIMAL(3, 2) DEFAULT 0.5,
-		avg_duration_ms INTEGER DEFAULT 0,
-		last_used TIMESTAMP,
-		created_at TIMESTAMP DEFAULT NOW(),
-		updated_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		source_page VARCHAR(255) NOT NULL,
+		target_page VARCHAR(255) NOT NULL,
+		action VARCHAR(191) NOT NULL,
+		success_count INT DEFAULT 0,
+		failure_count INT DEFAULT 0,
+		success_rate DECIMAL(5,4) DEFAULT 0.5,
+		avg_duration_ms INT DEFAULT 0,
+		last_used DATETIME NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		INDEX idx_navigation_edges_source (source_page),
+		INDEX idx_navigation_edges_target (target_page)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Learning System - Action Sequences (for multi-step plans)
+	// Learning System — Action Sequences
 	`CREATE TABLE IF NOT EXISTS action_sequences (
-		id SERIAL PRIMARY KEY,
-		goal TEXT NOT NULL,
-		steps JSONB NOT NULL,
-		success_count INTEGER DEFAULT 0,
-		failure_count INTEGER DEFAULT 0,
-		avg_duration_ms INTEGER,
-		last_used TIMESTAMP,
-		is_valid BOOLEAN DEFAULT TRUE,
-		created_at TIMESTAMP DEFAULT NOW(),
-		updated_at TIMESTAMP DEFAULT NOW()
-	);`,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		goal VARCHAR(191) NOT NULL,
+		steps JSON NOT NULL,
+		success_count INT DEFAULT 0,
+		failure_count INT DEFAULT 0,
+		avg_duration_ms INT,
+		last_used DATETIME NULL,
+		is_valid TINYINT(1) DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		INDEX idx_action_sequences_goal (goal)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 
-	// Learning System - Context Cache (context-aware learning)
+	// Learning System — Context Cache
 	`CREATE TABLE IF NOT EXISTS context_cache (
-		id SERIAL PRIMARY KEY,
-		context_key TEXT NOT NULL,
-		context_value TEXT NOT NULL,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		context_key VARCHAR(191) NOT NULL,
+		context_value VARCHAR(191) NOT NULL,
 		best_action TEXT,
-		success_score DECIMAL(3, 2) DEFAULT 0.5,
-		usage_count INTEGER DEFAULT 1,
-		last_success TIMESTAMP,
-		created_at TIMESTAMP DEFAULT NOW(),
-		updated_at TIMESTAMP DEFAULT NOW()
-	);`,
-
-	// Create indices for better performance
-	`CREATE INDEX IF NOT EXISTS idx_ai_cache_hash ON ai_cache(input_hash);`,
-	`CREATE INDEX IF NOT EXISTS idx_embedding_cache_hash ON embedding_cache(text_hash);`,
-	`CREATE INDEX IF NOT EXISTS idx_learning_cache_intent ON learning_cache(intent);`,
-	// Note: vector index removed for Neon PostgreSQL compatibility
-	// `CREATE INDEX IF NOT EXISTS idx_learning_cache_embedding ON learning_cache embedding vector_cosine_ops;`,
-	`CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);`,
-	`CREATE INDEX IF NOT EXISTS idx_raw_issues_page ON raw_issues(page);`,
-	`CREATE INDEX IF NOT EXISTS idx_raw_issues_fixed ON raw_issues(is_fixed);`,
-	`CREATE INDEX IF NOT EXISTS idx_request_logs_endpoint ON request_logs(endpoint);`,
-	`CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_job_runs_type ON job_runs(type);`,
-	`CREATE INDEX IF NOT EXISTS idx_job_runs_status ON job_runs(status);`,
-	`CREATE INDEX IF NOT EXISTS idx_job_runs_created_at ON job_runs(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_source ON navigation_edges(source_page);`,
-	`CREATE INDEX IF NOT EXISTS idx_navigation_edges_target ON navigation_edges(target_page);`,
-	`CREATE INDEX IF NOT EXISTS idx_action_sequences_goal ON action_sequences(goal);`,
-	`CREATE INDEX IF NOT EXISTS idx_context_cache_key ON context_cache(context_key);`,
-	`CREATE INDEX IF NOT EXISTS idx_skill_logs_skill_id ON skill_logs(skill_id);`,
-	`CREATE INDEX IF NOT EXISTS idx_skill_logs_created ON skill_logs(created_at);`,
-	`CREATE INDEX IF NOT EXISTS idx_skill_logs_passed ON skill_logs(is_passed);`,
+		success_score DECIMAL(3,2) DEFAULT 0.5,
+		usage_count INT DEFAULT 1,
+		last_success DATETIME NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		INDEX idx_context_cache_key (context_key)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
-// RunMigrations executes all database migrations
-func RunMigrations(db *pgxpool.Pool) error {
-	log.Println("📦 Running database migrations...")
+// RunMigrations executes all MySQL migrations sequentially.
+func RunMigrations(sqlDB *sql.DB) error {
+	log.Println("📦 Running MySQL migrations...")
 
 	for i, migration := range migrations {
-		if _, err := db.Exec(context.Background(), migration); err != nil {
-			return fmt.Errorf("migration %d failed: %w", i, err)
+		if _, err := sqlDB.ExecContext(context.Background(), migration); err != nil {
+			return fmt.Errorf("migration %d failed: %w\nSQL: %s", i, err, summarize(migration))
 		}
 		log.Printf("  ✅ Migration %d/%d completed", i+1, len(migrations))
 	}
 
-	log.Println("✅ All migrations completed successfully")
+	log.Println("✅ All MySQL migrations completed successfully")
 	return nil
+}
+
+// summarize returns the first non-empty line of a SQL statement for log brevity.
+func summarize(sqlStr string) string {
+	for _, line := range strings.Split(sqlStr, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return sqlStr
 }
