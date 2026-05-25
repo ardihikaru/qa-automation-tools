@@ -6,10 +6,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/qa-automation/ai-backend/internal/api"
+	"github.com/qa-automation/ai-backend/internal/auth"
 	"github.com/qa-automation/ai-backend/internal/config"
 	"github.com/qa-automation/ai-backend/internal/db"
+	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
@@ -64,6 +68,44 @@ func main() {
 	// Initialize router with possibly nil database
 	router := api.NewRouter(database, aiService, learningService, skillsService)
 
+	// Wire authentication when the database is connected. Without a DB we have
+	// no users table; the app stays open (current pre-auth behaviour) and logs
+	// a warning so it's obvious in journalctl.
+	if database != nil {
+		seedCount, err := seed.SeedUsers(context.Background(), database.SQL, seed.Options{
+			Neo4jURI:      os.Getenv("TASKMGR_NEO4J_URI"),
+			Neo4jUser:     os.Getenv("TASKMGR_NEO4J_USERNAME"),
+			Neo4jPassword: os.Getenv("TASKMGR_NEO4J_PASSWORD"),
+			Neo4jDatabase: getEnv("TASKMGR_NEO4J_DATABASE", "neo4j"),
+			AdminUsername: os.Getenv("ADMIN_USERNAME"),
+			AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+		})
+		if err != nil {
+			log.Printf("⚠️  seed failed: %v", err)
+		} else {
+			log.Printf("🔐 Auth: %d users present in `users` table", seedCount)
+		}
+
+		cookieName := getEnv("SESSION_COOKIE_NAME", "qa_session")
+		ttlHours := getEnvInt("SESSION_TTL_HOURS", 12)
+		secureCookie := getEnvBool("SESSION_COOKIE_SECURE", false)
+
+		authHandlers := &api.AuthHandlers{
+			DB:         database.SQL,
+			CookieName: cookieName,
+			SessionTTL: time.Duration(ttlHours) * time.Hour,
+			Secure:     secureCookie,
+		}
+		requireAuth := auth.Require(auth.Config{
+			DB:         database.SQL,
+			CookieName: cookieName,
+		})
+		router.SetAuth(authHandlers, requireAuth, getEnv("DASHBOARD_ORIGIN", "http://localhost:6173"))
+		log.Printf("🔐 Auth: enabled (cookie=%s, ttl=%dh)", cookieName, ttlHours)
+	} else {
+		log.Println("⚠️  Auth: disabled (no database — backend is OPEN)")
+	}
+
 	// Get server address - use PORT env var if available (Cloud Run standard)
 	port := cfg.Backend.Port
 	if envPort := os.Getenv("PORT"); envPort != "" {
@@ -74,4 +116,34 @@ func main() {
 	// Start server
 	log.Printf("🚀 Server starting on %s...", addr)
 	log.Fatal(http.ListenAndServe(addr, router))
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	switch v {
+	case "1", "true", "TRUE", "True":
+		return true
+	case "0", "false", "FALSE", "False":
+		return false
+	}
+	return fallback
 }
