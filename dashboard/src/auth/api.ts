@@ -1,0 +1,97 @@
+// Thin fetch wrappers around /api/auth/*. Centralised so views never call the
+// endpoints directly and so we always include credentials (cookie).
+//
+// On a 401 against any /api/* call, the global handler in AuthContext clears
+// the user and bounces to /login — this file only emits a typed error.
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  fullName?: string;
+  email?: string;
+  whatsApp?: string;
+  odooID?: string;
+  role: string;
+  isLead: boolean;
+  active: boolean;
+  mustChangePassword: boolean;
+}
+
+export interface LoginResponse {
+  user: AuthUser;
+  mustChangePassword: boolean;
+}
+
+export class AuthError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const res = await fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+  return res;
+}
+
+function readError(res: Response, fallback: string): Promise<AuthError> {
+  return res
+    .json()
+    .catch(() => ({ error: fallback }))
+    .then((body: { error?: string }) => new AuthError(body.error || fallback, res.status));
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const res = await authFetch('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    throw await readError(res, 'Invalid username or password');
+  }
+  return res.json();
+}
+
+export async function logout(): Promise<void> {
+  await authFetch('/api/auth/logout', { method: 'POST' });
+}
+
+export async function me(): Promise<LoginResponse | null> {
+  const res = await authFetch('/api/auth/me');
+  if (res.status === 401) return null;
+  if (!res.ok) throw await readError(res, 'Could not load session');
+  return res.json();
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await authFetch('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!res.ok) {
+    throw await readError(res, 'Could not change password');
+  }
+}
+
+// Role → Tailwind classes for the badge pill. Mirrors the palette from
+// the implementation plan; falls back to slate for unknown roles.
+const ROLE_BADGE: Record<string, string> = {
+  Admin: 'bg-slate-100 text-slate-700 ring-slate-200',
+  Developer: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
+  DevOps: 'bg-violet-100 text-violet-700 ring-violet-200',
+  QA: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
+  QC: 'bg-amber-100 text-amber-700 ring-amber-200',
+  'UI/UX Designer': 'bg-rose-100 text-rose-700 ring-rose-200',
+};
+
+export function roleBadgeClass(role: string): string {
+  return ROLE_BADGE[role] || ROLE_BADGE.Admin;
+}

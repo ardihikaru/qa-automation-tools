@@ -31,6 +31,21 @@ type Router struct {
 	learningService *learning.Service
 	skillsService   *skills.Service
 	jobs            *jobManager
+
+	// Auth wiring — nil when the database is unavailable. When set, all /api/*
+	// routes outside the allow-list go through requireAuth.
+	authHandlers   *AuthHandlers
+	requireAuth    func(http.Handler) http.Handler
+	dashboardOrigin string
+}
+
+// SetAuth wires the auth handlers + middleware. Pass dashboardOrigin = "*" to
+// keep the legacy permissive CORS; otherwise an exact origin (no wildcard) so
+// the browser will send the session cookie.
+func (r *Router) SetAuth(h *AuthHandlers, mw func(http.Handler) http.Handler, dashboardOrigin string) {
+	r.authHandlers = h
+	r.requireAuth = mw
+	r.dashboardOrigin = dashboardOrigin
 }
 
 type jobStatus string
@@ -513,17 +528,87 @@ func scanJobValues(scanner dbRowScanner) (jobRecord, error) {
 	return job, nil
 }
 
-// ServeHTTP handles HTTP requests
+// ServeHTTP handles HTTP requests. Order of operations:
+//  1. CORS headers (origin-specific when auth is on, wildcard when off).
+//  2. Allow-list paths bypass auth (/health, /api/auth/login, OPTIONS).
+//  3. Everything else passes through requireAuth (when wired) before the
+//     existing per-path dispatch.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// Set CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	r.applyCORS(w, req)
 
-	// Handle OPTIONS
-	if req.Method == "OPTIONS" {
+	if req.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
 		return
+	}
+
+	// Allow-list — bypass auth middleware entirely.
+	if r.authHandlers != nil && req.URL.Path == "/api/auth/login" {
+		r.authHandlers.Login(w, req)
+		return
+	}
+	if req.URL.Path == "/health" {
+		r.serveHealth(w)
+		return
+	}
+
+	// Everything else goes through the auth middleware (if wired) before
+	// hitting the existing per-path dispatch.
+	dispatch := http.HandlerFunc(r.dispatchAuthenticated)
+	if r.requireAuth != nil {
+		r.requireAuth(dispatch).ServeHTTP(w, req)
+		return
+	}
+	dispatch.ServeHTTP(w, req)
+}
+
+func (r *Router) applyCORS(w http.ResponseWriter, req *http.Request) {
+	origin := r.dashboardOrigin
+	if origin == "" {
+		origin = "*"
+	}
+	// When CORS includes credentials, the origin MUST be a single value, not "*".
+	if origin == "*" && req.Header.Get("Origin") != "" && r.authHandlers != nil {
+		origin = req.Header.Get("Origin")
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	if r.authHandlers != nil {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
+}
+
+func (r *Router) serveHealth(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusOK)
+	minimaxStatus := "not_configured"
+	if r.aiService != nil && r.aiService.APIKey != "" {
+		minimaxStatus = "configured"
+	}
+	if r.db != nil {
+		fmt.Fprintf(w, `{"status":"ok","database":"connected","minimax":"%s"}`, minimaxStatus)
+	} else {
+		fmt.Fprintf(w, `{"status":"ok","database":"disconnected","minimax":"%s"}`, minimaxStatus)
+	}
+}
+
+// dispatchAuthenticated routes any path that survived the auth middleware.
+// This is the original big switch, minus the CORS/health blocks that moved
+// up into ServeHTTP.
+func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request) {
+	// Auth endpoints (other than login, which bypasses auth above).
+	if r.authHandlers != nil {
+		switch req.URL.Path {
+		case "/api/auth/logout":
+			r.authHandlers.Logout(w, req)
+			return
+		case "/api/auth/me":
+			r.authHandlers.Me(w, req)
+			return
+		case "/api/auth/change-password":
+			r.authHandlers.ChangePassword(w, req)
+			return
+		}
 	}
 
 	// Job endpoints include path params (/api/jobs/:id).
@@ -532,7 +617,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Health check - always available
+	// Health check kept for parity if a downstream caller hits it after auth.
 	if req.URL.Path == "/health" {
 		w.WriteHeader(http.StatusOK)
 		minimaxStatus := "not_configured"

@@ -254,6 +254,34 @@ var migrations = []string{
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 		INDEX idx_context_cache_key (context_key)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Auth — Users (identity copied once from taskmgr Neo4j; passwords managed locally)
+	`CREATE TABLE IF NOT EXISTS users (
+		id              CHAR(36) PRIMARY KEY,
+		username        VARCHAR(64)  NOT NULL UNIQUE,
+		full_name       VARCHAR(191),
+		email           VARCHAR(191),
+		whatsapp        VARCHAR(32),
+		odoo_id         VARCHAR(32),
+		role            VARCHAR(32)  NOT NULL,
+		password_hash   VARCHAR(128) NOT NULL,
+		must_change_pw  TINYINT(1)   NOT NULL DEFAULT 1,
+		is_lead         TINYINT(1)   NOT NULL DEFAULT 0,
+		active          TINYINT(1)   NOT NULL DEFAULT 1,
+		created_at      DATETIME     DEFAULT CURRENT_TIMESTAMP,
+		updated_at      DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		INDEX idx_users_role (role)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Auth — Sessions (cookie tokens; revoked by deleting the row)
+	`CREATE TABLE IF NOT EXISTS sessions (
+		token       CHAR(64) PRIMARY KEY,
+		user_id     CHAR(36) NOT NULL,
+		expires_at  DATETIME NOT NULL,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+		INDEX idx_sessions_user (user_id),
+		INDEX idx_sessions_expiry (expires_at)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 // RunMigrations executes all MySQL migrations sequentially.
