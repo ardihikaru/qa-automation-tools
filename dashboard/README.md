@@ -37,7 +37,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `src/main.tsx` | Mounts `<BrowserRouter>` > `<AuthProvider>` > `<App />` |
 | `src/App.tsx` | Route table; everything except `/login` is wrapped in `ProtectedRoute` |
 | `src/auth/` | Session client (`api.ts`), `AuthProvider`/`useAuth` (`AuthContext.tsx`), `ProtectedRoute` |
-| `src/components/` | `Layout` (sidebar nav + header), `UserChip` (identity, role badge, logout) |
+| `src/components/` | `Layout` (sidebar nav + header), `UserChip` (identity, role badge, logout), `SubmitButton` (disabled + spinner while pending; use for every write action), `PageTransition` (route-change fade/slide), `icons/` (custom SVG icons) |
 | `src/views/` | Page views (one per route below) |
 | `src/utils/` | Mock data generators (`mockDataGenerator.ts`, `fixTrackingMockGenerator.ts`) |
 
@@ -56,6 +56,8 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/skills` | `SkillsView` | QA skills, stats, and logs |
 | `/navigation` | `NavigationGraphView` | Learned page-navigation graph |
 | `/learning` | `LearningProgressView` | Learning cache progress |
+| `/products` | `ProductsView` | Master list of products (repo link, staging URL, root dir in the repo pool, branch); Verify / Clone / Switch branch |
+| `/settings` | `SettingsView` | Read-only configuration (AI gateway pinned to claude-v3, services health) and architecture diagram |
 
 ### Auth module (`src/auth/`)
 
@@ -82,6 +84,9 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/issues?...` | GET | `views/FixTracking.tsx` |
 | `/api/issues/status`, `/api/issues/notes` | POST | `views/FixTracking.tsx` |
 | `/api/cost/overview`, `/api/cost/trend`, `/api/cost/by-feature`, `/api/cost/efficiency` | GET | `views/CostAnalytics.tsx` |
+| `/api/settings` | GET | `views/SettingsView.tsx` |
+| `/api/products`, `/api/products/{id}` | GET, POST, PUT, DELETE | `views/ProductsView.tsx` |
+| `/api/products/{id}/verify`, `/clone`, `/checkout` | POST | `views/ProductsView.tsx` |
 | `/api/skills?...`, `/api/skills/stats?...`, `/api/skills/logs?...` | GET | `views/SkillsView.tsx` |
 | `/api/learning?limit=100`, `/api/learning/navigation?source=` | GET | `views/NavigationGraphView.tsx` |
 | `/api/learning?limit=500` | GET | `views/LearningProgressView.tsx` |

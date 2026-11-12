@@ -8,6 +8,8 @@ import FixTracking from './views/FixTracking';
 import SkillsView from './views/SkillsView';
 import NavigationGraphView from './views/NavigationGraphView';
 import LearningProgressView from './views/LearningProgressView';
+import ProductsView from './views/ProductsView';
+import SettingsView from './views/SettingsView';
 import LoginView from './views/LoginView';
 import ChangePasswordView from './views/ChangePasswordView';
 import { ProtectedRoute } from './auth/ProtectedRoute';
@@ -39,6 +41,8 @@ function App() {
                 <Route path="/skills" element={<SkillsView />} />
                 <Route path="/navigation" element={<NavigationGraphView />} />
                 <Route path="/learning" element={<LearningProgressView />} />
+                <Route path="/products" element={<ProductsView />} />
+                <Route path="/settings" element={<SettingsView />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

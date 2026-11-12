@@ -6,6 +6,9 @@ export default {
   ],
   theme: {
     extend: {
+      transitionTimingFunction: {
+        'out-strong': 'cubic-bezier(0.23, 1, 0.32, 1)',
+      },
       colors: {
         primary: {
           50: '#eff6ff',

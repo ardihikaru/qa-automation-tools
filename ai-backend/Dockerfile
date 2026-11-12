@@ -20,7 +20,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/serv
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# git + gh clone and switch product repos in the repo pool (GH_TOKEN comes from env).
+RUN apk add --no-cache ca-certificates tzdata git github-cli
 
 WORKDIR /app
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import SubmitButton from '../components/SubmitButton';
 import { CheckCircle, XCircle, Filter, Search, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   type FixTrackingAnalytics,
@@ -57,6 +58,7 @@ export default function FixTracking() {
 
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null);
   const [editingNotesIssueId, setEditingNotesIssueId] = useState<number | null>(null);
+  const [savingNotesIssueId, setSavingNotesIssueId] = useState<number | null>(null);
   const [notesText, setNotesText] = useState('');
 
   useEffect(() => {
@@ -182,6 +184,8 @@ export default function FixTracking() {
   };
 
   const saveNotes = async (issueId: number) => {
+    if (savingNotesIssueId !== null) return; // already saving: ignore double submit
+    setSavingNotesIssueId(issueId);
     try {
       const response = await fetch('/api/issues/notes', {
         method: 'POST',
@@ -202,6 +206,8 @@ export default function FixTracking() {
     } catch (error) {
       console.error('Failed to save notes:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Failed to save issue notes');
+    } finally {
+      setSavingNotesIssueId(null);
     }
   };
 
@@ -438,13 +444,16 @@ export default function FixTracking() {
                               placeholder="Add notes..."
                             />
                             <div className="flex gap-2">
-                              <button
+                              <SubmitButton
                                 onClick={() => saveNotes(issue.id)}
+                                loading={savingNotesIssueId === issue.id}
+                                loadingLabel="Saving…"
                                 className="text-xs px-2 py-1 rounded bg-primary-600 text-white"
                               >
                                 Save
-                              </button>
+                              </SubmitButton>
                               <button
+                                disabled={savingNotesIssueId === issue.id}
                                 onClick={cancelEditNotes}
                                 className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
                               >
