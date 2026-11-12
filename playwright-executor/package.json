@@ -1,0 +1,24 @@
+{
+  "name": "playwright-executor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small HTTP service that runs Playwright jobs (QA exploration, flow recording) against HISv3 staging for qa-automation ai-backend",
+  "main": "dist/src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "tsc -p . && node --test \"dist/test/**/*.test.js\"",
+    "start": "node dist/src/server.js",
+    "browsers": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "1.59.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}
