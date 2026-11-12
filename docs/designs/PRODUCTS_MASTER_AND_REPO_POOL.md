@@ -1,7 +1,7 @@
 # Products master list and repo pool
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Implemented on the owner's decisions of 2026-11-13 (see Decisions). A Goldfish review via `/egm:egm-review` has not been run yet.
+*   **Status:** Implemented on the owner's decisions of 2026-11-13 (see Decisions). Goldfish review run on 2026-11-13 (design + codebase-details reviewers); fixes are in PR #4 (see Review outcome).
 *   **Date:** 2026-11-13
 
 ## Overview
@@ -52,3 +52,17 @@ Admin, DevOps and Developer may create, edit, delete, clone and switch branch. Q
 
 ## Verification Plan
 Go table tests for URL/branch/path validation and verify checks (temp git dirs); `go test -mod=mod ./...`; dashboard build + tsc; manual verify against a real repo and a bogus path.
+
+
+## Review outcome (2026-11-13)
+
+Fixed in PR #4: role check now fails closed; children of gh/git get a minimal environment with `safe.directory` scoped to the checkout (was `*` with the full backend env); timeout kills the process group; failed clone cleans up; clone/checkout run detached from the request; verify takes the directory lock and its stored result is conditional on unchanged inputs; overlapping `root_dir` rejected; staging probe refuses loopback/link-local/metadata addresses, credentials in URLs, and returns coarse errors; origin shown without userinfo; `REPO_POOL_ALLOWED_OWNERS` allowlist; stricter repo URL/branch rules; Playwright detection parses dependencies and ignores symlinks; role-aware buttons in the UI.
+
+Accepted limitations (follow-ups):
+*   **Root-owned checkouts.** The container runs as root, so cloned files are root-owned on the host; the host executor can read but not modify them. Running the backend as a non-root uid matching the host user is the fix.
+*   **Token breadth.** The token in use is the owner's personal token. Use a fine-grained token limited to the product repos and set `REPO_POOL_ALLOWED_OWNERS`.
+*   **Reachability is from the backend container,** not the host executor; `playwright_accessible` is a heuristic. A probe performed by the executor would be exact.
+*   **Untrusted code.** Cloned repos and any branch of them become code the executor may run; only trusted owners should be allowed.
+*   **Long clones.** A clone plus checkout can exceed the 300 s proxy timeout; the operation still completes server-side and the page can be refreshed.
+*   **No audit trail** of who cloned or changed what, and the lock map is unbounded (small).
+*   Branch edits do not switch the checkout; use Switch branch.

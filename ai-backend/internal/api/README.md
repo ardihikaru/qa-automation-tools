@@ -33,7 +33,7 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/products` | GET, POST | `handleProducts` (`products.go`): master list of products (repo link, staging URL, `root_dir` inside the repo pool, branch, `playwright_accessible`, last verify report). Writes: Admin/DevOps/Developer |
 | `/api/products/{id}` | GET, PUT, DELETE | same; DELETE removes the registry row only, never the checkout |
 | `/api/products/{id}/verify` | POST | Runs `repopool.Verify` (root dir, git repo, origin matches, Playwright present, staging reachable) and stores the report. Also run by `StartProductVerifier` on `PRODUCTS_VERIFY_INTERVAL_MINUTES`. Admin/DevOps/Developer/QA/QC |
-| `/api/products/{id}/clone`, `/checkout` | POST | `gh repo clone` into the pool / `git fetch` + checkout + ff-only merge of `{branch}`. 409 when another operation runs on the same dir |
+| `/api/products/{id}/clone`, `/checkout` | POST | `gh repo clone` into the pool / `git fetch` + checkout + ff-only merge of `{branch}`. 409 when another operation runs on the same dir. Operations run on a context detached from the request (a client disconnect or a proxy 504 does not kill them); a failed clone removes its partial directory. `/verify` also returns 409 while a clone/checkout holds the dir |
 | `/api/settings` | GET | `handleSettings` (`settings.go`): non-secret config snapshot injected by `SetSettings`; returns gateway host only (no URL path, userinfo or keys) and `pinned_to_claude_v3` |
 | `/api/roles` | GET, POST, DELETE (`?id=`) | `handleRoles` |
 | `/api/docs` | GET | `handleDocs` |
@@ -88,7 +88,9 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
 - `services/repopool` is the only code that runs `gh`/`git`. Inputs are validated (`repo_url` must be `https://github.com/<owner>/<repo>`; `root_dir` relative with no `..`; branch conservative) and commands use argument slices, never a shell.
 - Every path is resolved inside `REPO_POOL_DIR` (symlink escapes rejected). Clone and checkout take a per-directory lock.
-- `staging_url` is fetched by the backend during verify (GET, 10 s, no redirects followed). Only http(s) is accepted.
+- `staging_url` is fetched by the backend during verify (GET, 10 s, no redirects). Only http(s) without credentials is accepted; the dialer refuses loopback, link-local (cloud metadata), unspecified and multicast addresses on the resolved IP. Failure detail is coarse (`unreachable`, `timeout`, `address not allowed`, `HTTP nnn`).
+- Product access **fails closed**: no authenticated user means no access (`productRole`). `root_dir` values may not overlap (equal, parent or child). Verification results are written only if repo/URL/dir are unchanged since the check started.
+- `playwright_accessible` means: all checks passed, including staging reachable **from the backend container** and a heuristic Playwright dependency/config in the checkout. It does not prove Playwright runs on the host.
 - `GH_TOKEN` is read from the process env by `gh`/`git`, never logged or returned.
 
 ## Side Effects

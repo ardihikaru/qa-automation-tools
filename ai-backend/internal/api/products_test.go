@@ -48,6 +48,34 @@ func TestProductRole(t *testing.T) {
 	}
 }
 
+func TestProductRole_FailsClosedWithoutUser(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/products", nil)
+	if m, v := productRole(req); m || v {
+		t.Fatalf("no user must mean no access, got manage=%v verify=%v", m, v)
+	}
+}
+
+func TestRootDirOverlap(t *testing.T) {
+	others := []string{"org/repo", "solo"}
+	for _, rel := range []string{"org/repo", "org/repo/sub", "org", "solo"} {
+		if !rootDirOverlap(rel, others) {
+			t.Errorf("%q should overlap", rel)
+		}
+	}
+	for _, rel := range []string{"org/repo2", "other", "solo2", "orgx"} {
+		if rootDirOverlap(rel, others) {
+			t.Errorf("%q should not overlap", rel)
+		}
+	}
+}
+
+func TestValidateProduct_RejectsStagingCredentials(t *testing.T) {
+	p := models.Product{Name: "x", RepoURL: "https://github.com/o/r", StagingURL: "https://user:pw@staging.example.com", RootDir: "a"}
+	if msg := validateProduct(&p); msg == "" {
+		t.Fatal("credentials in staging_url must be rejected")
+	}
+}
+
 func TestHandleProducts_NoDB(t *testing.T) {
 	r := &Router{}
 	rec := httptest.NewRecorder()

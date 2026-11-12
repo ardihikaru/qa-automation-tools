@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, GitBranch, Pencil, Plus, Trash2, XCircle, Download } from 'lucide-react';
 import SubmitButton from '../components/SubmitButton';
 import { ProductsIcon, RepoCheckIcon } from '../components/icons';
+import { useAuth } from '../auth/AuthContext';
 
 interface Check {
   name: string;
@@ -65,6 +66,10 @@ function StatusChip({ p }: { p: Product }) {
 }
 
 export default function ProductsView() {
+  const { user } = useAuth();
+  // Mirrors the API (products.go productRole); the server is the authority.
+  const canManage = ['Admin', 'DevOps', 'Developer'].includes(user?.role || '');
+  const canVerify = canManage || ['QA', 'QC'].includes(user?.role || '');
   const [products, setProducts] = useState<Product[]>([]);
   const [poolEnabled, setPoolEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -182,7 +187,9 @@ export default function ProductsView() {
           </div>
         </div>
         <button
-          className="btn btn-primary flex items-center gap-2 shrink-0"
+          className="btn btn-primary flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!canManage}
+          title={canManage ? undefined : 'Your role cannot manage products'}
           onClick={() => {
             setFormError(null);
             setEditing({ id: null, form: EMPTY_FORM });
@@ -249,7 +256,7 @@ export default function ProductsView() {
                     className="btn btn-secondary text-xs px-2 py-1"
                     loading={isBusy(p.id, 'verify')}
                     loadingLabel="Verifying…"
-                    disabled={disabled || !poolEnabled}
+                    disabled={disabled || !poolEnabled || !canVerify}
                     onClick={() => runAction(p, 'verify')}
                     title="Check the checkout, origin, Playwright and staging URL"
                   >
@@ -259,7 +266,7 @@ export default function ProductsView() {
                     className="btn btn-secondary text-xs px-2 py-1"
                     loading={isBusy(p.id, 'clone')}
                     loadingLabel="Cloning…"
-                    disabled={disabled || !poolEnabled}
+                    disabled={disabled || !poolEnabled || !canManage}
                     onClick={() => runAction(p, 'clone')}
                     title="gh repo clone into the pool"
                   >
@@ -267,7 +274,7 @@ export default function ProductsView() {
                   </SubmitButton>
                   <button
                     className="btn btn-secondary text-xs px-2 py-1 inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={disabled || !poolEnabled}
+                    disabled={disabled || !poolEnabled || !canManage}
                     onClick={() => setBranchFor({ p, branch: p.branch })}
                     title="Switch branch"
                   >
@@ -275,7 +282,7 @@ export default function ProductsView() {
                   </button>
                   <button
                     className="btn btn-secondary text-xs px-2 py-1 disabled:opacity-50"
-                    disabled={disabled}
+                    disabled={disabled || !canManage}
                     aria-label={`Edit ${p.name}`}
                     onClick={() => {
                       setFormError(null);
@@ -290,7 +297,7 @@ export default function ProductsView() {
                   <SubmitButton
                     className="btn btn-secondary text-xs px-2 py-1 text-red-600"
                     loading={isBusy(p.id, 'delete')}
-                    disabled={disabled}
+                    disabled={disabled || !canManage}
                     aria-label={`Remove ${p.name}`}
                     onClick={() => remove(p)}
                   >

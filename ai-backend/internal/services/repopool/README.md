@@ -16,7 +16,9 @@ Manages product repositories checked out under one **pool directory** (`REPO_POO
 
 ## Invariants
 
-- Commands use argument slices, never a shell. Output is truncated to 2 KB.
+- Commands use argument slices, never a shell. Children get a minimal environment (`PATH`, `HOME`, `GH_TOKEN`, git config); `safe.directory` is scoped to the one checkout. A timeout kills the whole process group (`gh` spawns `git`). Output is truncated to 2 KB and the API returns only its first line.
+- `Verify` takes the same per-directory lock; if a clone/checkout holds it, the report has `Busy` and must not be stored.
+- A failed clone removes its partial target. `REPO_POOL_ALLOWED_OWNERS` (`Pool.AllowedOwners`) limits which GitHub owners can be cloned. Staging probes refuse loopback/link-local/unspecified/multicast addresses at dial time.
 - Every path is resolved inside the pool root before use.
 - At most one clone/checkout per directory at a time (`TryLock`).
 - `GH_TOKEN` is passed through the process environment (`gh auth git-credential` helper for `github.com`) and is never logged or returned.
