@@ -37,7 +37,7 @@ ssh app-host 'cd ~/devel/projects/qa-automation-tools && docker compose -f deplo
 ssh app-host 'cd ~/devel/projects/qa-automation-tools && docker compose -f deploy/qa-tool/docker-compose.prod.yml logs --tail 100 backend'
 ```
 - **Secrets:** `deploy/qa-tool/.env.prod` on app-host (mode 600). To change a value, edit it in place over ssh **without printing it**, then run `deploy.sh`. New keys must also go into `.env.prod.example`.
-- **Unpushed code:** run `git bundle create /tmp/qa.bundle <branch>` and `scp` it over. Then on app-host: `git fetch /tmp/qa.bundle <branch>:<branch> && git checkout <branch>`, followed by `deploy.sh`.
+- **Unpushed code:** run `git bundle create /tmp/qa.bundle <branch>` locally and `scp` it to app-host `/tmp/`. On app-host, if that branch is checked out, run `git pull --ff-only /tmp/qa.bundle <branch>`; otherwise run `git fetch /tmp/qa.bundle <branch>:<branch> && git checkout <branch>`. Then run `NO_PULL=1 deploy.sh`. The branch doesn't exist on GitHub yet, so a plain pull would fail.
 
 ## Edge (edge-host, shared with many products)
 - The live file is `/etc/nginx/conf.d/qa-tool.conf`. The repo mirror is `deploy/qa-tool/nginx-edge.conf`; keep them identical.

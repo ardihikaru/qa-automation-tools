@@ -3,6 +3,7 @@
 #   deploy.sh              # pull current branch (ff-only) and deploy; fails if pull fails
 #   deploy.sh <sha|tag>    # ROLLBACK / pin: deploy exactly that commit (detached HEAD)
 #   deploy.sh --branch b   # roll forward: return to branch b, pull, deploy
+#   NO_PULL=1 deploy.sh    # deploy the checked-out branch as-is (code shipped via git bundle)
 # Every deploy is appended to deploy/qa-tool/deploys.log (find the previous sha there).
 set -euo pipefail
 
@@ -27,7 +28,11 @@ case "${1:-}" in
       echo "       Roll forward with: deploy.sh --branch main   (or deploy.sh <sha> to stay pinned)"
       exit 1
     fi
-    git pull --ff-only --quiet || { echo "ERROR: git pull --ff-only failed; resolve, or deploy an explicit <sha>"; exit 1; }
+    if [[ "${NO_PULL:-}" == "1" ]]; then
+      echo "NO_PULL=1: deploying the checked-out branch without pulling"
+    else
+      git pull --ff-only --quiet || { echo "ERROR: git pull --ff-only failed; resolve, deploy an explicit <sha>, or NO_PULL=1 for bundle-shipped code"; exit 1; }
+    fi
     ;;
   *)
     git fetch --quiet origin || true
