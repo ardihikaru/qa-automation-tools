@@ -21,6 +21,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
@@ -36,6 +37,12 @@ type Router struct {
 	// Playwright execution (nil = simulated jobs). See jobs_executor.go.
 	executor        *executor.Client
 	executorTimeout time.Duration
+
+	// Product repo pool (nil = clone/verify disabled). See products.go.
+	repoPool *repopool.Pool
+
+	// Non-secret config snapshot for GET /api/settings. See settings.go.
+	settings SettingsInfo
 
 	// Auth wiring — nil when the database is unavailable. When set, all /api/*
 	// routes outside the allow-list go through requireAuth.
@@ -642,6 +649,12 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		}
 	}
 
+	// Products: /api/products and /api/products/{id}[/verify|clone|checkout].
+	if req.URL.Path == "/api/products" || strings.HasPrefix(req.URL.Path, "/api/products/") {
+		r.handleProducts(w, req)
+		return
+	}
+
 	// Job endpoints include path params (/api/jobs/:id).
 	if strings.HasPrefix(req.URL.Path, "/api/jobs/") {
 		r.handleJobs(w, req)
@@ -659,6 +672,10 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 	// Flow endpoints
 	case "/api/flows":
 		r.handleFlows(w, req)
+
+	// Settings (read-only, non-secret)
+	case "/api/settings":
+		r.handleSettings(w, req)
 
 	// Role endpoints
 	case "/api/roles":

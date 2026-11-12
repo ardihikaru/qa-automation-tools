@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -200,4 +201,19 @@ type GoalEvent struct {
 	Page       string    `json:"page,omitempty"`
 	Action     string    `json:"action,omitempty"`
 	DetectedAt time.Time `json:"detected_at"`
+}
+
+// Product is a product under test: where its repo lives and how to reach it.
+type Product struct {
+	ID                   int             `json:"id"`
+	Name                 string          `json:"name"`
+	RepoURL              string          `json:"repo_url"`
+	StagingURL           string          `json:"staging_url"`
+	RootDir              string          `json:"root_dir"`
+	Branch               string          `json:"branch"`
+	PlaywrightAccessible bool            `json:"playwright_accessible"`
+	LastVerifiedAt       *time.Time      `json:"last_verified_at"`
+	VerifyReport         json.RawMessage `json:"verify_report"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
 }

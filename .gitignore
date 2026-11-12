@@ -57,3 +57,7 @@ TEST-RESULTS.md
 # Claude Code personal settings
 .claude/settings.local.json
 deploy/qa-tool/deploys.log
+
+# Product repo pool (cloned by the backend; only the placeholder is tracked)
+repos/*
+!repos/.gitkeep

@@ -25,6 +25,7 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 - Docker must start after `wg0` exists (systemd drop-in `/etc/systemd/system/docker.service.d/after-wg.conf`), or the port bind fails at boot.
 - The edge-host edge is shared. Use the prefix `$qatool_` for `map` variables, never set `default_server`, and always run `sudo nginx -t` before `systemctl reload nginx`.
 - Secrets live only in `.env.prod` on app-host. Never echo them in logs, commits or chat. `PLAYWRIGHT_EXECUTOR_TOKEN` there must equal `EXECUTOR_TOKEN` in `~/.config/qa-automation/playwright-executor.env`.
+- **Product repo pool.** `docker-compose.prod.yml` bind-mounts `<repo>/repos` read-write at `/data/repos` in the backend (the only host path it mounts). The backend image has `git` and `gh`; `GH_TOKEN` (secret, `.env.prod` only) lets it clone and fetch the product repos. Create the table first with `go run -mod=mod ./cmd/databasemigration`. Files the container creates are owned by root; the host executor can read them.
 - `deploy.sh` doesn't touch playwright-executor. When `playwright-executor/` changes, also run `deploy/playwright-executor/install.sh` (use `SKIP_DEPS=1` once the apt deps are installed).
 - The backend's cookie auth is enabled **only if the DB connects**. If `/health` shows `"database":"disconnected"`, the API is open. Treat that as an incident.
 
