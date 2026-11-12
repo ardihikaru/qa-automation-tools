@@ -18,7 +18,7 @@ export interface MinimaxConfig {
 
 export type SummarizerConfig = Partial<AIConfig> & { api_key?: string; base_url?: string };
 
-const AI_TIMEOUT_MS = 180_000;
+const timeoutMs = (config: SummarizerConfig) => (config.timeout_seconds || 180) * 1000;
 
 export interface SummarizationRequest {
   flow_name: string;
@@ -64,17 +64,31 @@ async function chatViaAIManager(prompt: string, config: SummarizerConfig): Promi
     headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
-      provider: config.manager_provider || undefined,
+      provider: config.manager_provider || 'claude-v3',
+      no_fallback: config.manager_no_fallback ?? true,
+      model: config.manager_model || undefined,
       temperature: 0.7,
       caller: 'qa-automation-playwright-docs',
     }),
-    signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs(config)),
   });
-  const data = (await response.json().catch(() => ({}))) as { text?: string; error?: string };
+  const data = (await response.json().catch(() => ({}))) as {
+    text?: string;
+    error?: string;
+    provider?: string;
+    fallback?: boolean;
+  };
   if (!response.ok) {
     throw new Error(`ai-manager error ${response.status}: ${data.error || 'unknown'}`);
   }
-  return data.text || '';
+  const pinned = config.manager_provider || 'claude-v3';
+  if ((config.manager_no_fallback ?? true) && (data.fallback || (data.provider && data.provider !== pinned))) {
+    throw new Error(`ai-manager answered by ${data.provider} but provider is pinned to ${pinned}`);
+  }
+  if (!data.text?.trim()) {
+    throw new Error('ai-manager returned empty text');
+  }
+  return data.text;
 }
 
 async function chatViaMiniMax(prompt: string, config: SummarizerConfig): Promise<string> {
@@ -86,7 +100,7 @@ async function chatViaMiniMax(prompt: string, config: SummarizerConfig): Promise
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
     }),
-    signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs(config)),
   });
   if (!response.ok) {
     throw new Error(`Minimax API error: ${response.status}`);

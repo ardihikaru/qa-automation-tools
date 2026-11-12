@@ -26,11 +26,12 @@ test.describe('Health & Analytics API', () => {
     expect(body.database).toBe('connected');
   });
 
-  test('GET /health - should show minimax configured', async ({ request }) => {
+  test('GET /health - should report the AI provider as healthy', async ({ request }) => {
     const response = await request.get(`${config.backendUrl}/health`);
     const body = await response.json();
-    
-    expect(body.minimax).toBe('configured');
+
+    expect(['ai-manager', 'minimax']).toContain(body.ai_provider);
+    expect(['ok', 'configured']).toContain(body.ai);
   });
 
   test('GET /api/analytics - should return system analytics', async ({ request }) => {

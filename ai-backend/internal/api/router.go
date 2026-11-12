@@ -586,9 +586,10 @@ func (r *Router) serveHealth(w http.ResponseWriter) {
 	}
 	// "minimax" is kept for backward compatibility with existing probes/tests.
 	minimaxStatus := "not_configured"
-	aiProvider, aiStatus := "", "not_configured"
+	aiProvider, aiUpstream, aiStatus := "", "", "not_configured"
 	if r.aiService != nil {
 		aiProvider = r.aiService.ProviderName()
+		aiUpstream = r.aiService.Upstream()
 		aiStatus = r.aiService.Health(context.Background())
 		if aiProvider == ai.ProviderMiniMax && r.aiService.Configured() {
 			minimaxStatus = "configured"
@@ -600,6 +601,7 @@ func (r *Router) serveHealth(w http.ResponseWriter) {
 		"status":      "ok",
 		"database":    dbStatus,
 		"ai_provider": aiProvider,
+		"ai_upstream": aiUpstream,
 		"ai":          aiStatus,
 		"minimax":     minimaxStatus,
 	})

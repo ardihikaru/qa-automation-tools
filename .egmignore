@@ -1,0 +1,15 @@
+# Paths egm-bootstrap / drift-report must skip (in addition to .gitignore)
+_docs/
+_prompts/
+_data/
+assessments/
+product-documentations/
+ai-backend/vendor/
+ai-backend/resources/
+ai-backend/scripts/
+**/node_modules/
+**/dist/
+**/output/
+**/test-results/
+.claude/
+.dev/

@@ -77,6 +77,8 @@ type AIConfig struct {
 	ManagerSecretKey string `yaml:"-"`
 	ManagerProvider  string `yaml:"manager_provider,omitempty"`
 	ManagerModel     string `yaml:"manager_model,omitempty"`
+	// ManagerNoFallback pins every call to ManagerProvider (no cross-provider fallback).
+	ManagerNoFallback bool `yaml:"-"`
 
 	// MiniMax direct (fallback when Provider == "minimax").
 	APIKey       string `yaml:"api_key"`
@@ -271,24 +273,25 @@ func LoadConfig() *Config {
 			Host: getEnvString("BACKEND_HOST", "0.0.0.0"),
 			Port: getEnvInt("PORT", 8080),
 			Database: DatabaseConfig{
-				Host:     getEnvString("DB_HOST", "202.10.39.46"),
-				Port:     getEnvInt("DB_PORT", 31006),
-				Username: getEnvString("DB_USER", "root"),
+				Host:     getEnvString("DB_HOST", "10.10.0.4"),
+				Port:     getEnvInt("DB_PORT", 5306),
+				Username: getEnvString("DB_USER", "qa_automation"),
 				Password: getEnvString("DB_PASSWORD", ""),
 				Name:     getEnvString("DB_NAME", "qa_automation"),
 			},
 			AI: AIConfig{
-				Provider:         getEnvString("AI_PROVIDER", "ai-manager"),
-				TimeoutSeconds:   getEnvInt("AI_TIMEOUT_SECONDS", 180),
-				ManagerURL:       getEnvString("AI_MANAGER_URL", "http://10.10.0.4:8099"),
-				ManagerLoginID:   getEnvString("AI_MANAGER_LOGIN_ID", ""),
-				ManagerSecretKey: getEnvString("AI_MANAGER_SECRET_KEY", ""),
-				ManagerProvider:  getEnvString("AI_MANAGER_PROVIDER", ""),
-				ManagerModel:     getEnvString("AI_MANAGER_MODEL", ""),
-				APIKey:           getEnvString("MINIMAX_API_KEY", ""),
-				Model:            getEnvString("AI_MODEL", "MiniMax-M2.5"),
-				BaseURL:          getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
-				ChatEndpoint:     getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
+				Provider:          getEnvString("AI_PROVIDER", "ai-manager"),
+				TimeoutSeconds:    getEnvInt("AI_TIMEOUT_SECONDS", 180),
+				ManagerURL:        getEnvString("AI_MANAGER_URL", "http://10.10.0.4:8099"),
+				ManagerLoginID:    getEnvString("AI_MANAGER_LOGIN_ID", ""),
+				ManagerSecretKey:  getEnvString("AI_MANAGER_SECRET_KEY", ""),
+				ManagerProvider:   getEnvString("AI_MANAGER_PROVIDER", "claude-v3"),
+				ManagerModel:      getEnvString("AI_MANAGER_MODEL", ""),
+				ManagerNoFallback: getEnvBool("AI_MANAGER_NO_FALLBACK", true),
+				APIKey:            getEnvString("MINIMAX_API_KEY", ""),
+				Model:             getEnvString("AI_MODEL", "MiniMax-M2.5"),
+				BaseURL:           getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
+				ChatEndpoint:      getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
 			},
 			Security: SecurityConfig{
 				APISecretKey: getEnvString("API_SECRET_KEY", ""),

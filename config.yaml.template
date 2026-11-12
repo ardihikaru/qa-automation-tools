@@ -65,7 +65,7 @@ backend:
   port: 8080
   
   # Database (MySQL 8 - shared master-compose MySQL on rnd-v2-vpn, over WireGuard)
-  # Secrets belong in env (DB_PASSWORD); env always overrides this file.
+  # NOTE: the Go backend reads DB_* env ONLY (this block is informational / used by TS tools).
   database:
     host: "10.10.0.4"
     port: 5306
@@ -80,7 +80,7 @@ backend:
   ai:
     provider: "ai-manager"            # ai-manager | minimax
     manager_url: "http://10.10.0.4:8099"
-    manager_provider: ""              # optional: antigravity | claude | minimax-cli | minimax
+    manager_provider: "claude-v3"     # pinned: Claude CLI REST on rnd-v3 (10.10.0.9:8105) via ai-manager
     # MiniMax direct (only when provider: minimax; key via MINIMAX_API_KEY)
     api_key: ""
     model: "MiniMax-M2.5"
