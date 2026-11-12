@@ -1,5 +1,9 @@
 # Playwright Documentation Generator
 
+> **Deprecated (2026-11-13).** Superseded by [playwright-executor](../playwright-executor/README.md) (`docs_generate` run type: `src/runs/docsGenerate.ts`, `src/flows/flows.ts`).
+> Markdown is now generated in ai-backend (`internal/api/jobs_executor.go` `summarizeDocsRun`, through `ai.Service`, ai-manager and claude-v3).
+> This package stays only for reference until a cleanup PR deletes it. Its MiniMax path (`chatViaMiniMax`) is dormant and must not be used.
+
 Record browser flows and generate documentation automatically using Playwright.
 
 ## Overview

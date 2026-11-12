@@ -65,6 +65,7 @@ echo "anonymous /api/auth/me: $auth_code"
 
 if [[ -n "$ok" && "$auth_code" == "401" ]]; then
   [[ "$out" == *'"ai":"ok"'* ]] || echo "warn: ai-manager not ok (AI features degraded, deploy kept)"
+  [[ "$out" == *'"executor":"ok"'* ]] || echo "warn: playwright-executor not ok (QA/docs jobs will fail or simulate, deploy kept; see deploy/playwright-executor)"
   echo "$(date -u +%FT%TZ) $SHA $REF OK" >> "$LOG"
   exit 0
 fi

@@ -24,6 +24,16 @@ ssh rnd-v3-vpn '~/devel/projects/qa-automation-tools/deploy/his-v3-qa/deploy.sh 
 - **After a rollback**, a plain `deploy.sh` refuses to run on a detached HEAD. Use `--branch <name>` to roll forward.
 - **Schema:** migrations only go forward. They must stay compatible with the previous release; otherwise a rollback also needs a DB restore (`qa-db-ops`).
 
+## playwright-executor (not part of the compose stack)
+`deploy.sh` only rebuilds Docker. The executor is a systemd **user** unit on the same host. Re-install it whenever `playwright-executor/` or `deploy/playwright-executor/` changes:
+```bash
+ssh rnd-v3-vpn 'cd ~/devel/projects/qa-automation-tools && SKIP_DEPS=1 deploy/playwright-executor/install.sh'   # omit SKIP_DEPS on a fresh host
+ssh rnd-v3-vpn 'systemctl --user status playwright-executor --no-pager | head -5; curl -s http://10.10.0.9:8141/health'
+```
+- `PLAYWRIGHT_EXECUTOR_URL=http://10.10.0.9:8141` and `PLAYWRIGHT_EXECUTOR_TOKEN` in `.env.prod` must match the executor's `EXECUTOR_TOKEN` (`~/.config/qa-automation/playwright-executor.env`). Never print either.
+- Backend `/health` should show `"executor":"ok"`. `deploy.sh` only warns when it doesn't.
+- The budget is fixed by the unit (`MemoryMax=2560M`, `CPUQuota` = 60 % of CPUs). Check it with `systemctl --user show playwright-executor -p MemoryMax -p CPUQuotaPerSecUSec -p MemoryPeak`.
+
 ## Verify
 ```bash
 curl -s https://his-v3.qa.sismedika.com/health      # status ok, database connected, ai_provider ai-manager, ai ok

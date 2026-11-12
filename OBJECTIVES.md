@@ -11,9 +11,10 @@ This document outlines the objectives of the AI-Powered QA and System Documentat
 Based on the project references, the main objectives are:
 
 1. **Read all available roles** in the HIS V3 system (e.g., https://stag-app-hisv3.sismedika.online/)
-2. **Automatically generate full documentation** in video format with narration using MiniMax AI
-3. **playwright-docs**: Self-exploration of system menus, screenshots, recorded videos with narratives
-4. **playwright-qa**: Self-documented periodical QA automation to perform testing and submit results to backend
+2. **Automatically generate full documentation** with AI narration. As of 2026-11-13, every LLM call goes through ai-manager pinned to **claude-v3**; MiniMax is dormant.
+3. **Documentation runs** (`docs_generate`, previously playwright-docs): self-exploration of system menus, screenshots and narratives
+4. **QA runs** (`qa_run`, previously playwright-qa): periodic QA automation that tests and submits results to the backend.
+   Both now run in **playwright-executor**, a systemd/mise service on rnd-v3 capped at 2.5 GiB / 60 % CPU ([spec](docs/designs/PLAYWRIGHT_EXECUTOR.md)).
 5. **ai-backend**: Support communication with every data logging
 6. **dashboard**: Visualize everything related to QA automation activities
 7. **Automated testing** with detailed logs - query AI to analyze potential bugs (FE/BE), estimate commit hash where issue was introduced
@@ -144,7 +145,20 @@ Based on the design in `database-admin.md`, there are 4 schemas:
 
 ---
 
-## 6. Playwright-Docs Assessment
+## 5b. playwright-executor (2026-11-13)
+
+Sections 6 and 7 below describe the deprecated packages. Their run paths now live in `playwright-executor/`:
+
+| Feature | Where | Status |
+|---------|-------|--------|
+| Run service (HTTP API, bearer auth, concurrency 1, timeouts) | `playwright-executor/src/server.ts`, `queue.ts` | ✅ Deployed on rnd-v3 :8141 |
+| QA run: login, random exploration, built-in skills, JS errors, HTTP 5xx | `src/runs/qaRun.ts`, `src/skills/builtin.ts` | ✅ |
+| Docs run: per-role flows + screenshots | `src/runs/docsGenerate.ts`, `src/flows/flows.ts` | ✅ |
+| Backend dispatch (`/api/jobs/qa/run`, `/api/jobs/docs/generate`) | `ai-backend/internal/api/jobs_executor.go` | ✅ Issues → `raw_issues`, docs → Markdown via claude-v3 |
+| Resource cap (2.5 GiB, 60 % CPU) via systemd + mise | `deploy/playwright-executor/` | ✅ |
+| Guided / planning exploration, learned skills, video, screenshot serving | — | ⬜ TODO |
+
+## 6. Playwright-Docs Assessment (deprecated package)
 
 ### 6.1 Implemented Features
 
@@ -155,21 +169,21 @@ Based on the design in `database-admin.md`, there are 4 schemas:
 | Screenshot capture | `recorder/recordFlow.ts` | ✅ Complete |
 | Video recording | `index.ts` | ✅ Complete |
 | Role-based flow mapping | `index.ts` | ✅ Complete |
-| Summarizer (Minimax integration) | `summarizer/summarizeFlow.ts` | 🔶 Code exists, not called |
+| Summarizer (ai-manager/claude-v3; MiniMax dormant) | `summarizer/summarizeFlow.ts` | ⛔ Superseded by backend `summarizeDocsRun` |
 
 ### 6.2 Playwright-Docs TODOs
 
 | Feature | Description | Priority |
 |---------|------------|----------|
 | Auto-discovery of menus | Dynamically discover available menus | High |
-| AI-generated narration | Integrate with Minimax for video narration | High |
-| Documentation generation | Generate markdown docs from flows | Medium |
-| Submit to backend | Send flow data to ai-backend | Medium |
+| AI-generated narration | Narration through ai-manager/claude-v3 | High |
+| Documentation generation | ✅ Done in executor + backend (`documentation_markdown`) | — |
+| Submit to backend | ✅ Done (backend polls the executor) | — |
 | Comprehensive route coverage | Test all possible routes per role | High |
 
 ---
 
-## 7. Playwright-QA Assessment
+## 7. Playwright-QA Assessment (deprecated package)
 
 ### 7.1 Implemented Features
 

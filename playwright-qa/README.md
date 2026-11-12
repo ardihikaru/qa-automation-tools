@@ -1,5 +1,10 @@
 # Playwright QA System
 
+> **Deprecated (2026-11-13).** Superseded by [playwright-executor](../playwright-executor/README.md).
+> Its login, random exploration and built-in skills were ported there (`src/runs/qaRun.ts`, `src/skills/builtin.ts`).
+> Nothing runs this package any more, and it still doesn't compile (see Invariants). It stays only for reference until a cleanup PR deletes it.
+> Don't extend it, and don't run it against production.
+
 ## Overview
 
 Autonomous exploration and bug detection. A TypeScript/Playwright package that logs into
