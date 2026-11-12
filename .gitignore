@@ -46,3 +46,14 @@ _docs/
 
 TEST-SCENARIO.md
 TEST-RESULTS.md
+
+# Deploy secrets (app-host only)
+.env.prod
+.env.*.local
+
+# EGM scratch drafts (approved specs go to docs/designs/)
+.dev/docs/
+
+# Claude Code personal settings
+.claude/settings.local.json
+deploy/qa-tool/deploys.log

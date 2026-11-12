@@ -580,16 +580,31 @@ func (r *Router) applyCORS(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) serveHealth(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusOK)
-	minimaxStatus := "not_configured"
-	if r.aiService != nil && r.aiService.APIKey != "" {
-		minimaxStatus = "configured"
-	}
+	dbStatus := "disconnected"
 	if r.db != nil {
-		fmt.Fprintf(w, `{"status":"ok","database":"connected","minimax":"%s"}`, minimaxStatus)
-	} else {
-		fmt.Fprintf(w, `{"status":"ok","database":"disconnected","minimax":"%s"}`, minimaxStatus)
+		dbStatus = "connected"
 	}
+	// "minimax" is kept for backward compatibility with existing probes/tests.
+	minimaxStatus := "not_configured"
+	aiProvider, aiUpstream, aiStatus := "", "", "not_configured"
+	if r.aiService != nil {
+		aiProvider = r.aiService.ProviderName()
+		aiUpstream = r.aiService.Upstream()
+		aiStatus = r.aiService.Health(context.Background())
+		if aiProvider == ai.ProviderMiniMax && r.aiService.Configured() {
+			minimaxStatus = "configured"
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":      "ok",
+		"database":    dbStatus,
+		"ai_provider": aiProvider,
+		"ai_upstream": aiUpstream,
+		"ai":          aiStatus,
+		"minimax":     minimaxStatus,
+	})
 }
 
 // dispatchAuthenticated routes any path that survived the auth middleware.
@@ -619,17 +634,7 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 
 	// Health check kept for parity if a downstream caller hits it after auth.
 	if req.URL.Path == "/health" {
-		w.WriteHeader(http.StatusOK)
-		minimaxStatus := "not_configured"
-		if r.aiService != nil && r.aiService.APIKey != "" {
-			minimaxStatus = "configured"
-		}
-
-		if r.db != nil {
-			fmt.Fprintf(w, `{"status":"ok","database":"connected","minimax":"%s"}`, minimaxStatus)
-		} else {
-			fmt.Fprintf(w, `{"status":"ok","database":"disconnected","minimax":"%s"}`, minimaxStatus)
-		}
+		r.serveHealth(w)
 		return
 	}
 

@@ -29,12 +29,7 @@ func main() {
 
 	// Check for database connection - make optional for deployment without DB
 	var database *db.DB
-	aiService := ai.NewServiceWithConfig(
-		cfg.Backend.AI.APIKey,
-		cfg.Backend.AI.BaseURL,
-		cfg.Backend.AI.Model,
-		cfg.Backend.AI.ChatEndpoint,
-	)
+	aiService := ai.NewFromConfig(cfg.Backend.AI)
 	var learningService *learning.Service
 	var skillsService *skills.Service
 

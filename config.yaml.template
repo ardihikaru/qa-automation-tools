@@ -64,24 +64,29 @@ backend:
   host: "0.0.0.0"
   port: 8080
   
-  # Database (Neon PostgreSQL)
+  # Database (MySQL 8 - shared master-compose MySQL on db-host, over WireGuard)
+  # NOTE: the Go backend reads DB_* env ONLY (this block is informational / used by TS tools).
   database:
-    host: "your-db-host.neon.tech"    # e.g., "qaautomation.us-east-1.aws.neon.tech"
-    port: 5432
-    username: "your-db-username"
-    password: "your-db-password"
-    name: "your-db-name"
-    # OR use full connection string:
-    # connection_string: "postgres://user:password@host:5432/dbname?sslmode=require"
-  
-  # Minimax AI API
+    host: "10.8.0.4"
+    port: 5306
+    username: "qa_automation"
+    password: ""          # use DB_PASSWORD env instead
+    name: "qa_automation"
+    # OR full DSN:
+    # connection_string: "user:pass@tcp(10.8.0.4:5306)/qa_automation?parseTime=true"
+
+  # AI gateway. Default: production ai-manager over WireGuard (POST /v1/chat, Basic auth).
+  # Credentials come from env: AI_MANAGER_LOGIN_ID / AI_MANAGER_SECRET_KEY.
   ai:
-    api_key: "your-minimax-api-key"
-    model: "abab6.5s-chat"
-    embedding_model: "emb-embedding-01"
-    # Optional: Custom API endpoint
-    # base_url: "https://api.minimax.chat/v1"
-  
+    provider: "ai-manager"            # ai-manager | minimax
+    manager_url: "http://10.8.0.4:8099"
+    manager_provider: "claude-v3"     # pinned: Claude CLI REST on app-host (10.8.0.9:8105) via ai-manager
+    # MiniMax direct (only when provider: minimax; key via MINIMAX_API_KEY)
+    api_key: ""
+    model: "MiniMax-M2.5"
+    embedding_model: ""
+    # base_url: "https://api.minimax.io/v1"
+
   # Security settings
   security:
     api_secret_key: "change-this-secure-random-string"
