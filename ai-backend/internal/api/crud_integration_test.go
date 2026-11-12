@@ -46,14 +46,14 @@ func setupCRUDIntegrationRouter(t *testing.T) (*Router, *db.DB) {
 			return
 		}
 
-		if err := db.RunMigrations(database.Pool); err != nil {
+		if err := db.RunMigrations(database.SQL); err != nil {
 			database.Close()
 			crudSetupErr = fmt.Errorf("failed to run migrations for CRUD integration tests: %w", err)
 			return
 		}
 
-		learningService := learning.NewService(database.Pool)
-		skillsService := skills.NewService(database.Pool, nil)
+		learningService := learning.NewService(database)
+		skillsService := skills.NewService(database, nil)
 
 		crudSetupDB = database
 		crudSetupRouter = NewRouter(database, nil, learningService, skillsService)

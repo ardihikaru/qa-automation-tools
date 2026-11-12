@@ -1,38 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle, Play, FileText, Bug, Clock, TrendingUp, RefreshCcw } from 'lucide-react';
+import {
+  generateMockQAInsightsData,
+  simulateNetworkDelay,
+  type AnalyticsData,
+  type CostOverview,
+  type IssueCount,
+  type JobRecord,
+  type JobStatus,
+  type JobType,
+} from '../utils/mockDataGenerator';
 
-interface AnalyticsData {
-  flows: number;
-  issues: number;
-  skills: number;
-}
-
-interface CostOverview {
-  total_cost: number;
-}
-
-interface IssueCount {
-  total: number;
-  open: number;
-  fixed: number;
-}
-
-type JobStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed';
-
-type JobType = 'qa_run' | 'docs_generate';
-
-interface JobRecord {
-  id: string;
-  type: JobType;
-  status: JobStatus;
-  payload?: Record<string, unknown>;
-  result?: Record<string, unknown>;
-  error?: string;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  duration_ms?: number;
-}
+const USE_MOCK_QA_INSIGHTS = true;
 interface Pagination {
   page: number;
   limit: number;
@@ -83,6 +62,17 @@ export default function QAInsights() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
+
+      if (USE_MOCK_QA_INSIGHTS) {
+        await simulateNetworkDelay(550, 1400);
+        const mockData = generateMockQAInsightsData(30);
+        setAnalytics(mockData.analytics);
+        setCost(mockData.cost);
+        setIssueCounts(mockData.issueCounts);
+        setJobAudit(mockData.jobs.slice(0, 12));
+        return;
+      }
+
       const [analyticsRes, costRes, allIssuesRes, openRes, fixedRes, jobsRes] = await Promise.all([
         fetch('/api/analytics'),
         fetch('/api/cost/overview'),
