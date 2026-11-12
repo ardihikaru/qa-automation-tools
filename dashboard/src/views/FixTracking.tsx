@@ -1,28 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, XCircle, Filter, Search, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
-
-interface Suggestion {
-  id: number;
-  suggestion: string;
-  confidence?: number;
-  target?: string;
-  file_path?: string;
-  diff?: string | null;
-}
-
-interface Issue {
-  id: number;
-  page: string;
-  action: string;
-  error_type?: string;
-  error_text?: string;
-  category: string;
-  severity: string;
-  is_fixed: boolean;
-  notes: string;
-  created_at: string;
-  suggestions?: Suggestion[];
-}
+import {
+  type FixTrackingAnalytics,
+  type FixTrackingIssueRecord as Issue,
+} from '../utils/fixTrackingMockGenerator';
 
 interface IssuesPagination {
   page: number;
@@ -34,12 +15,29 @@ interface IssuesPagination {
 interface IssuesResponse {
   data?: Issue[];
   pagination?: IssuesPagination;
+  analytics?: FixTrackingAnalytics;
 }
 
 const DEFAULT_LIMIT = 20;
+const EMPTY_ANALYTICS: FixTrackingAnalytics = {
+  totalIssues: 0,
+  fixedCount: 0,
+  verifiedCount: 0,
+  openCount: 0,
+  inProgressCount: 0,
+  fixRatePercentage: 0,
+  averageTimeToResolveHours: 0,
+  issuesBySeverity: {
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
+  },
+};
 
 export default function FixTracking() {
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [analytics, setAnalytics] = useState<FixTrackingAnalytics>(EMPTY_ANALYTICS);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -103,6 +101,7 @@ export default function FixTracking() {
       } else {
         const data = Array.isArray(payload?.data) ? payload.data : [];
         const serverPagination = payload?.pagination;
+        setAnalytics(payload?.analytics ?? EMPTY_ANALYTICS);
 
         setIssues(data);
         setPagination({
@@ -115,6 +114,7 @@ export default function FixTracking() {
     } catch (error) {
       console.error('Failed to fetch issues:', error);
       setIssues([]);
+      setAnalytics(EMPTY_ANALYTICS);
       setPagination({
         page: 1,
         limit: DEFAULT_LIMIT,
@@ -160,7 +160,11 @@ export default function FixTracking() {
         throw new Error(`Failed to update status: ${response.status}`);
       }
 
-      setIssues((prev) => prev.map((i) => (i.id === issue.id ? { ...i, is_fixed: updatedIsFixed } : i)));
+      const payload = (await response.json()) as { status?: Issue['status'] };
+      setIssues((prev) =>
+        prev.map((i) => (i.id === issue.id ? { ...i, is_fixed: updatedIsFixed, status: payload.status || i.status } : i))
+      );
+      await fetchIssues();
     } catch (error) {
       console.error('Failed to update status:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Failed to update issue status');
@@ -194,6 +198,7 @@ export default function FixTracking() {
 
       setIssues((prev) => prev.map((i) => (i.id === issueId ? { ...i, notes: notesText } : i)));
       cancelEditNotes();
+      await fetchIssues();
     } catch (error) {
       console.error('Failed to save notes:', error);
       setErrorMessage(error instanceof Error ? error.message : 'Failed to save issue notes');
@@ -229,10 +234,6 @@ export default function FixTracking() {
     return !issue.page?.trim() || !issue.action?.trim() || !issue.severity?.trim();
   };
 
-  const fixedCount = issues.filter((i) => i.is_fixed).length;
-  const openCount = issues.filter((i) => !i.is_fixed).length;
-  const fixRate = issues.length > 0 ? Math.round((fixedCount / issues.length) * 100) : 0;
-
   return (
     <div>
       <div className="mb-6">
@@ -247,22 +248,30 @@ export default function FixTracking() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
         <div className="card p-4">
-          <div className="text-sm text-gray-500">Total Issues (Page)</div>
-          <div className="text-2xl font-bold">{issues.length}</div>
+          <div className="text-sm text-gray-500">Total Issues</div>
+          <div className="text-2xl font-bold">{analytics.totalIssues}</div>
         </div>
         <div className="card p-4">
-          <div className="text-sm text-gray-500">Fixed (Page)</div>
-          <div className="text-2xl font-bold text-green-600">{fixedCount}</div>
+          <div className="text-sm text-gray-500">Fixed</div>
+          <div className="text-2xl font-bold text-green-600">{analytics.fixedCount}</div>
         </div>
         <div className="card p-4">
-          <div className="text-sm text-gray-500">Open (Page)</div>
-          <div className="text-2xl font-bold text-red-600">{openCount}</div>
+          <div className="text-sm text-gray-500">Verified</div>
+          <div className="text-2xl font-bold text-blue-600">{analytics.verifiedCount}</div>
         </div>
         <div className="card p-4">
-          <div className="text-sm text-gray-500">Fix Rate (Page)</div>
-          <div className="text-2xl font-bold">{fixRate}%</div>
+          <div className="text-sm text-gray-500">Open</div>
+          <div className="text-2xl font-bold text-red-600">{analytics.openCount}</div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-gray-500">Fix Rate</div>
+          <div className="text-2xl font-bold">{analytics.fixRatePercentage}%</div>
+        </div>
+        <div className="card p-4">
+          <div className="text-sm text-gray-500">Avg Resolve Time</div>
+          <div className="text-2xl font-bold">{analytics.averageTimeToResolveHours}h</div>
         </div>
       </div>
 
@@ -494,6 +503,10 @@ export default function FixTracking() {
                 <div className="text-xs text-gray-500">Issue ID</div>
                 <div className="font-medium text-gray-900">#{selectedIssue.id}</div>
               </div>
+              <div>
+                <div className="text-xs text-gray-500">Status</div>
+                <div className="font-medium text-gray-900 capitalize">{selectedIssue.status || 'open'}</div>
+              </div>
 
               <div>
                 <div className="text-xs text-gray-500">Page / Action</div>
@@ -531,6 +544,41 @@ export default function FixTracking() {
               <div>
                 <div className="text-xs text-gray-500">Created</div>
                 <div className="text-sm text-gray-900">{formatDate(selectedIssue.created_at)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Resolved</div>
+                <div className="text-sm text-gray-900">{formatDate(selectedIssue.resolved_at || '')}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Fix Commit / PR</div>
+                <div className="text-sm text-gray-900 break-all">
+                  {selectedIssue.fix_commit_url ? (
+                    <a
+                      href={selectedIssue.fix_commit_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Commit
+                    </a>
+                  ) : (
+                    'N/A'
+                  )}
+                  {selectedIssue.fix_pr_url ? (
+                    <>
+                      {' '}
+                      |{' '}
+                      <a
+                        href={selectedIssue.fix_pr_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        PR
+                      </a>
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               <div>

@@ -59,8 +59,8 @@ func TestSearchIntegration(t *testing.T) {
 	t.Log("✓ AI service initialized")
 
 	// Initialize other services
-	learningService := learning.NewService(database.Pool)
-	skillsService := skills.NewService(database.Pool, aiService)
+	learningService := learning.NewService(database)
+	skillsService := skills.NewService(database, aiService)
 
 	// Create router with all services
 	router := NewRouter(database, aiService, learningService, skillsService)
@@ -182,8 +182,8 @@ func TestSearchWithDatabase(t *testing.T) {
 	)
 
 	// Create router
-	learningService := learning.NewService(database.Pool)
-	skillsService := skills.NewService(database.Pool, aiService)
+	learningService := learning.NewService(database)
+	skillsService := skills.NewService(database, aiService)
 	router := NewRouter(database, aiService, learningService, skillsService)
 
 	// Make actual HTTP request to test endpoint
@@ -288,8 +288,8 @@ func BenchmarkSearchEndpoint(b *testing.B) {
 		cfg.Backend.AI.Model,
 		cfg.Backend.AI.ChatEndpoint,
 	)
-	learningService := learning.NewService(database.Pool)
-	skillsService := skills.NewService(database.Pool, aiService)
+	learningService := learning.NewService(database)
+	skillsService := skills.NewService(database, aiService)
 	router := NewRouter(database, aiService, learningService, skillsService)
 
 	// Benchmark

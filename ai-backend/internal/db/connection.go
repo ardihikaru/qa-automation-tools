@@ -2,47 +2,105 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/qa-automation/ai-backend/internal/config"
 )
 
-// DB represents the database connection
+// DB wraps *sql.DB and exposes pgx-compatible method signatures so the rest of
+// the codebase keeps reading naturally after the Neon (PostgreSQL) → MySQL
+// migration. Connection lifecycle (Ping, Close) lives here; query execution
+// lives on this struct.
 type DB struct {
-	*pgxpool.Pool
+	SQL *sql.DB
 }
 
-// NewConnection creates a new database connection
+// ExecResult wraps sql.Result to expose RowsAffected/LastInsertId without
+// requiring callers to handle a second error return — matches pgx semantics.
+type ExecResult struct {
+	inner sql.Result
+}
+
+// RowsAffected returns the number of affected rows (0 on error).
+func (e ExecResult) RowsAffected() int64 {
+	if e.inner == nil {
+		return 0
+	}
+	n, _ := e.inner.RowsAffected()
+	return n
+}
+
+// LastInsertId returns the AUTO_INCREMENT id assigned by MySQL (0 on error).
+func (e ExecResult) LastInsertId() int64 {
+	if e.inner == nil {
+		return 0
+	}
+	n, _ := e.inner.LastInsertId()
+	return n
+}
+
+// Query proxies to QueryContext.
+func (db *DB) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return db.SQL.QueryContext(ctx, query, args...)
+}
+
+// QueryRow proxies to QueryRowContext.
+func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	return db.SQL.QueryRowContext(ctx, query, args...)
+}
+
+// Exec proxies to ExecContext, wrapping the result for pgx-like ergonomics.
+func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (ExecResult, error) {
+	res, err := db.SQL.ExecContext(ctx, query, args...)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	return ExecResult{inner: res}, nil
+}
+
+// NewConnection creates a new MySQL connection using the shared SUT
+// credentials (host 203.0.113.21:31006, database qa_automation by default).
 func NewConnection(cfg *config.Config) (*DB, error) {
-	// Get connection string from config
-	connString := cfg.GetDatabaseURL()
+	dsn := cfg.GetDatabaseURL()
+	if dsn == "" {
+		return nil, fmt.Errorf("database DSN is empty: check DB_HOST/DB_USER or DATABASE_URL")
+	}
 
-	// Create connection pool
-	poolConfig, err := pgxpool.ParseConfig(connString)
+	sqlDB, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse database config: %w", err)
-	}
-	if poolConfig.ConnConfig.RuntimeParams == nil {
-		poolConfig.ConnConfig.RuntimeParams = map[string]string{}
-	}
-	// Keep schema resolution consistent across environments.
-	poolConfig.ConnConfig.RuntimeParams["search_path"] = "public,qa,ai,logging"
-
-	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, fmt.Errorf("failed to open mysql connection: %w", err)
 	}
 
-	// Test connection
-	if err := pool.Ping(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("failed to ping mysql: %w", err)
 	}
 
-	return &DB{pool}, nil
+	return &DB{SQL: sqlDB}, nil
 }
 
-// Close closes the database connection
+// Ping verifies the connection is alive. Used by integration tests.
+func (db *DB) Ping(ctx context.Context) error {
+	if db == nil || db.SQL == nil {
+		return fmt.Errorf("db connection not initialized")
+	}
+	return db.SQL.PingContext(ctx)
+}
+
+// Close closes the underlying *sql.DB.
 func (db *DB) Close() {
-	db.Pool.Reset()
+	if db == nil || db.SQL == nil {
+		return
+	}
+	_ = db.SQL.Close()
 }

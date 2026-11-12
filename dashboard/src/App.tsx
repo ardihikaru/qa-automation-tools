@@ -8,22 +8,43 @@ import FixTracking from './views/FixTracking';
 import SkillsView from './views/SkillsView';
 import NavigationGraphView from './views/NavigationGraphView';
 import LearningProgressView from './views/LearningProgressView';
+import LoginView from './views/LoginView';
+import ChangePasswordView from './views/ChangePasswordView';
+import { ProtectedRoute } from './auth/ProtectedRoute';
 
 function App() {
   return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<Navigate to="/docs" replace />} />
-        <Route path="/docs" element={<DocsView />} />
-        <Route path="/qa" element={<QAInsights />} />
-        <Route path="/issues" element={<IssueDebugger />} />
-        <Route path="/cost" element={<CostAnalytics />} />
-        <Route path="/fixes" element={<FixTracking />} />
-        <Route path="/skills" element={<SkillsView />} />
-        <Route path="/navigation" element={<NavigationGraphView />} />
-        <Route path="/learning" element={<LearningProgressView />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      <Route path="/login" element={<LoginView />} />
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute>
+            <ChangePasswordView />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Navigate to="/docs" replace />} />
+                <Route path="/docs" element={<DocsView />} />
+                <Route path="/qa" element={<QAInsights />} />
+                <Route path="/issues" element={<IssueDebugger />} />
+                <Route path="/cost" element={<CostAnalytics />} />
+                <Route path="/fixes" element={<FixTracking />} />
+                <Route path="/skills" element={<SkillsView />} />
+                <Route path="/navigation" element={<NavigationGraphView />} />
+                <Route path="/learning" element={<LearningProgressView />} />
+              </Routes>
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
 
