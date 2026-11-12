@@ -12,6 +12,7 @@ import {
   getPlaywrightDocs,
   getAllCredentials,
   getBackendURL,
+  getAI,
 } from '../../lib/config';
 
 // Flow definitions
@@ -129,6 +130,7 @@ async function main(): Promise<void> {
             api: {
               backend_url: getBackendURL(),
               minimax_api_key: config.backend?.ai?.api_key || '',
+              ai: getAI(),
             },
           };
 

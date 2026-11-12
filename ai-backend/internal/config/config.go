@@ -13,17 +13,17 @@ import (
 
 // Config represents the main configuration structure
 type Config struct {
-	Staging           StagingConfig           `yaml:"staging"`
-	Credentials      CredentialsConfig       `yaml:"credentials"`
-	Backend          BackendConfig           `yaml:"backend"`
-	PlaywrightDocs   PlaywrightDocsConfig    `yaml:"playwright_docs"`
-	PlaywrightQA     PlaywrightQAConfig      `yaml:"playwright_qa"`
-	Logger           LoggerConfig            `yaml:"logger"`
-	Dashboard        DashboardConfig         `yaml:"dashboard"`
-	CostOptimization CostOptimizationConfig  `yaml:"cost_optimization"`
-	Monitoring       MonitoringConfig        `yaml:"monitoring"`
-	Development      *EnvOverrides           `yaml:"development,omitempty"`
-	Production       *EnvOverrides           `yaml:"production,omitempty"`
+	Staging          StagingConfig          `yaml:"staging"`
+	Credentials      CredentialsConfig      `yaml:"credentials"`
+	Backend          BackendConfig          `yaml:"backend"`
+	PlaywrightDocs   PlaywrightDocsConfig   `yaml:"playwright_docs"`
+	PlaywrightQA     PlaywrightQAConfig     `yaml:"playwright_qa"`
+	Logger           LoggerConfig           `yaml:"logger"`
+	Dashboard        DashboardConfig        `yaml:"dashboard"`
+	CostOptimization CostOptimizationConfig `yaml:"cost_optimization"`
+	Monitoring       MonitoringConfig       `yaml:"monitoring"`
+	Development      *EnvOverrides          `yaml:"development,omitempty"`
+	Production       *EnvOverrides          `yaml:"production,omitempty"`
 }
 
 // StagingConfig holds staging environment settings
@@ -57,17 +57,29 @@ type BackendConfig struct {
 
 // DatabaseConfig holds database settings
 type DatabaseConfig struct {
-	Host            string `yaml:"host"`
-	Port            int    `yaml:"port"`
-	Username        string `yaml:"username"`
-	Password        string `yaml:"password"`
-	Name            string `yaml:"name"`
+	Host             string `yaml:"host"`
+	Port             int    `yaml:"port"`
+	Username         string `yaml:"username"`
+	Password         string `yaml:"password"`
+	Name             string `yaml:"name"`
 	ConnectionString string `yaml:"connection_string,omitempty"`
 }
 
 // AIConfig holds AI settings
 type AIConfig struct {
-	APIKey        string `yaml:"api_key"`
+	// Provider selects the LLM gateway: "ai-manager" (default) or "minimax".
+	Provider       string `yaml:"provider,omitempty"`
+	TimeoutSeconds int    `yaml:"timeout_seconds,omitempty"`
+
+	// ai-manager (production gateway, reached over WireGuard).
+	ManagerURL       string `yaml:"manager_url,omitempty"`
+	ManagerLoginID   string `yaml:"-"`
+	ManagerSecretKey string `yaml:"-"`
+	ManagerProvider  string `yaml:"manager_provider,omitempty"`
+	ManagerModel     string `yaml:"manager_model,omitempty"`
+
+	// MiniMax direct (fallback when Provider == "minimax").
+	APIKey       string `yaml:"api_key"`
 	Model        string `yaml:"model"`
 	BaseURL      string `yaml:"base_url,omitempty"`
 	ChatEndpoint string `yaml:"chat_endpoint,omitempty"`
@@ -89,10 +101,10 @@ type PlaywrightDocsConfig struct {
 
 // BrowserConfig holds browser settings
 type BrowserConfig struct {
-	Type      string `yaml:"type"`
-	Headless  bool   `yaml:"headless"`
-	SlowMo    int    `yaml:"slow_mo"`
-	Viewport  struct {
+	Type     string `yaml:"type"`
+	Headless bool   `yaml:"headless"`
+	SlowMo   int    `yaml:"slow_mo"`
+	Viewport struct {
 		Width  int `yaml:"width"`
 		Height int `yaml:"height"`
 	} `yaml:"viewport"`
@@ -117,20 +129,20 @@ type FlowsConfig struct {
 
 // PlaywrightQAConfig holds playwright-qa settings
 type PlaywrightQAConfig struct {
-	Browser     BrowserConfig      `yaml:"browser"`
-	Exploration ExplorationConfig   `yaml:"exploration"`
-	Learning    LearningConfig      `yaml:"learning"`
-	Goals       GoalsConfig         `yaml:"goals"`
-	Skills      SkillsConfig        `yaml:"skills"`
+	Browser     BrowserConfig     `yaml:"browser"`
+	Exploration ExplorationConfig `yaml:"exploration"`
+	Learning    LearningConfig    `yaml:"learning"`
+	Goals       GoalsConfig       `yaml:"goals"`
+	Skills      SkillsConfig      `yaml:"skills"`
 }
 
 // ExplorationConfig holds exploration settings
 type ExplorationConfig struct {
-	Mode            string  `yaml:"mode"`
-	MaxSteps        int     `yaml:"max_steps"`
-	MaxIterations   int     `yaml:"max_iterations"`
+	Mode             string  `yaml:"mode"`
+	MaxSteps         int     `yaml:"max_steps"`
+	MaxIterations    int     `yaml:"max_iterations"`
 	ExplorationRatio float64 `yaml:"exploration_ratio"`
-	PlanDepth       int     `yaml:"plan_depth"`
+	PlanDepth        int     `yaml:"plan_depth"`
 }
 
 // LearningConfig holds learning settings
@@ -153,24 +165,24 @@ type GoalConfig struct {
 
 // GoalsConfig holds goals settings
 type GoalsConfig struct {
-	Known                []GoalConfig `yaml:"known"`
-	ConfidenceThreshold  float64      `yaml:"confidence_threshold"`
+	Known               []GoalConfig `yaml:"known"`
+	ConfidenceThreshold float64      `yaml:"confidence_threshold"`
 }
 
 // SkillsConfig holds skills settings
 type SkillsConfig struct {
-	Enabled         bool     `yaml:"enabled"`
-	RunOnNavigate   bool     `yaml:"run_on_navigate"`
-	Builtin         []string `yaml:"builtin"`
-	SeverityThreshold string  `yaml:"severity_threshold"`
+	Enabled           bool     `yaml:"enabled"`
+	RunOnNavigate     bool     `yaml:"run_on_navigate"`
+	Builtin           []string `yaml:"builtin"`
+	SeverityThreshold string   `yaml:"severity_threshold"`
 }
 
 // LoggerConfig holds logger settings
 type LoggerConfig struct {
-	APIURL        string     `yaml:"api_url"`
-	BatchSize    int        `yaml:"batch_size"`
-	FlushInterval int        `yaml:"flush_interval"`
-	Retry        RetryConfig `yaml:"retry"`
+	APIURL        string      `yaml:"api_url"`
+	BatchSize     int         `yaml:"batch_size"`
+	FlushInterval int         `yaml:"flush_interval"`
+	Retry         RetryConfig `yaml:"retry"`
 }
 
 // RetryConfig holds retry settings
@@ -213,10 +225,10 @@ type CostOptimizationConfig struct {
 
 // CachingConfig holds caching settings
 type CachingConfig struct {
-	Enabled          bool `yaml:"enabled"`
-	AICache          bool `yaml:"ai_cache"`
-	EmbeddingCache   bool `yaml:"embedding_cache"`
-	SimilarityCache  bool `yaml:"similarity_cache"`
+	Enabled         bool `yaml:"enabled"`
+	AICache         bool `yaml:"ai_cache"`
+	EmbeddingCache  bool `yaml:"embedding_cache"`
+	SimilarityCache bool `yaml:"similarity_cache"`
 }
 
 // ExpectedSavingsConfig holds expected savings
@@ -237,8 +249,8 @@ type MonitoringConfig struct {
 
 // EnvOverrides holds environment overrides
 type EnvOverrides struct {
-	Staging         *StagingConfig          `yaml:"staging,omitempty"`
-	Backend         *BackendConfig          `yaml:"backend,omitempty"`
+	Staging          *StagingConfig          `yaml:"staging,omitempty"`
+	Backend          *BackendConfig          `yaml:"backend,omitempty"`
 	CostOptimization *CostOptimizationConfig `yaml:"cost_optimization,omitempty"`
 }
 
@@ -266,10 +278,17 @@ func LoadConfig() *Config {
 				Name:     getEnvString("DB_NAME", "qa_automation"),
 			},
 			AI: AIConfig{
-				APIKey:        getEnvString("MINIMAX_API_KEY", ""),
-				Model:         getEnvString("AI_MODEL", "MiniMax-M2.5"),
-				BaseURL:       getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
-				ChatEndpoint: getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
+				Provider:         getEnvString("AI_PROVIDER", "ai-manager"),
+				TimeoutSeconds:   getEnvInt("AI_TIMEOUT_SECONDS", 180),
+				ManagerURL:       getEnvString("AI_MANAGER_URL", "http://10.8.0.4:8099"),
+				ManagerLoginID:   getEnvString("AI_MANAGER_LOGIN_ID", ""),
+				ManagerSecretKey: getEnvString("AI_MANAGER_SECRET_KEY", ""),
+				ManagerProvider:  getEnvString("AI_MANAGER_PROVIDER", ""),
+				ManagerModel:     getEnvString("AI_MANAGER_MODEL", ""),
+				APIKey:           getEnvString("MINIMAX_API_KEY", ""),
+				Model:            getEnvString("AI_MODEL", "MiniMax-M2.5"),
+				BaseURL:          getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
+				ChatEndpoint:     getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
 			},
 			Security: SecurityConfig{
 				APISecretKey: getEnvString("API_SECRET_KEY", ""),
@@ -299,10 +318,19 @@ func LoadConfig() *Config {
 	log.Println("📦 QA Automation Backend - Configuration loaded from .env")
 	log.Printf("   Server Port: %d", cfg.Backend.Port)
 	log.Printf("   Database: %s", cfg.Backend.Database.Host)
-	if cfg.Backend.AI.APIKey != "" {
-		log.Printf("   AI: Enabled (Model: %s)", cfg.Backend.AI.Model)
-	} else {
-		log.Printf("   AI: Disabled (no API key)")
+	switch cfg.Backend.AI.Provider {
+	case "minimax":
+		if cfg.Backend.AI.APIKey != "" {
+			log.Printf("   AI: minimax direct (Model: %s)", cfg.Backend.AI.Model)
+		} else {
+			log.Printf("   AI: minimax selected but MINIMAX_API_KEY is empty - AI disabled")
+		}
+	default:
+		if cfg.Backend.AI.ManagerLoginID != "" && cfg.Backend.AI.ManagerSecretKey != "" {
+			log.Printf("   AI: ai-manager at %s (upstream provider: %q)", cfg.Backend.AI.ManagerURL, cfg.Backend.AI.ManagerProvider)
+		} else {
+			log.Printf("   AI: ai-manager selected but AI_MANAGER_LOGIN_ID/AI_MANAGER_SECRET_KEY empty - AI disabled")
+		}
 	}
 
 	// Apply environment overrides
@@ -341,9 +369,9 @@ func loadYAMLConfig(cfg *Config) {
 
 	// Parse YAML into a temp struct
 	temp := &struct {
-		Staging         *StagingConfig          `yaml:"staging"`
-		Backend         *BackendConfig          `yaml:"backend"`
-		Monitoring      *MonitoringConfig       `yaml:"monitoring"`
+		Staging          *StagingConfig          `yaml:"staging"`
+		Backend          *BackendConfig          `yaml:"backend"`
+		Monitoring       *MonitoringConfig       `yaml:"monitoring"`
 		CostOptimization *CostOptimizationConfig `yaml:"cost_optimization"`
 	}{}
 
@@ -383,6 +411,15 @@ func loadYAMLConfig(cfg *Config) {
 		}
 		if temp.Backend.AI.Model != "" && os.Getenv("AI_MODEL") == "" {
 			cfg.Backend.AI.Model = temp.Backend.AI.Model
+		}
+		if temp.Backend.AI.Provider != "" && os.Getenv("AI_PROVIDER") == "" {
+			cfg.Backend.AI.Provider = temp.Backend.AI.Provider
+		}
+		if temp.Backend.AI.ManagerURL != "" && os.Getenv("AI_MANAGER_URL") == "" {
+			cfg.Backend.AI.ManagerURL = temp.Backend.AI.ManagerURL
+		}
+		if temp.Backend.AI.ManagerProvider != "" && os.Getenv("AI_MANAGER_PROVIDER") == "" {
+			cfg.Backend.AI.ManagerProvider = temp.Backend.AI.ManagerProvider
 		}
 		if temp.Backend.AI.ChatEndpoint != "" && os.Getenv("AI_CHAT_ENDPOINT") == "" {
 			cfg.Backend.AI.ChatEndpoint = temp.Backend.AI.ChatEndpoint

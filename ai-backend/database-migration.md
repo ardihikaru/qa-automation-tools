@@ -1,18 +1,18 @@
 # Database Migration Guide
 
-This document explains how database migration works in `ai-backend`, including local development and production deployment on Google Cloud Run.
+This document explains how database migration works in `ai-backend`, including local development and the self-hosted deployment (app-host, see `deploy/qa-tool/README.md`).
 
 ## Overview
 
 - Migration command: `cmd/databasemigration/main.go`
 - Migration source: `internal/db/migrations.go`
-- Database target: Neon PostgreSQL (only)
-- Migration style: ordered, idempotent SQL statements (using `IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`)
+- Database target: MySQL 8 (`qa_automation` on the shared master-compose MySQL, db-host `10.8.0.4:5306`, over WireGuard)
+- Migration style: ordered, idempotent SQL statements (`CREATE TABLE IF NOT EXISTS`, InnoDB, utf8mb4)
 
 ## Prerequisites
 
 - Go installed (matching `go.mod` toolchain)
-- Neon connection configured via one of:
+- MySQL connection configured via one of:
   - `DATABASE_URL`
   - `backend.database.connection_string` in `config.yaml`
   - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
@@ -29,7 +29,7 @@ go run ./cmd/databasemigration
 
 Expected success logs:
 
-- `Neon database connected`
+- `Database connected`
 - `Running database migrations...`
 - `All migrations completed successfully`
 
@@ -42,7 +42,7 @@ If any statement fails, command exits non-zero and prints the failing migration 
 
 ## How To Verify Connectivity On Running Server
 
-## 1) Neon Database Connectivity
+## 1) MySQL Database Connectivity
 
 Call:
 
@@ -131,25 +131,25 @@ Avoid destructive in-place type conversions during critical production rollouts.
 3. Start backend `go run ./cmd/server`.
 4. Check `GET /health`:
    - `database=connected`
-   - `minimax=configured` (if key exists)
+   - `ai_provider=ai-manager`, `ai=ok` (if AI_MANAGER_* creds are set)
 5. Run relevant tests.
 
-## Production Deployment (Google Cloud Run)
+## Production Deployment (app-host, qa.mfardiansyah.id)
 
-Recommended deployment sequence:
+The backend runs as a Docker Compose service on app-host (`deploy/qa-tool/`).
+The image only contains `./server`, so run migrations from a Go toolchain that can
+reach `10.8.0.4:5306` over WireGuard (the dev laptop or app-host itself):
 
-1. Build and push backend image.
-2. Run one-off migration job with same image and env as backend service:
-   - Command: `go run ./cmd/databasemigration`
-   - Ensure `DATABASE_URL` points to Neon production DB.
-3. Confirm migration job success from logs.
-4. Deploy/update Cloud Run backend service (`cmd/server`).
-5. Post-deploy smoke test:
-   - `GET /health` returns `status=ok`, `database=connected`
-   - execute one DB-backed API request (for example `/api/skills`)
-   - verify MiniMax readiness via `minimax=configured`
+1. `cd ai-backend && DB_HOST=10.8.0.4 DB_PORT=5306 DB_USER=qa_automation DB_PASSWORD=... DB_NAME=qa_automation go run -mod=mod ./cmd/databasemigration`
+2. Confirm `✅ Database migration completed`.
+3. Deploy: `deploy/qa-tool/deploy.sh` on app-host.
+4. Post-deploy smoke test:
+   - `GET https://qa.mfardiansyah.id/health` returns `status=ok`, `database=connected`, `ai=ok`
+   - execute one DB-backed API request (for example `/api/skills`, after login)
 
-If migration fails, do not roll forward backend service until schema is fixed.
+If migration fails, do not roll forward the backend until the schema is fixed.
+
+> Legacy: `cloudbuild.yaml` (Google Cloud Run) is no longer the deployment target.
 
 ## Rollback Notes
 

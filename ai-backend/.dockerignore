@@ -30,3 +30,6 @@ docs/
 # Temporary
 *.tmp
 *.log
+# Local, stale vendor dir must not leak into the image (build uses go mod download)
+vendor/
+.env
