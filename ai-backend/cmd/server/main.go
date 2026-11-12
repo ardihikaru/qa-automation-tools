@@ -16,6 +16,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
@@ -69,6 +70,17 @@ func main() {
 	if exe := executor.New(executor.Config{URL: cfg.Backend.Executor.URL, Token: cfg.Backend.Executor.Token}); exe != nil {
 		router.SetExecutor(exe, time.Duration(cfg.Backend.Executor.TimeoutMinutes)*time.Minute)
 	}
+	router.SetSettings(api.SettingsInfo{
+		AIProvider:      cfg.Backend.AI.Provider,
+		ManagerURL:      cfg.Backend.AI.ManagerURL,
+		ManagerProvider: cfg.Backend.AI.ManagerProvider,
+		ManagerModel:    cfg.Backend.AI.ManagerModel,
+		NoFallback:      cfg.Backend.AI.ManagerNoFallback,
+		TimeoutSeconds:  cfg.Backend.AI.TimeoutSeconds,
+		ExecutorURL:     cfg.Backend.Executor.URL,
+	})
+	router.SetRepoPool(repopool.New(cfg.Backend.Products.PoolDir))
+	router.StartProductVerifier(context.Background(), time.Duration(cfg.Backend.Products.VerifyIntervalMinutes)*time.Minute)
 	router.FailOrphanedJobs(context.Background())
 
 	// Wire authentication when the database is connected. Without a DB we have

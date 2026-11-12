@@ -282,6 +282,23 @@ var migrations = []string{
 		INDEX idx_sessions_user (user_id),
 		INDEX idx_sessions_expiry (expires_at)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// products: master list of products under test (repo, staging URL, checkout in the repo pool).
+	`CREATE TABLE IF NOT EXISTS products (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(100) NOT NULL,
+		repo_url VARCHAR(300) NOT NULL,
+		staging_url VARCHAR(500) NOT NULL,
+		root_dir VARCHAR(200) NOT NULL,
+		branch VARCHAR(200) NOT NULL DEFAULT '',
+		playwright_accessible TINYINT(1) NOT NULL DEFAULT 0,
+		last_verified_at DATETIME NULL,
+		verify_report JSON NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		UNIQUE KEY uq_products_name (name),
+		UNIQUE KEY uq_products_root_dir (root_dir)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 // RunMigrations executes all MySQL migrations sequentially.

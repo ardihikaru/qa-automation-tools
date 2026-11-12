@@ -46,6 +46,9 @@ The result is cached in a package-level singleton. Consumers include
 | `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (simulated jobs). Prod: `http://10.10.0.9:8141` |
 | `PLAYWRIGHT_EXECUTOR_TOKEN` | `Backend.Executor.Token` | empty (secret) |
 | `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |
+| `REPO_POOL_DIR` | `Backend.Products.PoolDir` | empty (clone/verify disabled). Prod: `/data/repos` |
+| `PRODUCTS_VERIFY_INTERVAL_MINUTES` | `Backend.Products.VerifyIntervalMinutes` | `360` (`0` disables the scheduled verify) |
+| `GH_TOKEN` | not in `Config` | read by `gh`/`git` directly from the process env (secret, never logged) |
 | `MINIMAX_API_KEY` (dormant) | `Backend.AI.APIKey` | empty (secret) |
 | `AI_MODEL` | `Backend.AI.Model` | `MiniMax-M2.5` |
 | `AI_BASE_URL` | `Backend.AI.BaseURL` | `https://api.minimax.io/v1` |

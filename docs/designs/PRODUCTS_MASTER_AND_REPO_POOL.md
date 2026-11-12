@@ -1,0 +1,54 @@
+# Products master list and repo pool
+
+*   **Author:** ardihikaru (drafted by Claude)
+*   **Status:** Implemented on the owner's decisions of 2026-11-13 (see Decisions). A Goldfish review via `/egm:egm-review` has not been run yet.
+*   **Date:** 2026-11-13
+
+## Overview
+A "Products" master list in the dashboard. Each product records its repo link, main (staging) URL, whether Playwright can reach it, and the root dir of its checkout on rnd-v3-vpn. A **Verify** button checks all of that. A repo pool dir in this repo lets the system `gh repo clone` repos and switch branches.
+
+## Problem
+No place defines which products exist, where their repos live, or whether the rnd-v3 VM can run Playwright against them. `playwright-executor` (merged, PR #3) targets one env-configured staging URL (`HISV3_STAGING_URL`); there is no per-product registry.
+
+## Goals
+*   `products` table + CRUD API + dashboard page.
+*   Verify: root dir exists and is a git repo whose `origin` matches the repo link; staging URL reachable (non-5xx); Playwright present (config or package in root dir).
+*   Clone and branch switch from the UI via `gh` / `git`, confined to a pool dir.
+
+## Non-Goals
+*   Making the executor consume per-product URLs (follow-up; today it uses `HISV3_STAGING_URL`).
+*   Running tests in the cloned repos.
+
+## Technical Plan
+*   **Pool dir:** `repos/` in this repo, containing only `.gitkeep`; `.gitignore` has `repos/*` and `!repos/.gitkeep`. `root_dir` is stored relative to it.
+*   **Mount:** backend runs in Docker; playwright-executor runs on the host. Bind-mount host `<deploy checkout>/repos` into the backend container **read-write** at `/data/repos` (only that dir). Clone and checkout need write access; a read-only mount would allow Verify only. The host path is the same one the executor reads, so "accessible by Playwright" is true when the host dir exists.
+*   **Migration:** append `products(id, name UNIQUE, repo_url, staging_url, root_dir, branch, playwright_accessible, last_verified_at, verify_report JSON, created_at, updated_at)`.
+*   **API:** `/api/products` (GET, POST), `/api/products/{id}` (PUT, DELETE), `POST /api/products/{id}/verify|clone|checkout`.
+*   **Safety:** `repo_url` must match `^https://github\.com/[\w.-]+/[\w.-]+(\.git)?$`; branch matches a strict ref regex and never starts with `-`; `exec.Command` with an arg slice (no shell); resolved path must stay inside the pool (reject `..`, symlink escape); per-product lock; timeouts (clone 5 min, verify 15 s).
+*   **gh auth:** `gh` and `git` added to the backend image; `GH_TOKEN` supplied via `.env.prod` (key name only in `.env.prod.example`). Token scope: read access to the product repos.
+*   **UI:** `ProductsView` (table, add/edit modal, status chip, Verify/Clone/Switch branch, all via `SubmitButton`).
+
+## Decisions (owner, 2026-11-13)
+1.  GitHub token: taken from the owner's `~/.config/github/token.txt` locally (checked valid with `gh`; value never printed). Production needs `GH_TOKEN` set in `.env.prod` on rnd-v3, which is a separate step.
+2.  The pool mount is read-write, for this one directory only.
+3.  Verify runs both on demand and on a schedule (`PRODUCTS_VERIFY_INTERVAL_MINUTES`, default 360).
+
+## Writes by role
+Admin, DevOps and Developer may create, edit, delete, clone and switch branch. QA and QC may also Verify. Everyone signed in can read.
+
+## Former open questions
+1.  Is there a GitHub token with read access to the product repos, and where is it stored?
+2.  Read-write pool mount (enables clone/branch) vs read-only (verify only, clone by hand)?
+3.  Should Verify also run on a schedule, or only on demand?
+
+## Assumptions Goldfish reviewers must challenge
+*   A writable bind mount plus `gh` in the backend container is acceptable security-wise (backend can now run git/gh and write to one dir).
+*   `staging_url` reachability from the backend container equals reachability from the executor on the host.
+*   Storing `root_dir` relative to the pool is sufficient (no products outside it).
+
+## Target Files
+*   Create: `repos/.gitkeep`, `ai-backend/internal/api/products.go` (+ test), `ai-backend/internal/services/repopool/` (+ test), `dashboard/src/views/ProductsView.tsx`
+*   Modify: `ai-backend/internal/db/migrations.go`, `ai-backend/internal/models/models.go`, `ai-backend/internal/api/router.go`, `ai-backend/Dockerfile`, `deploy/his-v3-qa/docker-compose*.yml`, `deploy/his-v3-qa/.env.prod.example`, `.gitignore`, `dashboard/src/App.tsx`, `dashboard/src/components/Layout.tsx`, READMEs of touched packages, `docs/designs/SITEMAP.md`
+
+## Verification Plan
+Go table tests for URL/branch/path validation and verify checks (temp git dirs); `go test -mod=mod ./...`; dashboard build + tsc; manual verify against a real repo and a bogus path.
