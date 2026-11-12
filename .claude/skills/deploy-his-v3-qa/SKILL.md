@@ -37,7 +37,7 @@ ssh rnd-v3-vpn 'cd ~/devel/projects/qa-automation-tools && docker compose -f dep
 ssh rnd-v3-vpn 'cd ~/devel/projects/qa-automation-tools && docker compose -f deploy/his-v3-qa/docker-compose.prod.yml logs --tail 100 backend'
 ```
 - **Secrets:** `deploy/his-v3-qa/.env.prod` on rnd-v3 (mode 600). To change a value, edit it in place over ssh **without printing it**, then run `deploy.sh`. New keys must also go into `.env.prod.example`.
-- **Unpushed code:** run `git bundle create /tmp/qa.bundle <branch>` and `scp` it over. Then on rnd-v3: `git fetch /tmp/qa.bundle <branch>:<branch> && git checkout <branch>`, followed by `deploy.sh`.
+- **Unpushed code:** run `git bundle create /tmp/qa.bundle <branch>` locally and `scp` it to rnd-v3 `/tmp/`. On rnd-v3, if that branch is checked out, run `git pull --ff-only /tmp/qa.bundle <branch>`; otherwise run `git fetch /tmp/qa.bundle <branch>:<branch> && git checkout <branch>`. Then run `NO_PULL=1 deploy.sh`. The branch doesn't exist on GitHub yet, so a plain pull would fail.
 
 ## Edge (clino, shared with many products)
 - The live file is `/etc/nginx/conf.d/his-v3-qa.conf`. The repo mirror is `deploy/his-v3-qa/nginx-edge.conf`; keep them identical.
