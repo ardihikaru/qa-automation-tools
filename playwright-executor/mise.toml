@@ -1,4 +1,8 @@
 # Toolchain for playwright-executor. The systemd unit runs `mise exec -- node ...`
 # from this directory, so this file pins the runtime in production too.
+#
+# Node 24 (Active LTS), NOT 26: on Node 26 `playwright install chromium` (1.59.1)
+# hangs forever while extracting the browser zip (0 % CPU, verified on app-host
+# and a workstation, 2026-11-13). Re-test before bumping.
 [tools]
-node = "26"
+node = "24"
