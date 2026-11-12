@@ -1,12 +1,12 @@
 # his-v3-qa deployment
 
 ## Overview
-Production deployment of qa-automation at **https://his-v3.qa.sismedika.com**.
+Production deployment of qa-automation at **https://qa-tool.sismedika.com**.
 Everything private travels over the WireGuard mesh `10.10.0.0/24` (hub: `clino`).
 
 | Hop | Host | Address | What |
 |---|---|---|---|
-| Edge | `clino` | 103.127.134.25 / 10.10.0.1 | nginx, TLS (Let's Encrypt lineage `his-v3-qa`), `/etc/nginx/conf.d/his-v3-qa.conf` |
+| Edge | `clino` | 103.127.134.25 / 10.10.0.1 | nginx, TLS (Let's Encrypt lineage `qa-tool`), `/etc/nginx/conf.d/his-v3-qa.conf` |
 | App | `rnd-v3-vpn` | 10.10.0.9:8140 | Docker Compose: `dashboard` (nginx + SPA, proxies `/api`, `/health`) and `backend` (Go, :8080 internal) |
 | DB | `rnd-v2-vpn` | 10.10.0.4:5306 | MySQL 8 `master-compose-ai-mysqldb-master-1`, database `qa_automation`, user `qa_automation` |
 | AI | `rnd-v2-vpn` | 10.10.0.4:8099 | ai-manager (`POST /v1/chat`, Basic auth), always with `provider: claude-v3`, `no_fallback` |
@@ -36,8 +36,8 @@ Everything private travels over the WireGuard mesh `10.10.0.0/24` (hub: `clino`)
 ## Verification
 - Deploy: `ssh rnd-v3-vpn '~/devel/projects/qa-automation-tools/deploy/his-v3-qa/deploy.sh'`
 - Health from WG: `curl -s http://10.10.0.9:8140/health` should show `database: connected`, `ai_provider: ai-manager`, `ai_upstream: claude-v3`, `ai: ok`, `executor: ok`.
-- Public: `curl -sI https://his-v3.qa.sismedika.com` returns `200`. `/api/auth/me` returns `401` until you log in.
+- Public: `curl -sI https://qa-tool.sismedika.com` returns `200`. `/api/auth/me` returns `401` until you log in.
 - AI round trip on rnd-v3: `docker compose -f deploy/his-v3-qa/docker-compose.prod.yml exec backend wget -qO- localhost:8080/health`
 - Logs: `docker compose -f deploy/his-v3-qa/docker-compose.prod.yml logs -f backend`
 - Rollback: `deploy.sh <last OK sha from deploys.log>`; roll forward later with `deploy.sh --branch main`
-- Cert renewal: `ssh clino 'sudo certbot renew --dry-run --cert-name his-v3-qa'`
+- Cert renewal: `ssh clino 'sudo certbot renew --dry-run --cert-name qa-tool'`

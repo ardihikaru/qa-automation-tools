@@ -1,4 +1,4 @@
-# his-v3.qa.sismedika.com — production stack on rnd-v3-vpn (WireGuard 10.10.0.9).
+# qa-tool.sismedika.com — production stack on rnd-v3-vpn (WireGuard 10.10.0.9).
 #
 #   browser ─TLS─> clino nginx (103.127.134.25) ─WG/HTTP─> 10.10.0.9:8140 dashboard(nginx)
 #                                                              ├─ /            SPA

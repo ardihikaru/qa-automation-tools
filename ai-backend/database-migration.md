@@ -134,7 +134,7 @@ Avoid destructive in-place type conversions during critical production rollouts.
    - `ai_provider=ai-manager`, `ai=ok` (if AI_MANAGER_* creds are set)
 5. Run relevant tests.
 
-## Production Deployment (rnd-v3-vpn, his-v3.qa.sismedika.com)
+## Production Deployment (rnd-v3-vpn, qa-tool.sismedika.com)
 
 The backend runs as a Docker Compose service on rnd-v3-vpn (`deploy/his-v3-qa/`).
 The image only contains `./server`, so run migrations from a Go toolchain that can
@@ -144,7 +144,7 @@ reach `10.10.0.4:5306` over WireGuard (the dev laptop or rnd-v3 itself):
 2. Confirm `✅ Database migration completed`.
 3. Deploy: `deploy/his-v3-qa/deploy.sh` on rnd-v3-vpn.
 4. Post-deploy smoke test:
-   - `GET https://his-v3.qa.sismedika.com/health` returns `status=ok`, `database=connected`, `ai=ok`
+   - `GET https://qa-tool.sismedika.com/health` returns `status=ok`, `database=connected`, `ai=ok`
    - execute one DB-backed API request (for example `/api/skills`, after login)
 
 If migration fails, do not roll forward the backend until the schema is fixed.

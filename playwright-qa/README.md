@@ -121,7 +121,7 @@ directories are empty placeholders with no files.
 ### Production API
 
 The current production backend is reached through the dashboard at
-https://his-v3.qa.sismedika.com (Docker Compose stack on `rnd-v3-vpn`, see
+https://qa-tool.sismedika.com (Docker Compose stack on `rnd-v3-vpn`, see
 [deploy/his-v3-qa](../deploy/his-v3-qa/README.md)); nginx proxies `/api` and `/health`
 to the backend. The old Cloud Run `ai-backend-...run.app` URL is legacy.
 
@@ -139,7 +139,7 @@ to the backend. The old Cloud Run `ai-backend-...run.app` URL is legacy.
 ### Manual Testing
 
 ```bash
-BASE_URL="https://his-v3.qa.sismedika.com"
+BASE_URL="https://qa-tool.sismedika.com"
 
 # Health (no session needed)
 curl $BASE_URL/health

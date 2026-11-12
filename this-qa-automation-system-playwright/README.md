@@ -110,7 +110,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 
 ## Invariants
 
-- Specs build URLs from `config.backendUrl` / `config.dashboardUrl`, not from the Playwright `baseURL`. To change the target set `QA_BACKEND_URL` / `QA_DASHBOARD_URL` (e.g. both `https://his-v3.qa.sismedika.com`); note the suite does not log in, so auth-gated routes return 401 against a DB-backed backend.
+- Specs build URLs from `config.backendUrl` / `config.dashboardUrl`, not from the Playwright `baseURL`. To change the target set `QA_BACKEND_URL` / `QA_DASHBOARD_URL` (e.g. both `https://qa-tool.sismedika.com`); note the suite does not log in, so auth-gated routes return 401 against a DB-backed backend.
 - Tests run serially (`workers: 1`, `fullyParallel: false`). Mutating API tests (issues, learning) assume they run in file order against shared data.
 - Some API tests accept more than one status code because of the environment: `POST /api/flows` with invalid data accepts `[400, 500]`, `POST /api/learning` accepts `[201, 500]`, `DELETE /api/learning?id=1` accepts `[200, 404]`, and invalid `POST /api/issues` accepts `[201, 400]`.
 - Method-not-allowed checks expect `405` for `POST /api/cost/overview`, `PUT /api/flows` and `POST /api/skills`.
