@@ -1,14 +1,15 @@
-# ai-manager integration and self-hosted deployment (qa.mfardiansyah.id)
+# ai-manager integration and self-hosted deployment (qa-tool.mfardiansyah.id)
 
 *   **Author:** ardihikaru
 *   **Status:** Approved (retrospective: written alongside the implementation on branch `feature/ai-manager-egm-sut-deploy`)
 *   **Date:** 2026-11-13
+*   **Amended 2026-11-13:** the public name changed from `qa.mfardiansyah.id` to `qa-tool.mfardiansyah.id` (old name removed, cert lineage `qa-tool`). URLs below use the new name; internal identifiers (`deploy/qa-tool/`, `qa-tool.conf`, `$qatool_`) are unchanged.
 
 --------------------------------------------------------------------------------
 
 ## Overview
 
-qa-automation-tools now runs on our own infrastructure instead of Google Cloud Run and Neon, and every LLM call now goes through the team's production LLM gateway, **ai-manager**, instead of calling MiniMax directly. The app is served at `https://qa.mfardiansyah.id`. All traffic between the private hosts travels over the WireGuard mesh `10.8.0.0/24`.
+qa-automation-tools now runs on our own infrastructure instead of Google Cloud Run and Neon, and every LLM call now goes through the team's production LLM gateway, **ai-manager**, instead of calling MiniMax directly. The app is served at `https://qa-tool.mfardiansyah.id`. All traffic between the private hosts travels over the WireGuard mesh `10.8.0.0/24`.
 
 ## The Problem
 
@@ -22,7 +23,7 @@ The solution: put a provider interface in front of ai-manager (reached directly 
 
 *   Every LLM call from Go and TS goes through ai-manager `POST /v1/chat`, with no direct provider call, and is **pinned to upstream `claude-v3`**: the Claude CLI REST (`ai-claude-cli`) on app-host at `10.8.0.9:8105`. The request sends `no_fallback: true`, and the client rejects any reply from another provider. (Amended 2026-11-13 at the user's request.) MiniMax-direct remains a **manual** alternative (`AI_PROVIDER=minimax`); there is no automatic failover in this repo.
 *   Usage is attributed in ai-manager with the caller names `qa-automation` and `qa-automation-playwright-docs`.
-*   Production is reachable at `https://qa.mfardiansyah.id` with a valid certificate and cookie auth enabled.
+*   Production is reachable at `https://qa-tool.mfardiansyah.id` with a valid certificate and cookie auth enabled.
 *   Data is migrated with per-table row counts identical between the old and new databases.
 *   `/health` reports `database`, `ai_provider` and `ai`, so operators can see if auth is open.
 
@@ -41,7 +42,7 @@ The solution: put a provider interface in front of ai-manager (reached directly 
 ## Critical User Journeys (CUJs)
 
 1.  **Issue classification.** *Given* a raw issue with no category, *when* the playwright-qa runner posts it to `/api/issues`, *then* the backend calls `ClassifyIssue`, which goes through ai-manager, and stores `frontend`, `backend` or `unknown`.
-2.  **Operator health check.** *Given* the stack is running, *when* an operator `curl`s `https://qa.mfardiansyah.id/health`, *then* the response shows `database: connected`, `ai_provider: ai-manager`, `ai: ok`.
+2.  **Operator health check.** *Given* the stack is running, *when* an operator `curl`s `https://qa-tool.mfardiansyah.id/health`, *then* the response shows `database: connected`, `ai_provider: ai-manager`, `ai: ok`.
 3.  **Login.** *Given* a seeded user, *when* they sign in on the dashboard, *then* a `Secure`, `HttpOnly` `qa_session` cookie is set over HTTPS, and `/api/*` calls succeed.
 4.  **Rollback.** *Given* a bad release, *when* the operator takes the last `OK` sha from `deploy/qa-tool/deploys.log` and runs `deploy.sh <sha>`, *then* that commit is rebuilt and the gate passes. The gate requires `database: connected` and an anonymous `/api/auth/me` returning `401`. To roll forward later, run `deploy.sh --branch main`. Schema migrations only go forward, so they must stay compatible with the previous release.
 
@@ -58,7 +59,7 @@ browser ─TLS─> edge-host nginx (203.0.113.10 / 10.8.0.1) ─WG HTTP─> 10.8
 *   **AI seam.** `ChatProvider` (`internal/services/ai/provider.go`) has two implementations, `aiManagerProvider` (Basic auth, 180 s timeout; it caches ai-manager's `GET /v1/health` for 30 s, and `/health.ai` is `ok`, `unreachable`, `status_<code>` or `not_configured`) and `minimaxProvider`. `ai.NewFromConfig` picks one based on `AI_PROVIDER`. The public methods of `*ai.Service` keep their signatures, so callers did not change. `LastUsage()` exposes real tokens and cost.
 *   **Config.** New env keys: `AI_PROVIDER`, `AI_MANAGER_URL`, `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`, `AI_MANAGER_PROVIDER` (default `claude-v3`), `AI_MANAGER_NO_FALLBACK` (default `true`), `AI_MANAGER_MODEL`, `AI_TIMEOUT_SECONDS`. `/health` adds `ai_upstream`; `ai` can also be `upstream_disabled:claude-v3`. Env takes precedence over `config.yaml`.
 *   **DB.** A dedicated user `qa_automation@%` has privileges on schema `qa_automation` only. The data was moved with `mysqldump` and then loaded; migrations were re-run afterwards (they are idempotent).
-*   **Deploy.** `deploy/qa-tool/` holds the Compose file. The port is bound to the WG IP only. `docker.service` is ordered after `wg-quick@wg0`. The edge vhost copies the pattern of the existing `edge-host:/etc/nginx/conf.d/ai-minimax-cli.conf`: ACME on :80 served from `/var/www/acme`, everything else redirected to 443, TLS terminated there and proxied over WG with namespaced `map` variables. Certificate lineage: `qa-tool`.
+*   **Deploy.** `deploy/qa-tool/` holds the Compose file. The port is bound to the WG IP only. `docker.service` is ordered after `wg-quick@wg0`. The edge vhost copies the pattern of the existing `edge-host:/etc/nginx/conf.d/ai-minimax-cli.conf`: ACME on :80 served from `/var/www/acme`, everything else redirected to 443, TLS terminated there and proxied over WG with namespaced `map` variables. Certificate lineage: `qa-tool` (replaced by lineage `qa-tool` when the public name changed on 2026-11-13).
 *   **Timeouts along the AI path** are strictly ordered: ai-manager single-provider worst case (~150 s) < client 180 s < dashboard nginx 300 s < edge 330 s. If ai-manager's internal fallback chain runs past 180 s, the call fails, and callers degrade (for example, `ClassifyIssue` falls back to a heuristic).
 
 ## Alternatives Considered
@@ -99,6 +100,6 @@ browser ─TLS─> edge-host nginx (203.0.113.10 / 10.8.0.1) ─WG HTTP─> 10.8
 
 *   **Build:** `go build -mod=mod ./...`; `docker build` for both images.
 *   **Unit Tests:** `go test -mod=mod ./...`, which includes the ai-manager client tests (success, 401/502/503, empty text, timeout, health cache, usage).
-*   **E2E:** `go run -mod=mod ./cmd/verifyai` returns a reply through ai-manager. `https://qa.mfardiansyah.id/health` is green, and `/api/auth/me` returns 401 when logged out. Row counts match between the old and new DB.
+*   **E2E:** `go run -mod=mod ./cmd/verifyai` returns a reply through ai-manager. `https://qa-tool.mfardiansyah.id/health` is green, and `/api/auth/me` returns 401 when logged out. Row counts match between the old and new DB.
 
 *Drafted with EGM*

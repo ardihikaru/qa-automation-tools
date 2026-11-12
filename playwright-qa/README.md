@@ -121,7 +121,7 @@ directories are empty placeholders with no files.
 ### Production API
 
 The current production backend is reached through the dashboard at
-https://qa.mfardiansyah.id (Docker Compose stack on `app-host`, see
+https://qa-tool.mfardiansyah.id (Docker Compose stack on `app-host`, see
 [deploy/qa-tool](../deploy/qa-tool/README.md)); nginx proxies `/api` and `/health`
 to the backend. The old Cloud Run `ai-backend-...run.app` URL is legacy.
 
@@ -139,7 +139,7 @@ to the backend. The old Cloud Run `ai-backend-...run.app` URL is legacy.
 ### Manual Testing
 
 ```bash
-BASE_URL="https://qa.mfardiansyah.id"
+BASE_URL="https://qa-tool.mfardiansyah.id"
 
 # Health (no session needed)
 curl $BASE_URL/health

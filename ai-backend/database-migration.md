@@ -134,7 +134,7 @@ Avoid destructive in-place type conversions during critical production rollouts.
    - `ai_provider=ai-manager`, `ai=ok` (if AI_MANAGER_* creds are set)
 5. Run relevant tests.
 
-## Production Deployment (app-host, qa.mfardiansyah.id)
+## Production Deployment (app-host, qa-tool.mfardiansyah.id)
 
 The backend runs as a Docker Compose service on app-host (`deploy/qa-tool/`).
 The image only contains `./server`, so run migrations from a Go toolchain that can
@@ -144,7 +144,7 @@ reach `10.8.0.4:5306` over WireGuard (the dev laptop or app-host itself):
 2. Confirm `✅ Database migration completed`.
 3. Deploy: `deploy/qa-tool/deploy.sh` on app-host.
 4. Post-deploy smoke test:
-   - `GET https://qa.mfardiansyah.id/health` returns `status=ok`, `database=connected`, `ai=ok`
+   - `GET https://qa-tool.mfardiansyah.id/health` returns `status=ok`, `database=connected`, `ai=ok`
    - execute one DB-backed API request (for example `/api/skills`, after login)
 
 If migration fails, do not roll forward the backend until the schema is fixed.

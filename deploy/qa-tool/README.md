@@ -1,7 +1,7 @@
 # qa-tool deployment
 
 ## Overview
-Production deployment of qa-automation at **https://qa.mfardiansyah.id**.
+Production deployment of qa-automation at **https://qa-tool.mfardiansyah.id**.
 Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-host`).
 
 | Hop | Host | Address | What |
@@ -36,7 +36,7 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 ## Verification
 - Deploy: `ssh app-host '~/devel/projects/qa-automation-tools/deploy/qa-tool/deploy.sh'`
 - Health from WG: `curl -s http://10.8.0.9:8140/health` should show `database: connected`, `ai_provider: ai-manager`, `ai_upstream: claude-v3`, `ai: ok`, `executor: ok`.
-- Public: `curl -sI https://qa.mfardiansyah.id` returns `200`. `/api/auth/me` returns `401` until you log in.
+- Public: `curl -sI https://qa-tool.mfardiansyah.id` returns `200`. `/api/auth/me` returns `401` until you log in.
 - AI round trip on app-host: `docker compose -f deploy/qa-tool/docker-compose.prod.yml exec backend wget -qO- localhost:8080/health`
 - Logs: `docker compose -f deploy/qa-tool/docker-compose.prod.yml logs -f backend`
 - Rollback: `deploy.sh <last OK sha from deploys.log>`; roll forward later with `deploy.sh --branch main`

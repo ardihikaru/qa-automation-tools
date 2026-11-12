@@ -13,7 +13,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 - **Production**: `Dockerfile` builds `dist/` with `npm run build` and serves it from
   `nginx:alpine`. The current production deployment is the Docker Compose stack in
   [deploy/qa-tool](../deploy/qa-tool/README.md) on `app-host`, behind the edge-host
-  nginx edge at https://qa.mfardiansyah.id. That stack builds with
+  nginx edge at https://qa-tool.mfardiansyah.id. That stack builds with
   `NGINX_CONF=nginx.conf.example` and mounts `deploy/qa-tool/nginx.dashboard.conf`
   over it, which serves the SPA and proxies `/api` and `/health` to the `backend`
   service.

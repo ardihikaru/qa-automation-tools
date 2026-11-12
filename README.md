@@ -27,7 +27,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 ```
   Browser
-     │  https://qa.mfardiansyah.id   (TLS at the edge-host nginx edge, then WireGuard)
+     │  https://qa-tool.mfardiansyah.id   (TLS at the edge-host nginx edge, then WireGuard)
      ▼
  ┌──────────────────────── app-host 10.8.0.9 (4 vCPU / 3.8 GiB) ──────────────────────────┐
  │                                                                                           │
@@ -374,7 +374,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | Environment | URL |
 |-------------|-----|
 | Local | `http://localhost:8080` |
-| Production | `https://qa.mfardiansyah.id` (`/api`, `/health` proxied by the dashboard nginx) |
+| Production | `https://qa-tool.mfardiansyah.id` (`/api`, `/health` proxied by the dashboard nginx) |
 
 ### Endpoints
 
@@ -425,7 +425,7 @@ curl -b cookies.txt "http://localhost:8080/api/search?q=login"
 
 ### Production: qa-tool (Docker Compose on app-host)
 
-Production runs at **https://qa.mfardiansyah.id**. A Docker Compose stack on app-host runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
+Production runs at **https://qa-tool.mfardiansyah.id**. A Docker Compose stack on app-host runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
 It sits behind the shared edge-host nginx edge and reaches MySQL and ai-manager over WireGuard.
 See [deploy/qa-tool/README.md](./deploy/qa-tool/README.md) for deploy, rollback and health checks.
 

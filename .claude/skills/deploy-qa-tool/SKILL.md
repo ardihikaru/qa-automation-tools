@@ -1,6 +1,6 @@
 ---
 name: deploy-qa-tool
-description: Deploy, roll back, health-check or debug the production qa-automation stack at https://qa.mfardiansyah.id (Docker Compose on app-host 10.8.0.9 behind the edge-host nginx TLS edge). Use when asked to deploy/redeploy/release, check prod status or logs, roll back, renew or inspect the certificate, or change the edge vhost.
+description: Deploy, roll back, health-check or debug the production qa-automation stack at https://qa-tool.mfardiansyah.id (Docker Compose on app-host 10.8.0.9 behind the edge-host nginx TLS edge). Use when asked to deploy/redeploy/release, check prod status or logs, roll back, renew or inspect the certificate, or change the edge vhost.
 ---
 
 # Deploy qa-tool
@@ -36,8 +36,8 @@ ssh app-host 'systemctl --user status playwright-executor --no-pager | head -5; 
 
 ## Verify
 ```bash
-curl -s https://qa.mfardiansyah.id/health      # status ok, database connected, ai_provider ai-manager, ai ok
-curl -s -o /dev/null -w '%{http_code}\n' https://qa.mfardiansyah.id/api/auth/me   # 401 = auth is ON
+curl -s https://qa-tool.mfardiansyah.id/health      # status ok, database connected, ai_provider ai-manager, ai ok
+curl -s -o /dev/null -w '%{http_code}\n' https://qa-tool.mfardiansyah.id/api/auth/me   # 401 = auth is ON
 ```
 `database: disconnected` means **auth is off and the API is open**. Fix it immediately: check the `DB_*` values in `.env.prod`, and check that MySQL on db-host can be reached at `10.8.0.4:5306` from app-host.
 

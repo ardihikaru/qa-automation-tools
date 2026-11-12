@@ -2,7 +2,7 @@
 
 This is an AI-assisted QA automation system for **SUT**, the hospital information system under test. Playwright explores and tests SUT. A Go backend stores flows, issues and skills in MySQL and calls an LLM through **ai-manager**. A React dashboard shows the results.
 
-- Production: **https://qa.mfardiansyah.id**, running on app-host. See [deploy/qa-tool/README.md](deploy/qa-tool/README.md).
+- Production: **https://qa-tool.mfardiansyah.id**, running on app-host. See [deploy/qa-tool/README.md](deploy/qa-tool/README.md).
 - System contract: [README.md](README.md). The per-directory README files are EGM (Elephant-Goldfish Model, see below) contracts: read the one for the directory you are about to change.
 - Goals: [OBJECTIVES.md](OBJECTIVES.md). Design specs: [docs/designs/SITEMAP.md](docs/designs/SITEMAP.md).
 

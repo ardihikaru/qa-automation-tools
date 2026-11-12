@@ -74,7 +74,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 
 ## Deployment
 
-- Production: [deploy/qa-tool](../deploy/qa-tool/README.md). Docker Compose on app-host, behind the edge-host nginx edge, at https://qa.mfardiansyah.id.
+- Production: [deploy/qa-tool](../deploy/qa-tool/README.md). Docker Compose on app-host, behind the edge-host nginx edge, at https://qa-tool.mfardiansyah.id.
   The image is built from this directory's `Dockerfile`.
 - `cloudbuild.yaml` (Cloud Run) is **legacy** and is no longer the deploy path.
 
