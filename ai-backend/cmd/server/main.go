@@ -15,6 +15,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
+	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
@@ -62,6 +63,13 @@ func main() {
 
 	// Initialize router with possibly nil database
 	router := api.NewRouter(database, aiService, learningService, skillsService)
+
+	// Playwright jobs run in playwright-executor (systemd service on app-host).
+	// Without PLAYWRIGHT_EXECUTOR_URL, /api/jobs/* stay simulated.
+	if exe := executor.New(executor.Config{URL: cfg.Backend.Executor.URL, Token: cfg.Backend.Executor.Token}); exe != nil {
+		router.SetExecutor(exe, time.Duration(cfg.Backend.Executor.TimeoutMinutes)*time.Minute)
+	}
+	router.FailOrphanedJobs(context.Background())
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs

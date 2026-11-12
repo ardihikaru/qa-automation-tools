@@ -1,0 +1,4 @@
+# Toolchain for playwright-executor. The systemd unit runs `mise exec -- node ...`
+# from this directory, so this file pins the runtime in production too.
+[tools]
+node = "26"
