@@ -20,6 +20,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
+	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
@@ -31,6 +32,10 @@ type Router struct {
 	learningService *learning.Service
 	skillsService   *skills.Service
 	jobs            *jobManager
+
+	// Playwright execution (nil = simulated jobs). See jobs_executor.go.
+	executor        *executor.Client
+	executorTimeout time.Duration
 
 	// Auth wiring — nil when the database is unavailable. When set, all /api/*
 	// routes outside the allow-list go through requireAuth.
@@ -191,6 +196,11 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 	r.jobs.mu.Unlock()
 	r.upsertJobRecord(context.Background(), job)
 
+	if r.executor != nil {
+		go r.runExecutorJob(job.ID, jobType, payload)
+		return job
+	}
+
 	go func(id string) {
 		startedAt := time.Now().UTC()
 		r.jobs.mu.Lock()
@@ -199,7 +209,7 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 		record.StartedAt = &startedAt
 		r.jobs.mu.Unlock()
 
-		// Simulate minimal async backend work.
+		// No playwright-executor configured: simulate minimal async work.
 		time.Sleep(200 * time.Millisecond)
 
 		completedAt := time.Now().UTC()
@@ -209,7 +219,8 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 		record.CompletedAt = &completedAt
 		record.DurationMs = completedAt.Sub(startedAt).Milliseconds()
 		record.Result = map[string]interface{}{
-			"message": fmt.Sprintf("%s job completed", jobType),
+			"message":   fmt.Sprintf("%s job completed", jobType),
+			"simulated": true,
 		}
 		r.jobs.mu.Unlock()
 		r.upsertJobRecord(context.Background(), record)
@@ -595,6 +606,10 @@ func (r *Router) serveHealth(w http.ResponseWriter) {
 			minimaxStatus = "configured"
 		}
 	}
+	executorStatus := "not_configured"
+	if r.executor != nil {
+		executorStatus = r.executor.Health(context.Background())
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{
@@ -604,6 +619,7 @@ func (r *Router) serveHealth(w http.ResponseWriter) {
 		"ai_upstream": aiUpstream,
 		"ai":          aiStatus,
 		"minimax":     minimaxStatus,
+		"executor":    executorStatus,
 	})
 }
 

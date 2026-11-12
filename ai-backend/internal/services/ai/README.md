@@ -3,9 +3,13 @@
 ## Overview
 
 Package `ai` is ai-backend's single LLM facade. `Service` sends every chat call
-through a `ChatProvider`. The default provider is the production ai-manager
-gateway, reached directly over WireGuard. A MiniMax provider is kept as a
-fallback when `AI_PROVIDER=minimax`. The package also has QA-specific helpers
+through a `ChatProvider`. The production ai-manager gateway, reached directly
+over WireGuard and pinned to upstream **`claude-v3`** with `no_fallback`, is
+the **only supported provider**. The MiniMax provider (`AI_PROVIDER=minimax`)
+is **dormant**: it stays in the code, but enabling it requires the owner's
+explicit approval. Callers include `internal/api/jobs_executor.go`
+`summarizeDocsRun`, which turns playwright-executor recordings into Markdown.
+The package also has QA-specific helpers
 (issue classification, fix suggestions, skill generation) and a placeholder
 embedding generator. It is constructed from
 [config](../../config/README.md) `AIConfig` by `cmd/server`, `cmd/verifyai`,

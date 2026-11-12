@@ -27,34 +27,50 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 ```
   Browser
-     │  https://qa.mfardiansyah.id  (production, edge-host nginx edge)
+     │  https://qa.mfardiansyah.id   (TLS at the edge-host nginx edge, then WireGuard)
      ▼
-┌──────────────────────┐   /api, /health   ┌──────────────────────┐
-│ dashboard            │ ────────────────▶ │ ai-backend           │
-│ React SPA            │                   │ Go API :8080         │
-│ (nginx; Vite proxy   │ ◀──────────────── │ cookie-session auth  │
-│  in dev)             │                   │ (only when DB is up) │
-└──────────────────────┘                   └───┬─────────────┬────┘
-                                               │             │ services/ai ChatProvider
-                                               ▼             ▼
-                                   ┌──────────────┐  ┌───────────────────────────┐
-                                   │ MySQL 8      │  │ ai-manager POST /v1/chat   │
-                                   │ (DB_*)       │  │ (default, HTTP Basic, WG)  │
-                                   └──────────────┘  │ MiniMax (AI_PROVIDER=      │
-                                                     │ minimax, fallback)         │
-                                                     └───────────────────────────┘
+ ┌──────────────────────── app-host 10.8.0.9 (4 vCPU / 3.8 GiB) ──────────────────────────┐
+ │                                                                                           │
+ │  Docker Compose (qa-automation)                                                           │
+ │  ┌─────────────────────┐ /api,/health ┌────────────────────────┐                          │
+ │  │ dashboard  :8140    │─────────────▶│ ai-backend (Go) :8080  │                          │
+ │  │ React SPA + nginx   │              │ cookie auth (DB up)    │                          │
+ │  └─────────────────────┘              │ /api/jobs/* dispatcher │                          │
+ │                                       └──┬──────────┬──────┬───┘                          │
+ │       POST /v1/runs, GET /v1/runs/:id    │          │      │                              │
+ │       (Bearer, poll every 3 s)           ▼          │      │                              │
+ │  systemd --user (mise node 24)  ┌───────────────────────┐  │                              │
+ │  MemoryMax 2.5G · CPUQuota 60%  │ playwright-executor   │  │                              │
+ │                                 │ 10.8.0.9:8141        │──┼──Chromium──▶ SUT STAGING  │
+ │                                 │ 1 browser at a time   │  │                              │
+ │                                 └───────────────────────┘  │                              │
+ │  systemd --user                 ┌───────────────────────┐  │                              │
+ │                                 │ ai-claude-cli :8105   │◀─┼───────────────┐              │
+ │                                 │ ("claude-v3")         │  │               │              │
+ │                                 └───────────────────────┘  │               │              │
+ └────────────────────────────────────────────────────────────┼───────────────┼──────────────┘
+                                                              │ WireGuard     │
+ ┌──────────────── db-host 10.8.0.4 ──────────────────────▼───────────────┼──────┐
+ │  MySQL 8 :5306 (schema qa_automation)   ai-manager :8099 POST /v1/chat ─────┘      │
+ │                                         provider=claude-v3, no_fallback=true       │
+ └────────────────────────────────────────────────────────────────────────────────────┘
 
-  playwright-qa / playwright-docs ──(Playwright)──▶ SUT staging UI
-  playwright-qa ──HTTP──▶ ai-backend /api/*        playwright-docs ──▶ ai-manager / MiniMax
   this-qa-automation-system-playwright ──▶ ai-backend + dashboard (self-tests)
 ```
 
 - **ai-backend** is the Go API. It stores flows, issues, skills, learning data, cost data and jobs in MySQL 8.
-  All LLM calls go through `internal/services/ai` `ChatProvider`, which defaults to ai-manager.
+  Every LLM call goes through `internal/services/ai` (`ai.Service` → ai-manager → **claude-v3**, with `no_fallback`).
+  `/api/jobs/qa/run` and `/api/jobs/docs/generate` dispatch to playwright-executor (`internal/api/jobs_executor.go`).
+- **playwright-executor** is the only place Playwright runs. It is a small Node/TS service on app-host, run as a
+  systemd user unit with Node from mise, and capped by its cgroup at 2.5 GiB RAM and 60 % of all CPUs.
+  It logs into SUT **staging**, explores and runs QA skills, or records documentation flows.
+  It makes no AI calls and no calls to the backend: the backend polls it.
 - **dashboard** is the React + Vite UI. Every route except `/login` is gated by a cookie-session login.
-- **playwright-qa** and **playwright-docs** are the Playwright tools that drive the SUT staging frontend.
-  playwright-qa explores the UI and runs QA checks. playwright-docs records flows and summarizes them into documentation.
+- **playwright-qa** and **playwright-docs** are **deprecated**. Their working logic was ported into playwright-executor;
+  they remain only for reference until a later cleanup PR.
 - **this-qa-automation-system-playwright** is the E2E self-verification suite for the backend API and the dashboard.
+- **LLM policy:** ai-manager pinned to `claude-v3` (the Claude CLI REST on app-host) is the only supported path.
+  The MiniMax provider code is **dormant**: it is never selected by default and must not be switched on without the owner's explicit approval.
 
 ## Subdirectories & System Boundaries
 
@@ -63,12 +79,15 @@ A QA automation system with AI-powered features for testing and monitoring healt
   - [internal/auth](./ai-backend/internal/auth/README.md): bcrypt passwords, MySQL `sessions`, `Require` middleware.
   - [internal/config](./ai-backend/internal/config/README.md): `LoadConfig` (env > `.env` > `config.yaml`) and the `GetDatabaseURL` MySQL DSN.
   - [internal/db](./ai-backend/internal/db/README.md): MySQL 8 connection pool and idempotent `RunMigrations`.
-  - [internal/services/ai](./ai-backend/internal/services/ai/README.md): `ChatProvider`, with `aiManagerProvider` as the default and `minimaxProvider` as the fallback.
+  - [internal/services/ai](./ai-backend/internal/services/ai/README.md): `ChatProvider`. `aiManagerProvider` (claude-v3) is the only supported provider; `minimaxProvider` is dormant.
+  - `internal/services/executor`: playwright-executor client (`Submit`, `Get`, `Wait`, `Health`).
   - [internal/services/skills](./ai-backend/internal/services/skills/README.md): skill registry (`skills`, `skill_logs`) and built-in skills.
   - [internal/services/learning](./ai-backend/internal/services/learning/README.md): learning cache, navigation edges, action sequences, context records.
 - `dashboard/`: [dashboard/README.md](./dashboard/README.md). React SPA. Calls same-origin `/api/*` with `credentials: 'include'`.
-- `playwright-qa/`: [playwright-qa/README.md](./playwright-qa/README.md). Exploratory QA engine (random, guided and planning modes, built-in skills) that logs results to the backend.
-- `playwright-docs/`: [playwright-docs/README.md](./playwright-docs/README.md). Flow recorder (screenshots and videos) plus an AI summarizer (`summarizeFlow.ts` `callAI`, ai-manager by default).
+- `playwright-executor/`: [playwright-executor/README.md](./playwright-executor/README.md). Playwright run service (`qa_run`, `docs_generate`). It has an HTTP API with a bearer token, concurrency 1, and is staging only.
+- `deploy/playwright-executor/`: [deploy/playwright-executor/README.md](./deploy/playwright-executor/README.md). systemd user unit template, `install.sh`, and the resource budget.
+- `playwright-qa/` (**deprecated**): [playwright-qa/README.md](./playwright-qa/README.md). The old exploratory QA prototype, superseded by playwright-executor.
+- `playwright-docs/` (**deprecated**): [playwright-docs/README.md](./playwright-docs/README.md). The old flow recorder and summarizer, superseded by playwright-executor plus backend `summarizeDocsRun`.
 - `this-qa-automation-system-playwright/`: [this-qa-automation-system-playwright/README.md](./this-qa-automation-system-playwright/README.md). Playwright API and dashboard regression suite for this repository.
 - `lib/`: [lib/README.md](./lib/README.md). Shared TypeScript `config.yaml` loader (`lib/config.ts`), imported by playwright-docs.
 - `deploy/qa-tool/`: [deploy/qa-tool/README.md](./deploy/qa-tool/README.md). **Production** Docker Compose stack on app-host, behind the edge-host nginx edge.
@@ -80,8 +99,10 @@ A QA automation system with AI-powered features for testing and monitoring healt
 - **Auth depends on the DB.** `ai-backend/cmd/server/main.go` wires cookie-session auth (`router.SetAuth`) only when `db.NewConnection` succeeds.
   If `/health` reports `"database":"disconnected"`, the API is open.
 - **Migrations are explicit.** The server never migrates. Run `go run ./cmd/databasemigration`. It is idempotent: `CREATE TABLE IF NOT EXISTS`, append-only.
-- **One LLM path in the backend.** Backend LLM calls go through `ChatProvider`.
-  `AI_PROVIDER` defaults to `ai-manager`, and only the value `minimax` selects MiniMax. The TypeScript `lib/config.ts` `getAI` uses the same default.
+- **One LLM path: ai-manager → claude-v3.** Backend LLM calls go through `ChatProvider`, which is pinned to `AI_MANAGER_PROVIDER=claude-v3` with `AI_MANAGER_NO_FALLBACK=true`.
+  `AI_PROVIDER=minimax` still exists in code but is dormant and needs explicit owner approval. playwright-executor makes no LLM calls.
+- **Playwright runs only in playwright-executor.** It is bound to the WireGuard IP, runs one browser at a time, and its systemd cgroup caps it at `MemoryMax=2560M` and `CPUQuota = nproc × 60 %`.
+  It only targets `TARGET_STAGING_URL`. The backend falls back to simulated jobs when `PLAYWRIGHT_EXECUTOR_URL` is empty.
 - **Same-origin API.** The dashboard uses relative `/api/*` paths. They go through the Vite proxy in dev and the in-container nginx in production.
   Backend CORS comes from `DASHBOARD_ORIGIN` (`router.go:applyCORS`).
 - **Secrets** live in `.env`, `config.yaml` (both gitignored) and, in production, in `.env.prod` on app-host only. Never commit them.
@@ -89,7 +110,8 @@ A QA automation system with AI-powered features for testing and monitoring healt
 ## Global Side Effects
 
 - MySQL 8 database (`qa_automation`): see [ai-backend/internal/db](./ai-backend/internal/db/README.md) for tables.
-- Outbound LLM calls to ai-manager (`POST {AI_MANAGER_URL}/v1/chat`, default `http://10.8.0.4:8099` over WireGuard) or to MiniMax. ai-manager bills and logs these calls.
+- Outbound LLM calls to ai-manager (`POST {AI_MANAGER_URL}/v1/chat`, default `http://10.8.0.4:8099` over WireGuard), always answered by `claude-v3`. ai-manager bills and logs these calls.
+- playwright-executor drives Chromium against SUT staging and writes screenshots to `~/qa-executor-data/runs` on app-host (kept 7 days). Issues found by `qa_run` are inserted into `raw_issues`.
 - Read-only user import from the taskmgr Neo4j at backend startup, when `TASKMGR_NEO4J_URI` is set.
 - The Playwright tools log into, and click through, the SUT staging frontend. playwright-docs writes screenshots and videos under `playwright-docs/output/`.
 - The self-test suite mutates backend data: it creates flows and issues and updates and deletes learning records.
@@ -98,6 +120,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 - Backend: `cd ai-backend && go test -mod=mod ./...`
 - Dashboard: `cd dashboard && npm run build` (and `npm run lint`)
+- Playwright executor: `cd playwright-executor && mise exec -- npm test`
 - Self-tests (backend on :8080, dashboard on :3000): `cd this-qa-automation-system-playwright && npx playwright test`
 - AI provider smoke test: `cd ai-backend && go run ./cmd/verifyai`
 - Production health: see [deploy/qa-tool/README.md](./deploy/qa-tool/README.md#verification)
@@ -118,7 +141,8 @@ A QA automation system with AI-powered features for testing and monitoring healt
 ### Required Access
 
 - A MySQL 8 database (production uses `qa_automation` on db-host over WireGuard)
-- ai-manager credentials (`AI_MANAGER_LOGIN_ID` / `AI_MANAGER_SECRET_KEY`) and WireGuard access to it. A [MiniMax](https://minimax.io/) API key is needed only if you use `AI_PROVIDER=minimax`.
+- ai-manager credentials (`AI_MANAGER_LOGIN_ID` / `AI_MANAGER_SECRET_KEY`) and WireGuard access to it. No other LLM credentials are needed: claude-v3 via ai-manager is the only supported path.
+- For real Playwright jobs: a reachable playwright-executor (`PLAYWRIGHT_EXECUTOR_URL` and `_TOKEN`). Without it, `/api/jobs/*` run in simulated mode.
 
 ---
 
@@ -203,7 +227,11 @@ AI_PROVIDER=ai-manager
 AI_MANAGER_URL=http://10.8.0.4:8099
 AI_MANAGER_LOGIN_ID=...
 AI_MANAGER_SECRET_KEY=...
-# Fallback: AI_PROVIDER=minimax + MINIMAX_API_KEY=...
+# (AI_PROVIDER=minimax is dormant; do not use)
+
+# PLAYWRIGHT (optional locally; empty = simulated /api/jobs)
+PLAYWRIGHT_EXECUTOR_URL=
+PLAYWRIGHT_EXECUTOR_TOKEN=
 
 # AUTH (active only when the DB connects)
 DASHBOARD_ORIGIN=http://localhost:3000
@@ -242,7 +270,7 @@ go build -o server ./cmd/server
 curl http://localhost:8080/health
 
 # Expected response shape:
-# {"ai":"ok","ai_provider":"ai-manager","ai_upstream":"claude-v3","database":"connected","minimax":"not_configured","status":"ok"}
+# {"ai":"ok","ai_provider":"ai-manager","ai_upstream":"claude-v3","database":"connected","executor":"ok","minimax":"not_configured","status":"ok"}
 ```
 
 ---
@@ -313,12 +341,13 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 |----------|-------------|---------|
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | MySQL 8 connection parts | `DB_NAME=qa_automation` |
 | `DATABASE_URL` | Full MySQL DSN (overrides `DB_*`) | — |
-| `AI_PROVIDER` | `ai-manager` or `minimax` | `ai-manager` |
+| `AI_PROVIDER` | `ai-manager` (only supported value; `minimax` is dormant) | `ai-manager` |
 | `AI_MANAGER_URL` | ai-manager base URL | `http://10.8.0.4:8099` |
 | `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY` | ai-manager HTTP Basic credentials | — |
 | `AI_MANAGER_PROVIDER`, `AI_MANAGER_NO_FALLBACK`, `AI_MANAGER_MODEL` | Upstream pinned inside ai-manager (Claude CLI REST on app-host `10.8.0.9:8105`) | `claude-v3`, `true`, empty (`claude-opus-5`) |
 | `AI_TIMEOUT_SECONDS` | LLM call timeout | `180` |
-| `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | MiniMax fallback settings | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
+| `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | **Dormant** MiniMax settings (unused) | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
+| `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | playwright-executor endpoint, bearer token, max wait per job | empty (simulated), —, `30` |
 | `PORT`, `BACKEND_HOST` | Listen address | `8080`, `0.0.0.0` |
 | `DASHBOARD_ORIGIN` | CORS origin when auth is on | `http://localhost:6173` |
 | `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE` | Session cookie | `qa_session`, `12`, `false` |
@@ -543,9 +572,11 @@ qa-automation-tools/
 │   └── Dockerfile
 │
 ├── deploy/qa-tool/         # Production Docker Compose stack
+├── deploy/playwright-executor/ # systemd user unit + install.sh (2.5 GiB / 60 % CPU)
 ├── lib/                      # Shared TS config loader
-├── playwright-docs/          # Playwright-driven documentation generator
-├── playwright-qa/            # Core QA automation engine
+├── playwright-executor/      # THE Playwright runtime (HTTP service, mise node 24)
+├── playwright-docs/          # DEPRECATED: old documentation generator
+├── playwright-qa/            # DEPRECATED: old QA prototype
 ├── this-qa-automation-system-playwright/ # Self-verification tests (API + dashboard)
 ├── product-documentations/   # Source docs for product modules
 ├── config.yaml               # Main configuration (gitignored; see config.yaml.template)
