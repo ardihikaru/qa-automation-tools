@@ -50,6 +50,22 @@ export interface DatabaseConfig {
 }
 
 export interface AIConfig {
+  /** "ai-manager" (default, production gateway over WireGuard) or "minimax" (direct fallback). */
+  provider?: 'ai-manager' | 'minimax';
+  /** ai-manager base URL, e.g. http://10.10.0.4:8099 (env AI_MANAGER_URL). */
+  manager_url?: string;
+  /** ai-manager HTTP Basic credentials (env AI_MANAGER_LOGIN_ID / AI_MANAGER_SECRET_KEY). */
+  manager_login_id?: string;
+  manager_secret_key?: string;
+  /** Upstream provider inside ai-manager. This repo pins "claude-v3" (Claude CLI on rnd-v3). */
+  manager_provider?: string;
+  /** Forbid ai-manager cross-provider fallback (env AI_MANAGER_NO_FALLBACK, default true). */
+  manager_no_fallback?: boolean;
+  /** Optional upstream model inside ai-manager (env AI_MANAGER_MODEL). */
+  manager_model?: string;
+  /** Per-call timeout in seconds (env AI_TIMEOUT_SECONDS, default 180). */
+  timeout_seconds?: number;
+  /** MiniMax direct settings (only used when provider = "minimax"). */
   api_key: string;
   model: string;
   embedding_model: string;
@@ -302,7 +318,19 @@ export function getDatabase(): DatabaseConfig {
  * Get AI configuration
  */
 export function getAI(): AIConfig {
-  return loadConfig().backend.ai;
+  const ai: AIConfig = { ...(loadConfig().backend?.ai || ({} as AIConfig)) };
+  // Environment always wins over config.yaml (secrets should live in env only).
+  const env = process.env;
+  ai.provider = (env.AI_PROVIDER as AIConfig['provider']) || ai.provider || 'ai-manager';
+  ai.manager_url = env.AI_MANAGER_URL || ai.manager_url || 'http://10.10.0.4:8099';
+  ai.manager_login_id = env.AI_MANAGER_LOGIN_ID || ai.manager_login_id || '';
+  ai.manager_secret_key = env.AI_MANAGER_SECRET_KEY || ai.manager_secret_key || '';
+  ai.manager_provider = env.AI_MANAGER_PROVIDER || ai.manager_provider || 'claude-v3';
+  ai.manager_no_fallback = env.AI_MANAGER_NO_FALLBACK ? env.AI_MANAGER_NO_FALLBACK !== 'false' : ai.manager_no_fallback ?? true;
+  ai.manager_model = env.AI_MANAGER_MODEL || ai.manager_model || '';
+  ai.timeout_seconds = Number(env.AI_TIMEOUT_SECONDS) || ai.timeout_seconds || 180;
+  ai.api_key = env.MINIMAX_API_KEY || ai.api_key || '';
+  return ai;
 }
 
 /**
@@ -400,8 +428,11 @@ export function validateConfig(): { valid: boolean; errors: string[] } {
     errors.push('backend.database.host is required');
   }
   
-  if (!config.backend?.ai?.api_key) {
-    errors.push('backend.ai.api_key is required');
+  const ai = getAI();
+  if (ai.provider === 'minimax') {
+    if (!ai.api_key) errors.push('backend.ai.api_key (MINIMAX_API_KEY) is required when provider = minimax');
+  } else if (!ai.manager_login_id || !ai.manager_secret_key) {
+    errors.push('AI_MANAGER_LOGIN_ID / AI_MANAGER_SECRET_KEY are required when provider = ai-manager');
   }
   
   return {

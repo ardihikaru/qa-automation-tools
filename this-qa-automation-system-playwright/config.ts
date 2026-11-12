@@ -1,10 +1,12 @@
 // Test configuration and constants
 export const config = {
   // Backend API
-  backendUrl: 'http://localhost:8080',
+  // Override with QA_BACKEND_URL (e.g. https://his-v3.qa.sismedika.com)
+  backendUrl: process.env.QA_BACKEND_URL || 'http://localhost:8080',
   
   // Dashboard
-  dashboardUrl: 'http://localhost:3000',
+  // Override with QA_DASHBOARD_URL (e.g. https://his-v3.qa.sismedika.com)
+  dashboardUrl: process.env.QA_DASHBOARD_URL || 'http://localhost:3000',
   
   // Timeouts
   apiTimeout: 10000,

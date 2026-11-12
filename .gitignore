@@ -46,3 +46,14 @@ _docs/
 
 TEST-SCENARIO.md
 TEST-RESULTS.md
+
+# Deploy secrets (rnd-v3 only)
+.env.prod
+.env.*.local
+
+# EGM scratch drafts (approved specs go to docs/designs/)
+.dev/docs/
+
+# Claude Code personal settings
+.claude/settings.local.json
+deploy/his-v3-qa/deploys.log
