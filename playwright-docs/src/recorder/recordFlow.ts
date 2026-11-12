@@ -21,7 +21,9 @@ export interface FlowConfig {
   };
   api: {
     backend_url: string;
+    /** @deprecated kept for compatibility; use ai */
     minimax_api_key: string;
+    ai?: import('../../../lib/config').AIConfig;
   };
 }
 

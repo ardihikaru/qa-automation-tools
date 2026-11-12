@@ -1,114 +1,109 @@
 package ai
 
 import (
-	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/qa-automation/ai-backend/internal/config"
 	"github.com/qa-automation/ai-backend/internal/models"
 )
 
-// Service handles AI interactions with Minimax
+// Service is the backend's AI facade. All LLM traffic goes through a ChatProvider
+// (default: ai-manager over WireGuard; fallback: MiniMax direct).
 type Service struct {
-	APIKey        string
-	BaseURL       string
-	Model         string
-	ChatEndpoint  string
-	httpClient    *http.Client
+	// APIKey/BaseURL/Model/ChatEndpoint describe the MiniMax fallback and are kept
+	// for backward compatibility with existing callers and tests.
+	APIKey       string
+	BaseURL      string
+	Model        string
+	ChatEndpoint string
+
+	provider ChatProvider
+	timeout  time.Duration
+
+	usageMu   sync.Mutex
+	lastUsage ChatResult
 }
 
-// NewService creates a new AI service
+// NewService creates a MiniMax-backed AI service (legacy constructor).
 func NewService(apiKey string) *Service {
-	// Default values - these will be overridden by config
-	return &Service{
-		APIKey:       apiKey,
-		BaseURL:      "https://api.minimax.io/v1",
-		Model:        "MiniMax-M2.5",
-		ChatEndpoint: "/chat/completions",
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
-	}
+	return NewServiceWithConfig(apiKey, "", "", "")
 }
 
-// NewServiceWithConfig creates a new AI service with full configuration
+// NewServiceWithConfig creates a MiniMax-backed AI service (legacy constructor).
 func NewServiceWithConfig(apiKey, baseURL, model, chatEndpoint string) *Service {
+	p := newMiniMaxProvider(apiKey, baseURL, model, chatEndpoint, 30*time.Second)
 	return &Service{
 		APIKey:       apiKey,
-		BaseURL:      baseURL,
-		Model:        model,
-		ChatEndpoint: chatEndpoint,
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		BaseURL:      p.baseURL,
+		Model:        p.model,
+		ChatEndpoint: p.chatEndpoint,
+		provider:     p,
+		timeout:      30 * time.Second,
 	}
 }
 
-// ChatRequest represents a chat request
-type ChatRequest struct {
-	Model      string        `json:"model"`
-	Messages   []models.Message `json:"messages"`
-	Temperature float64      `json:"temperature,omitempty"`
+// NewServiceWithProvider creates a service around any ChatProvider.
+func NewServiceWithProvider(p ChatProvider, timeout time.Duration) *Service {
+	if timeout <= 0 {
+		timeout = 180 * time.Second
+	}
+	return &Service{provider: p, timeout: timeout}
 }
 
-// ChatResponse represents a chat response
-type ChatResponse struct {
-	Choices []struct {
-		Message models.Message `json:"message"`
-	} `json:"choices"`
-	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-	} `json:"usage"`
+// ProviderName returns the configured AI_PROVIDER value.
+func (s *Service) ProviderName() string {
+	if s == nil || s.provider == nil {
+		return ""
+	}
+	return s.provider.Name()
 }
 
-// Chat generates a chat completion
+// Configured reports whether the active provider has the credentials it needs.
+func (s *Service) Configured() bool {
+	return s != nil && s.provider != nil && s.provider.Configured()
+}
+
+// Health returns the active provider's health ("ok", "configured", "not_configured", ...).
+func (s *Service) Health(ctx context.Context) string {
+	if s == nil || s.provider == nil {
+		return "not_configured"
+	}
+	return s.provider.Health(ctx)
+}
+
+// LastUsage returns token/cost data of the most recent successful chat call.
+func (s *Service) LastUsage() ChatResult {
+	s.usageMu.Lock()
+	defer s.usageMu.Unlock()
+	return s.lastUsage
+}
+
+// Chat sends a single user prompt and returns the reply text.
 func (s *Service) Chat(prompt string) (string, error) {
-	if s.APIKey == "" {
-		return "", fmt.Errorf("MINIMAX_API_KEY not set")
-	}
+	return s.ChatMessages(context.Background(), []models.Message{{Role: "user", Content: prompt}}, ChatOpts{Temperature: 0.7})
+}
 
-	req := ChatRequest{
-		Model: s.Model,
-		Messages: []models.Message{
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0.7,
+// ChatMessages sends a full message list through the active provider.
+func (s *Service) ChatMessages(ctx context.Context, messages []models.Message, opts ChatOpts) (string, error) {
+	if s == nil || s.provider == nil {
+		return "", fmt.Errorf("AI service not initialised")
 	}
-
-	body, err := json.Marshal(req)
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	res, err := s.provider.Chat(ctx, messages, opts)
 	if err != nil {
 		return "", err
 	}
-
-	httpReq, err := http.NewRequest("POST", s.BaseURL+s.ChatEndpoint, bytes.NewBuffer(body))
-	if err != nil {
-		return "", err
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+s.APIKey)
-
-	resp, err := s.httpClient.Do(httpReq)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API returned status %d", resp.StatusCode)
-	}
-
-	var chatResp ChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", err
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("no response from AI")
-	}
-
-	return chatResp.Choices[0].Message.Content, nil
+	s.usageMu.Lock()
+	s.lastUsage = res
+	s.usageMu.Unlock()
+	return res.Text, nil
 }
 
 // EmbeddingRequest represents an embedding request
@@ -126,8 +121,8 @@ type EmbeddingResponse struct {
 // Note: MiniMax doesn't have public embedding API, so we return a placeholder
 // In production, consider using OpenAI text-embedding-3-small or another provider
 func (s *Service) GenerateEmbedding(text string) ([]float64, error) {
-	if s.APIKey == "" {
-		return nil, fmt.Errorf("MINIMAX_API_KEY not set")
+	if !s.Configured() {
+		return nil, fmt.Errorf("AI provider not configured")
 	}
 
 	// Per MiniMax-API-Endpoint.pdf: embedding API not available publicly
@@ -147,7 +142,7 @@ func (s *Service) GenerateEmbedding(text string) ([]float64, error) {
 		}
 	}
 
-	fmt.Printf("⚠️  Using placeholder embedding (MiniMax doesn't have public embedding API)\n")
+	fmt.Printf("⚠️  Using placeholder embedding (no embedding API behind the AI provider)\n")
 	return placeholder, nil
 }
 
@@ -180,6 +175,7 @@ Return just one word: frontend or backend
 	if err != nil {
 		return "", err
 	}
+	result = strings.ToLower(strings.Trim(strings.TrimSpace(result), ".\"'`"))
 
 	if result == "frontend" || result == "backend" {
 		return result, nil
@@ -259,6 +255,7 @@ Format as JSON array:
 }
 
 // EstimateCost estimates the cost of an API call
+// When the last call reported a real cost (ai-manager does), prefer LastUsage().CostUSD.
 func (s *Service) EstimateCost(inputTokens, outputTokens int) float64 {
 	inputCost := float64(inputTokens) / 1000.0 * 0.001  // $0.001 per 1K input
 	outputCost := float64(outputTokens) / 1000.0 * 0.01 // $0.01 per 1K output
@@ -293,9 +290,22 @@ func formatIssues(issues []models.RawIssue) string {
 	return result
 }
 
-func init() {
-	// Set defaults from environment
-	if os.Getenv("MINIMAX_API_KEY") == "" {
-		fmt.Println("⚠️  MINIMAX_API_KEY not set - AI features will be disabled")
+// NewFromConfig builds the AI service selected by AI_PROVIDER.
+func NewFromConfig(c config.AIConfig) *Service {
+	timeout := time.Duration(c.TimeoutSeconds) * time.Second
+	if c.Provider == ProviderMiniMax {
+		s := NewServiceWithConfig(c.APIKey, c.BaseURL, c.Model, c.ChatEndpoint)
+		if timeout > 0 {
+			s.timeout = timeout
+		}
+		return s
 	}
+	return NewServiceWithProvider(NewAIManagerProvider(AIManagerConfig{
+		URL:       c.ManagerURL,
+		LoginID:   c.ManagerLoginID,
+		SecretKey: c.ManagerSecretKey,
+		Provider:  c.ManagerProvider,
+		Model:     c.ManagerModel,
+		Timeout:   timeout,
+	}), timeout)
 }
