@@ -136,3 +136,63 @@ func TestServiceChatRecordsUsage(t *testing.T) {
 		t.Errorf("usage = %+v", u)
 	}
 }
+
+func TestClassifyIssueFallsBackToHeuristicOnAIError(t *testing.T) {
+	p := newTestManager(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"all providers failed"}`))
+	}, 5*time.Second)
+	svc := NewServiceWithProvider(p, 5*time.Second)
+	cat, err := svc.ClassifyIssue("500 Internal Server Error from /api/patients")
+	if err != nil {
+		t.Fatalf("ClassifyIssue returned error, want heuristic fallback: %v", err)
+	}
+	if cat != "backend" {
+		t.Errorf("category = %q, want backend (heuristic)", cat)
+	}
+}
+
+func TestAIManagerPinnedProviderNoFallback(t *testing.T) {
+	var got aiManagerChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"text":"ok","provider":"claude-v3","model":"claude-opus-5"}`))
+	}))
+	defer srv.Close()
+	p := NewAIManagerProvider(AIManagerConfig{URL: srv.URL, LoginID: "a", SecretKey: "b", Provider: "claude-v3", NoFallback: true})
+	res, err := p.Chat(context.Background(), []models.Message{{Role: "user", Content: "x"}}, ChatOpts{})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if got.Provider != "claude-v3" || !got.NoFallback {
+		t.Errorf("request provider=%q no_fallback=%v, want claude-v3/true", got.Provider, got.NoFallback)
+	}
+	if res.Provider != "claude-v3" || p.Upstream() != "claude-v3" {
+		t.Errorf("result provider=%q upstream=%q", res.Provider, p.Upstream())
+	}
+}
+
+func TestAIManagerRejectsFallbackReply(t *testing.T) {
+	for _, body := range []string{
+		`{"text":"x","provider":"antigravity","fallback":true}`,
+		`{"text":"x","provider":"antigravity"}`,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+		p := NewAIManagerProvider(AIManagerConfig{URL: srv.URL, LoginID: "a", SecretKey: "b", Provider: "claude-v3", NoFallback: true})
+		if _, err := p.Chat(context.Background(), []models.Message{{Role: "user", Content: "x"}}, ChatOpts{}); err == nil || !strings.Contains(err.Error(), "pinned") {
+			t.Errorf("body %s: err = %v, want pinned-provider error", body, err)
+		}
+		srv.Close()
+	}
+}
+
+func TestAIManagerHealthUpstreamDisabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"manager_status":"ok","providers":{"antigravity":true,"claude-v3":false}}`))
+	}))
+	defer srv.Close()
+	p := NewAIManagerProvider(AIManagerConfig{URL: srv.URL, LoginID: "a", SecretKey: "b", Provider: "claude-v3"})
+	if got := p.Health(context.Background()); got != "upstream_disabled:claude-v3" {
+		t.Errorf("health = %q", got)
+	}
+}

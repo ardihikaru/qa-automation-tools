@@ -37,14 +37,18 @@ func NewService(apiKey string) *Service {
 
 // NewServiceWithConfig creates a MiniMax-backed AI service (legacy constructor).
 func NewServiceWithConfig(apiKey, baseURL, model, chatEndpoint string) *Service {
-	p := newMiniMaxProvider(apiKey, baseURL, model, chatEndpoint, 30*time.Second)
+	return newMiniMaxService(apiKey, baseURL, model, chatEndpoint, 30*time.Second)
+}
+
+func newMiniMaxService(apiKey, baseURL, model, chatEndpoint string, timeout time.Duration) *Service {
+	p := newMiniMaxProvider(apiKey, baseURL, model, chatEndpoint, timeout)
 	return &Service{
 		APIKey:       apiKey,
 		BaseURL:      p.baseURL,
 		Model:        p.model,
 		ChatEndpoint: p.chatEndpoint,
 		provider:     p,
-		timeout:      30 * time.Second,
+		timeout:      p.httpClient.Timeout,
 	}
 }
 
@@ -62,6 +66,14 @@ func (s *Service) ProviderName() string {
 		return ""
 	}
 	return s.provider.Name()
+}
+
+// Upstream returns the pinned upstream provider/model (e.g. "claude-v3").
+func (s *Service) Upstream() string {
+	if s == nil || s.provider == nil {
+		return ""
+	}
+	return s.provider.Upstream()
 }
 
 // Configured reports whether the active provider has the credentials it needs.
@@ -171,14 +183,14 @@ Error: %s
 Return just one word: frontend or backend
 `, errorText)
 
+	// An AI failure (gateway down, 401/502, timeout) is not fatal: fall through to the
+	// keyword heuristic so the issue still gets a category.
 	result, err := s.Chat(prompt)
-	if err != nil {
-		return "", err
-	}
-	result = strings.ToLower(strings.Trim(strings.TrimSpace(result), ".\"'`"))
-
-	if result == "frontend" || result == "backend" {
-		return result, nil
+	if err == nil {
+		result = strings.ToLower(strings.Trim(strings.TrimSpace(result), ".\"'`"))
+		if result == "frontend" || result == "backend" {
+			return result, nil
+		}
 	}
 
 	// Fallback to simple classification
@@ -294,18 +306,18 @@ func formatIssues(issues []models.RawIssue) string {
 func NewFromConfig(c config.AIConfig) *Service {
 	timeout := time.Duration(c.TimeoutSeconds) * time.Second
 	if c.Provider == ProviderMiniMax {
-		s := NewServiceWithConfig(c.APIKey, c.BaseURL, c.Model, c.ChatEndpoint)
-		if timeout > 0 {
-			s.timeout = timeout
+		if timeout <= 0 {
+			timeout = 30 * time.Second
 		}
-		return s
+		return newMiniMaxService(c.APIKey, c.BaseURL, c.Model, c.ChatEndpoint, timeout)
 	}
 	return NewServiceWithProvider(NewAIManagerProvider(AIManagerConfig{
-		URL:       c.ManagerURL,
-		LoginID:   c.ManagerLoginID,
-		SecretKey: c.ManagerSecretKey,
-		Provider:  c.ManagerProvider,
-		Model:     c.ManagerModel,
-		Timeout:   timeout,
+		URL:        c.ManagerURL,
+		LoginID:    c.ManagerLoginID,
+		SecretKey:  c.ManagerSecretKey,
+		Provider:   c.ManagerProvider,
+		Model:      c.ManagerModel,
+		Timeout:    timeout,
+		NoFallback: c.ManagerNoFallback,
 	}), timeout)
 }

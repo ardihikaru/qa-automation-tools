@@ -53,3 +53,7 @@ TEST-RESULTS.md
 
 # EGM scratch drafts (approved specs go to docs/designs/)
 .dev/docs/
+
+# Claude Code personal settings
+.claude/settings.local.json
+deploy/qa-tool/deploys.log

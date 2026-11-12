@@ -13,7 +13,7 @@ export default defineConfig({
     ['list']
   ],
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: process.env.QA_BACKEND_URL || 'http://localhost:8080',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure', // Enable video recording - save only on failure for debugging

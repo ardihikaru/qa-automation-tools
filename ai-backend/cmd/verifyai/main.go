@@ -29,7 +29,7 @@ func main() {
 	fmt.Printf("provider:   %s\n", svc.ProviderName())
 	if svc.ProviderName() == ai.ProviderAIManager {
 		fmt.Printf("url:        %s\n", cfg.Backend.AI.ManagerURL)
-		fmt.Printf("upstream:   %q (empty = ai-manager default)\n", cfg.Backend.AI.ManagerProvider)
+		fmt.Printf("upstream:   %q (no_fallback=%v)\n", cfg.Backend.AI.ManagerProvider, cfg.Backend.AI.ManagerNoFallback)
 	}
 	fmt.Printf("configured: %v\n", svc.Configured())
 	fmt.Printf("health:     %s\n", svc.Health(context.Background()))

@@ -1,11 +1,14 @@
-# QA Automation Tools
+# QA Automation Tools Blueprint
 
-A comprehensive QA automation system with AI-powered features for testing and monitoring healthcare web applications.
+A QA automation system with AI-powered features for testing and monitoring healthcare web applications (SUT).
 
 ## Table of Contents
 
-- [Architecture](#architecture)
-- [Repository Components](#repository-components)
+- [System Overview](#system-overview)
+- [Subdirectories & System Boundaries](#subdirectories--system-boundaries)
+- [Global Invariants](#global-invariants)
+- [Global Side Effects](#global-side-effects)
+- [System Verification](#system-verification)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Git Hooks](#git-hooks)
@@ -20,40 +23,86 @@ A comprehensive QA automation system with AI-powered features for testing and mo
 
 ---
 
-## Architecture
+## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Architecture                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   User                                                           │
-│    │                                                             │
-│    ▼                                                             │
-│   ┌──────────────────┐      ┌──────────────────┐               │
-│   │   Dashboard     │─────▶│   ai-backend      │               │
-│   │   (React/UI)   │      │   (Go API)        │               │
-│   │   :3000        │◀─────│   :8080          │               │
-│   └──────────────────┘      └────────┬────────┘               │
-│                                         │                        │
-│                                         ▼                        │
-│                                  ┌──────────────────┐            │
-│                                  │   Neon Database │            │
-│                                  │   (PostgreSQL)  │            │
-│                                  └──────────────────┘            │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+  Browser
+     │  https://qa.mfardiansyah.id  (production, edge-host nginx edge)
+     ▼
+┌──────────────────────┐   /api, /health   ┌──────────────────────┐
+│ dashboard            │ ────────────────▶ │ ai-backend           │
+│ React SPA            │                   │ Go API :8080         │
+│ (nginx; Vite proxy   │ ◀──────────────── │ cookie-session auth  │
+│  in dev)             │                   │ (only when DB is up) │
+└──────────────────────┘                   └───┬─────────────┬────┘
+                                               │             │ services/ai ChatProvider
+                                               ▼             ▼
+                                   ┌──────────────┐  ┌───────────────────────────┐
+                                   │ MySQL 8      │  │ ai-manager POST /v1/chat   │
+                                   │ (DB_*)       │  │ (default, HTTP Basic, WG)  │
+                                   └──────────────┘  │ MiniMax (AI_PROVIDER=      │
+                                                     │ minimax, fallback)         │
+                                                     └───────────────────────────┘
+
+  playwright-qa / playwright-docs ──(Playwright)──▶ SUT staging UI
+  playwright-qa ──HTTP──▶ ai-backend /api/*        playwright-docs ──▶ ai-manager / MiniMax
+  this-qa-automation-system-playwright ──▶ ai-backend + dashboard (self-tests)
 ```
 
-## Repository Components
+- **ai-backend** is the Go API. It stores flows, issues, skills, learning data, cost data and jobs in MySQL 8.
+  All LLM calls go through `internal/services/ai` `ChatProvider`, which defaults to ai-manager.
+- **dashboard** is the React + Vite UI. Every route except `/login` is gated by a cookie-session login.
+- **playwright-qa** and **playwright-docs** are the Playwright tools that drive the SUT staging frontend.
+  playwright-qa explores the UI and runs QA checks. playwright-docs records flows and summarizes them into documentation.
+- **this-qa-automation-system-playwright** is the E2E self-verification suite for the backend API and the dashboard.
 
-- `ai-backend/`: Go API service for analytics, learning, search, flows, skills, issues, and cost endpoints.
-- `dashboard/`: React + Vite dashboard UI that consumes backend APIs.
-- `playwright-docs/`: Playwright tooling used to explore product flows and generate documentation artifacts.
-- `playwright-qa/`: Main QA automation engine and exploratory automation implementation.
-- `this-qa-automation-system-playwright/`: Playwright self-verification suite for this project itself (API + dashboard regression checks).
-- `product-documentations/`: Functional documentation source for SUT modules.
-- `_docs/` and root `*.md` files: Operational docs, plans, tutorials, assessments, and architecture notes.
+## Subdirectories & System Boundaries
+
+- `ai-backend/`: [ai-backend/README.md](./ai-backend/README.md). Go API service: router, auth, config, MySQL, AI provider, skills, learning.
+  - [internal/api](./ai-backend/internal/api/README.md): HTTP router, `/health`, `/api/*` handlers, `/api/auth/*`, simulated job queue.
+  - [internal/auth](./ai-backend/internal/auth/README.md): bcrypt passwords, MySQL `sessions`, `Require` middleware.
+  - [internal/config](./ai-backend/internal/config/README.md): `LoadConfig` (env > `.env` > `config.yaml`) and the `GetDatabaseURL` MySQL DSN.
+  - [internal/db](./ai-backend/internal/db/README.md): MySQL 8 connection pool and idempotent `RunMigrations`.
+  - [internal/services/ai](./ai-backend/internal/services/ai/README.md): `ChatProvider`, with `aiManagerProvider` as the default and `minimaxProvider` as the fallback.
+  - [internal/services/skills](./ai-backend/internal/services/skills/README.md): skill registry (`skills`, `skill_logs`) and built-in skills.
+  - [internal/services/learning](./ai-backend/internal/services/learning/README.md): learning cache, navigation edges, action sequences, context records.
+- `dashboard/`: [dashboard/README.md](./dashboard/README.md). React SPA. Calls same-origin `/api/*` with `credentials: 'include'`.
+- `playwright-qa/`: [playwright-qa/README.md](./playwright-qa/README.md). Exploratory QA engine (random, guided and planning modes, built-in skills) that logs results to the backend.
+- `playwright-docs/`: [playwright-docs/README.md](./playwright-docs/README.md). Flow recorder (screenshots and videos) plus an AI summarizer (`summarizeFlow.ts` `callAI`, ai-manager by default).
+- `this-qa-automation-system-playwright/`: [this-qa-automation-system-playwright/README.md](./this-qa-automation-system-playwright/README.md). Playwright API and dashboard regression suite for this repository.
+- `lib/`: [lib/README.md](./lib/README.md). Shared TypeScript `config.yaml` loader (`lib/config.ts`), imported by playwright-docs.
+- `deploy/qa-tool/`: [deploy/qa-tool/README.md](./deploy/qa-tool/README.md). **Production** Docker Compose stack on app-host, behind the edge-host nginx edge.
+- `product-documentations/`: functional documentation source for SUT modules, served by `/api/docs`.
+- `_docs/` and root `*.md` files: operational docs, plans, tutorials, assessments and architecture notes.
+
+## Global Invariants
+
+- **Auth depends on the DB.** `ai-backend/cmd/server/main.go` wires cookie-session auth (`router.SetAuth`) only when `db.NewConnection` succeeds.
+  If `/health` reports `"database":"disconnected"`, the API is open.
+- **Migrations are explicit.** The server never migrates. Run `go run ./cmd/databasemigration`. It is idempotent: `CREATE TABLE IF NOT EXISTS`, append-only.
+- **One LLM path in the backend.** Backend LLM calls go through `ChatProvider`.
+  `AI_PROVIDER` defaults to `ai-manager`, and only the value `minimax` selects MiniMax. The TypeScript `lib/config.ts` `getAI` uses the same default.
+- **Same-origin API.** The dashboard uses relative `/api/*` paths. They go through the Vite proxy in dev and the in-container nginx in production.
+  Backend CORS comes from `DASHBOARD_ORIGIN` (`router.go:applyCORS`).
+- **Secrets** live in `.env`, `config.yaml` (both gitignored) and, in production, in `.env.prod` on app-host only. Never commit them.
+
+## Global Side Effects
+
+- MySQL 8 database (`qa_automation`): see [ai-backend/internal/db](./ai-backend/internal/db/README.md) for tables.
+- Outbound LLM calls to ai-manager (`POST {AI_MANAGER_URL}/v1/chat`, default `http://10.8.0.4:8099` over WireGuard) or to MiniMax. ai-manager bills and logs these calls.
+- Read-only user import from the taskmgr Neo4j at backend startup, when `TASKMGR_NEO4J_URI` is set.
+- The Playwright tools log into, and click through, the SUT staging frontend. playwright-docs writes screenshots and videos under `playwright-docs/output/`.
+- The self-test suite mutates backend data: it creates flows and issues and updates and deletes learning records.
+
+## System Verification
+
+- Backend: `cd ai-backend && go test -mod=mod ./...`
+- Dashboard: `cd dashboard && npm run build` (and `npm run lint`)
+- Self-tests (backend on :8080, dashboard on :3000): `cd this-qa-automation-system-playwright && npx playwright test`
+- AI provider smoke test: `cd ai-backend && go run ./cmd/verifyai`
+- Production health: see [deploy/qa-tool/README.md](./deploy/qa-tool/README.md#verification)
+
+---
 
 ## Prerequisites
 
@@ -62,21 +111,23 @@ A comprehensive QA automation system with AI-powered features for testing and mo
 | Software | Version | Description |
 |----------|---------|-------------|
 | [Go](https://go.dev/dl/) | 1.23+ | Backend runtime |
-| [Node.js](https://nodejs.org/) | 18+ | Dashboard runtime |
+| [Node.js](https://nodejs.org/) | 18+ | Dashboard and Playwright runtime |
 | [Docker](https://docs.docker.com/get-docker/) | Latest | Container runtime |
-| [PostgreSQL Client](https://www.postgresql.org/download/) | 15+ | Database client (optional) |
+| MySQL client | 8.x | Database client (optional) |
 
-### Required Accounts
+### Required Access
 
-- [Neon](https://neon.tech/) - PostgreSQL database
-- [MiniMax](https://minimax.io/) - AI service (for some features)
-- [Google Cloud Platform](https://cloud.google.com/) - Cloud deployment
+- A MySQL 8 database (production uses `qa_automation` on db-host over WireGuard)
+- ai-manager credentials (`AI_MANAGER_LOGIN_ID` / `AI_MANAGER_SECRET_KEY`) and WireGuard access to it. A [MiniMax](https://minimax.io/) API key is needed only if you use `AI_PROVIDER=minimax`.
 
 ---
 
 ## Quick Start
 
-### Option 1: Docker Compose (Recommended)
+### Option 1: Docker Compose (local)
+
+The root `docker-compose.yml` builds `backend` (:8080) and `dashboard` (:3000 -> 80) and mounts `./config.yaml` into the backend.
+For production, use [deploy/qa-tool](./deploy/qa-tool/README.md) instead.
 
 ```bash
 # Start all services
@@ -97,7 +148,8 @@ docker-compose logs -f dashboard
 cd ai-backend
 cp .env.example .env
 # Edit .env with your credentials
-go run cmd/server/main.go
+go run ./cmd/databasemigration   # first time / after schema changes
+go run ./cmd/server
 
 # Terminal 2 - Start dashboard
 cd dashboard
@@ -123,6 +175,8 @@ The pre-commit hook will reject staged paths with Windows-invalid names
 
 ## Running Backend Locally
 
+See also [tutorial-running-backend-locally.md](./tutorial-running-backend-locally.md).
+
 ### Step 1: Configure Environment
 
 ```bash
@@ -134,26 +188,30 @@ cp .env.example .env
 
 ### Step 2: Edit .env File
 
-Open `.env` and configure the following:
+Fill in `.env` using the variable names from `.env.example`:
 
 ```bash
-# ------------------------------------------------------------
-# DATABASE (PostgreSQL - Neon)
-# ------------------------------------------------------------
-# Get from your Neon console: https://console.neon.tech
-DATABASE_URL=postgresql://username:password@host/neondb?sslmode=require
+# DATABASE (MySQL 8): either DATABASE_URL (MySQL DSN) or the DB_* parts
+DB_HOST=...
+DB_PORT=...
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=qa_automation
 
-# ------------------------------------------------------------
-# MINIMAX AI (Optional - for AI features)
-# ------------------------------------------------------------
-# Get from https://platform.minimax.io/
-MINIMAX_API_KEY=sk-api-your-key-here
+# AI: ai-manager is the default provider
+AI_PROVIDER=ai-manager
+AI_MANAGER_URL=http://10.8.0.4:8099
+AI_MANAGER_LOGIN_ID=...
+AI_MANAGER_SECRET_KEY=...
+# Fallback: AI_PROVIDER=minimax + MINIMAX_API_KEY=...
 
-# ------------------------------------------------------------
-# SERVER CONFIG
-# ------------------------------------------------------------
+# AUTH (active only when the DB connects)
+DASHBOARD_ORIGIN=http://localhost:3000
+ADMIN_USERNAME=...
+ADMIN_PASSWORD=...
+
+# SERVER
 PORT=8080
-BACKEND_HOST=0.0.0.0
 ```
 
 ### Step 3: Install Dependencies
@@ -163,19 +221,18 @@ cd ai-backend
 go mod download
 ```
 
-### Step 4: Run the Backend
+### Step 4: Run Migrations and the Backend
 
 ```bash
+# Migrations (idempotent; the server never migrates on its own)
+go run ./cmd/databasemigration
+
 # Option 1: Using Go run
-go run cmd/server/main.go
+go run ./cmd/server
 
 # Option 2: Build and run
 go build -o server ./cmd/server
 ./server
-
-# Option 3: Using Air (live reload)
-go install github.com/cosmtrek/air@latest
-air
 ```
 
 ### Step 5: Verify Backend is Running
@@ -184,8 +241,8 @@ air
 # Health check
 curl http://localhost:8080/health
 
-# Expected response:
-# {"status": "ok", "database": "connected"}
+# Expected response shape:
+# {"ai":"ok","ai_provider":"ai-manager","ai_upstream":"claude-v3","database":"connected","minimax":"not_configured","status":"ok"}
 ```
 
 ---
@@ -201,12 +258,7 @@ npm install
 
 ### Step 2: Configure Environment
 
-```bash
-cd dashboard
-
-# Copy example environment file (if needed)
-# The .env file already has sensible defaults
-```
+`dashboard/vite.config.ts` reads `VITE_API_URL` (proxy target for `/api`, default `http://localhost:8080`), `VITE_DEV_SERVER_PORT` (default `3000`), `VITE_ALLOWED_HOSTS`, and `VITE_APP_DEBUG` (source maps).
 
 ### Step 3: Run the Dashboard
 
@@ -222,19 +274,19 @@ npm run preview
 ### Step 4: Access the Dashboard
 
 Open your browser to:
-- **Dashboard UI**: http://localhost:3000
+- **Dashboard UI**: http://localhost:3000 (log in when the backend has a DB)
 - **Backend API**: http://localhost:8080
 
 ---
 
 ## Running Both Services
 
-### Option 1: Using Concurrently
+### Option 1: Two Terminals
 
 ```bash
 # Terminal 1 - Backend
 cd ai-backend
-go run cmd/server/main.go
+go run ./cmd/server
 
 # Terminal 2 - Dashboard
 cd dashboard
@@ -243,32 +295,9 @@ npm run dev
 
 ### Option 2: Using Docker Compose
 
+Use the root `docker-compose.yml` (see [Quick Start](#option-1-docker-compose-local)):
+
 ```bash
-# Create docker-compose.yml in project root
-cat > docker-compose.yml << 'EOF'
-version: '3.8'
-
-services:
-  backend:
-    build: ./ai-backend
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY}
-    volumes:
-      - ./ai-backend/.env:/app/.env
-
-  dashboard:
-    build: ./dashboard
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
-
-EOF
-
-# Run services
 docker-compose up -d
 ```
 
@@ -276,27 +305,36 @@ docker-compose up -d
 
 ## Environment Variables
 
-### Backend (.env)
+### Backend (`ai-backend/.env`)
 
-| Variable | Required | Description | Example |
-|----------|----------|-------------|---------|
-| `DATABASE_URL` | ✅ | Neon PostgreSQL connection string | `postgresql://user:pass@host/db?sslmode=require` |
-| `MINIMAX_API_KEY` | ❌ | MiniMax AI API key | `sk-api-...` |
-| `AI_MODEL` | ❌ | AI model name | `MiniMax-M2.5` |
-| `AI_BASE_URL` | ❌ | AI API base URL | `https://api.minimax.io/v1` |
-| `PORT` | ❌ | Server port | `8080` |
-| `API_SECRET_KEY` | ❌ | API authentication | `your-secret-key` |
-| `CORS_ENABLED` | ❌ | Enable CORS | `true` |
-| `CORS_ORIGINS` | ❌ | Allowed origins | `*` |
+Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main.go`. See [internal/config](./ai-backend/internal/config/README.md).
 
-### Dashboard (.env)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | MySQL 8 connection parts | `DB_NAME=qa_automation` |
+| `DATABASE_URL` | Full MySQL DSN (overrides `DB_*`) | — |
+| `AI_PROVIDER` | `ai-manager` or `minimax` | `ai-manager` |
+| `AI_MANAGER_URL` | ai-manager base URL | `http://10.8.0.4:8099` |
+| `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY` | ai-manager HTTP Basic credentials | — |
+| `AI_MANAGER_PROVIDER`, `AI_MANAGER_NO_FALLBACK`, `AI_MANAGER_MODEL` | Upstream pinned inside ai-manager (Claude CLI REST on app-host `10.8.0.9:8105`) | `claude-v3`, `true`, empty (`claude-opus-5`) |
+| `AI_TIMEOUT_SECONDS` | LLM call timeout | `180` |
+| `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | MiniMax fallback settings | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
+| `PORT`, `BACKEND_HOST` | Listen address | `8080`, `0.0.0.0` |
+| `DASHBOARD_ORIGIN` | CORS origin when auth is on | `http://localhost:6173` |
+| `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE` | Session cookie | `qa_session`, `12`, `false` |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Seeded admin user | — |
+| `TASKMGR_NEO4J_URI`, `TASKMGR_NEO4J_USERNAME`, `TASKMGR_NEO4J_PASSWORD`, `TASKMGR_NEO4J_DATABASE` | Optional read-only user import | database `neo4j` |
 
-| Variable | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `VITE_API_URL` | ✅ | Backend API URL | `http://localhost:8080` |
-| `VITE_DEV_SERVER_PORT` | ❌ | Dev server port | `3000` |
-| `VITE_APP_TITLE` | ❌ | Application title | `QA Automation Dashboard` |
-| `VITE_APP_DEBUG` | ❌ | Debug mode | `false` |
+`API_SECRET_KEY`, `CORS_ENABLED` and `CORS_ORIGINS` are loaded into config but are not read by the HTTP router.
+
+### Dashboard (`dashboard/.env`)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_API_URL` | Dev proxy target for `/api` | `http://localhost:8080` |
+| `VITE_DEV_SERVER_PORT` | Dev server port | `3000` |
+| `VITE_ALLOWED_HOSTS` | Extra allowed hostnames (comma-separated) | — |
+| `VITE_APP_DEBUG` | Emit source maps on build | `false` |
 
 ---
 
@@ -307,25 +345,29 @@ docker-compose up -d
 | Environment | URL |
 |-------------|-----|
 | Local | `http://localhost:8080` |
-| Production | `https://ai-backend-000000000000.asia-southeast1.run.app` |
+| Production | `https://qa.mfardiansyah.id` (`/api`, `/health` proxied by the dashboard nginx) |
 
 ### Endpoints
 
-| Endpoint | Method | Description | Auth |
-|----------|--------|-------------|------|
-| `/health` | GET | Health check | ❌ |
-| `/api/flows` | GET | List flows | ❌ |
-| `/api/flows` | POST | Create flow | ❌ |
-| `/api/issues` | GET | List issues | ❌ |
-| `/api/issues` | POST | Create issue | ❌ |
-| `/api/skills` | GET | List skills | ❌ |
-| `/api/search` | GET | Semantic search | ❌ |
-| `/api/cost/overview` | GET | Cost overview | ❌ |
-| `/api/cost/trend` | GET | Cost trend | ❌ |
-| `/api/cost/efficiency` | GET | Cost efficiency | ❌ |
-| `/api/cost/by-feature` | GET | Cost by feature | ❌ |
-| `/api/analytics` | GET | Usage analytics | ❌ |
-| `/api/learning` | GET | Learning records | ❌ |
+The full, code-verified list with methods is in [ai-backend/internal/api/README.md](./ai-backend/internal/api/README.md).
+Only `/health` and `/api/auth/login` are public. When the backend has a DB, every other `/api/*` endpoint requires the session cookie.
+
+| Endpoint | Methods | Description |
+|----------|---------|-------------|
+| `/health` | GET | Status, DB, AI provider and AI health |
+| `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/change-password` | POST / GET | Cookie-session auth (only when DB connected) |
+| `/api/flows` | GET, POST | Flows |
+| `/api/roles` | GET, POST, DELETE | Roles |
+| `/api/docs`, `/api/videos` | GET | Product docs and recorded videos from disk |
+| `/api/issues` | GET, POST | Issues (POST classifies through the AI provider) |
+| `/api/issues/status`, `/api/issues/notes` | POST | Update fix status and notes |
+| `/api/skills`, `/api/skills/logs`, `/api/skills/stats` | GET (+POST logs) | Skills |
+| `/api/search?q=` | GET | Search learning cache |
+| `/api/cost/overview`, `/trend`, `/efficiency`, `/by-feature` | GET | Cost analytics |
+| `/api/analytics` | GET | Usage analytics |
+| `/api/learning` (+ `/navigation`, `/sequences`, `/context`, `/stats`) | GET, POST, DELETE | Learning records |
+| `/api/ai-cache`, `/api/embedding-cache`, `/api/goal-events` | GET, POST, DELETE | Caches and goal events |
+| `/api/jobs`, `/api/jobs/qa/run`, `/api/jobs/docs/generate`, `/api/jobs/{id}` | GET / POST | Job queue |
 
 ### Example API Calls
 
@@ -333,97 +375,55 @@ docker-compose up -d
 # Health check
 curl http://localhost:8080/health
 
-# Get all flows
-curl http://localhost:8080/api/flows
-
-# Create a flow
-curl -X POST http://localhost:8080/api/flows \
+# Log in (when auth is enabled) and reuse the session cookie
+curl -c cookies.txt -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"role_id":1,"name":"Test Flow","description":"A test flow"}'
+  -d '{"username":"<user>","password":"<password>"}'
+
+# Get all flows
+curl -b cookies.txt http://localhost:8080/api/flows
 
 # Get issues
-curl http://localhost:8080/api/issues
+curl -b cookies.txt http://localhost:8080/api/issues
 
 # Search (requires q parameter)
-curl "http://localhost:8080/api/search?q=login"
+curl -b cookies.txt "http://localhost:8080/api/search?q=login"
 ```
 
 ---
 
 ## Deployment
 
-### Deploy to Google Cloud Run
+### Production: qa-tool (Docker Compose on app-host)
 
-#### 1. Build and Push Docker Image
+Production runs at **https://qa.mfardiansyah.id**. A Docker Compose stack on app-host runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
+It sits behind the shared edge-host nginx edge and reaches MySQL and ai-manager over WireGuard.
+See [deploy/qa-tool/README.md](./deploy/qa-tool/README.md) for deploy, rollback and health checks.
 
-```bash
-# Build backend
-cd ai-backend
-docker build -t gcr.io/qa-automation-tools-example-org/ai-backend:latest .
-docker push gcr.io/qa-automation-tools-example-org/ai-backend:latest
+### Legacy: Google Cloud Run
 
-# Build dashboard
-cd dashboard
-docker build -t gcr.io/qa-automation-tools-example-org/dashboard:latest .
-docker push gcr.io/qa-automation-tools-example-org/dashboard:latest
-```
-
-#### 2. Deploy to Cloud Run
-
-```bash
-# Deploy backend
-gcloud run deploy ai-backend \
-  --image gcr.io/qa-automation-tools-example-org/ai-backend:latest \
-  --platform managed \
-  --region asia-southeast1 \
-  --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=postgresql://user:pass@host/db?sslmode=require"
-
-# Deploy dashboard
-gcloud run deploy dashboard \
-  --image gcr.io/qa-automation-tools-example-org/dashboard:latest \
-  --platform managed \
-  --region asia-southeast1 \
-  --allow-unauthenticated \
-  --port=80
-```
-
-#### 3. Get Service URLs
-
-```bash
-gcloud run services describe ai-backend --region asia-southeast1 --format="value(status.url)"
-gcloud run services describe dashboard --region asia-southeast1 --format="value(status.url)"
-```
+`ai-backend/cloudbuild.yaml`, `dashboard/cloudbuild.yaml` and [deployment-tutorial.md](./deployment-tutorial.md) describe the earlier Cloud Run deployment.
+They are **legacy** and no longer the deploy path.
 
 ---
 
 ## Testing
 
-### API Testing
+### Backend Tests
 
 ```bash
-# Test all endpoints
-curl http://localhost:8080/health
-curl http://localhost:8080/api/flows
-curl http://localhost:8080/api/issues
-curl http://localhost:8080/api/skills
-
-# Test with jq for pretty output
-curl -s http://localhost:8080/api/flows | jq .
+cd ai-backend
+go test -mod=mod ./...
 ```
 
-### Playwright Testing
+See [tutorial-running-unit-tests.md](./tutorial-running-unit-tests.md) and [tutorial-running-integration-tests.md](./tutorial-running-integration-tests.md).
+
+### Playwright QA Engine
 
 ```bash
-# Install dependencies
 cd playwright-qa
 npm install
-
-# Run core QA automation tests
-npm run test
-
-# Run with UI
-npm run test:ui
+npm run explore   # random explorer (see playwright-qa/README.md for current build caveats)
 ```
 
 ### Self-Verification Testing (System Under Test)
@@ -443,6 +443,8 @@ npm run test:api
 npm run test:dashboard
 ```
 
+Note: the specs do not log in, so run them against a backend without a DB or with auth disabled. See the [suite README](./this-qa-automation-system-playwright/README.md).
+
 ---
 
 ## Troubleshooting
@@ -451,12 +453,18 @@ npm run test:dashboard
 
 #### Database Connection Failed
 
-```bash
-# Check DATABASE_URL format
-echo $DATABASE_URL
+The startup log prints `Database connection failed`, and the server then runs without a DB, which means without auth.
 
-# Test database connection
-psql "$DATABASE_URL" -c "SELECT 1"
+```bash
+# Check the DB_* / DATABASE_URL values in ai-backend/.env, then test with the MySQL client
+mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p "$DB_NAME" -e "SELECT 1"
+```
+
+#### AI Provider Not Working
+
+```bash
+cd ai-backend
+go run ./cmd/verifyai   # prints provider, configured, health, then sends one chat
 ```
 
 #### Port Already in Use
@@ -479,15 +487,11 @@ go mod download
 
 ### Dashboard Issues
 
-#### CORS Errors
+#### CORS / Cookie Errors
 
-Make sure the backend has CORS enabled:
-
-```bash
-# In .env file
-CORS_ENABLED=true
-CORS_ORIGINS=*
-```
+In development the dashboard uses the Vite `/api` proxy, so requests are same-origin.
+If you call the backend cross-origin, set `DASHBOARD_ORIGIN` in `ai-backend/.env` to the dashboard's origin.
+`CORS_ENABLED` and `CORS_ORIGINS` have no effect on the router.
 
 #### Cannot Connect to Backend
 
@@ -521,40 +525,45 @@ docker build --no-cache -t myimage .
 ```
 qa-automation-tools/
 ├── ai-backend/               # Go backend
-│   ├── cmd/server/           # Entry point
+│   ├── cmd/                  # server, databasemigration, verifyai, verifyminimax
 │   ├── internal/
-│   │   ├── api/              # HTTP handlers
-│   │   ├── config/          # Configuration
-│   │   ├── db/              # Database
-│   │   ├── models/          # Data models
-│   │   └── services/       # Business logic
-│   ├── .env                 # Environment variables
+│   │   ├── api/              # HTTP router + handlers
+│   │   ├── auth/             # Cookie sessions
+│   │   ├── config/           # Configuration
+│   │   ├── db/               # MySQL connection + migrations
+│   │   ├── models/           # Data models
+│   │   ├── seed/             # User seeding
+│   │   └── services/         # ai, skills, learning
+│   ├── .env                  # Environment variables (gitignored)
 │   └── Dockerfile
 │
-├── dashboard/               # React frontend
-│   ├── src/                # Source code
-│   ├── nginx.conf          # Nginx config
-│   ├── .env               # Environment variables
+├── dashboard/                # React frontend
+│   ├── src/                  # Source code
+│   ├── nginx.conf.example    # Nginx config template
 │   └── Dockerfile
 │
-├── playwright-docs/         # Playwright-driven documentation generator
-├── playwright-qa/           # Core QA automation engine
+├── deploy/qa-tool/         # Production Docker Compose stack
+├── lib/                      # Shared TS config loader
+├── playwright-docs/          # Playwright-driven documentation generator
+├── playwright-qa/            # Core QA automation engine
 ├── this-qa-automation-system-playwright/ # Self-verification tests (API + dashboard)
-├── product-documentations/  # Source docs for product modules
-├── config.yaml             # Main configuration
-├── docker-compose.yml      # Docker compose
-└── README.md             # This file
+├── product-documentations/   # Source docs for product modules
+├── config.yaml               # Main configuration (gitignored; see config.yaml.template)
+├── docker-compose.yml        # Local Docker compose
+└── README.md                 # This file
 ```
 
 ---
 
 ## Additional Resources
 
-- [Backend API Documentation](./ai-backend/README.md)
+- [Backend Blueprint](./ai-backend/README.md)
+- [Database Migration Guide](./ai-backend/database-migration.md)
 - [Dashboard Documentation](./dashboard/README.md)
-- [Deployment Tutorial](./deployment-tutorial.md)
-- [MiniMax API Documentation](./MiniMax-API-Endpoint.pdf)
-- [Playwright Documentation](./Playwright-for-System-Documentation.pdf)
+- [Production Deployment (qa-tool)](./deploy/qa-tool/README.md)
+- [REST API Usage](./rest-api-usage-documentation.md)
+- [Legacy Cloud Run Deployment Tutorial](./deployment-tutorial.md)
+- `MiniMax-API-Endpoint.pdf` and `Playwright-for-System-Documentation.pdf` (local reference PDFs; `*.pdf` is gitignored)
 
 ---
 

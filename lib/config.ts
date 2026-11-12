@@ -57,8 +57,14 @@ export interface AIConfig {
   /** ai-manager HTTP Basic credentials (env AI_MANAGER_LOGIN_ID / AI_MANAGER_SECRET_KEY). */
   manager_login_id?: string;
   manager_secret_key?: string;
-  /** Optional upstream provider inside ai-manager (antigravity, claude, minimax-cli...). */
+  /** Upstream provider inside ai-manager. This repo pins "claude-v3" (Claude CLI on app-host). */
   manager_provider?: string;
+  /** Forbid ai-manager cross-provider fallback (env AI_MANAGER_NO_FALLBACK, default true). */
+  manager_no_fallback?: boolean;
+  /** Optional upstream model inside ai-manager (env AI_MANAGER_MODEL). */
+  manager_model?: string;
+  /** Per-call timeout in seconds (env AI_TIMEOUT_SECONDS, default 180). */
+  timeout_seconds?: number;
   /** MiniMax direct settings (only used when provider = "minimax"). */
   api_key: string;
   model: string;
@@ -319,7 +325,10 @@ export function getAI(): AIConfig {
   ai.manager_url = env.AI_MANAGER_URL || ai.manager_url || 'http://10.8.0.4:8099';
   ai.manager_login_id = env.AI_MANAGER_LOGIN_ID || ai.manager_login_id || '';
   ai.manager_secret_key = env.AI_MANAGER_SECRET_KEY || ai.manager_secret_key || '';
-  ai.manager_provider = env.AI_MANAGER_PROVIDER || ai.manager_provider || '';
+  ai.manager_provider = env.AI_MANAGER_PROVIDER || ai.manager_provider || 'claude-v3';
+  ai.manager_no_fallback = env.AI_MANAGER_NO_FALLBACK ? env.AI_MANAGER_NO_FALLBACK !== 'false' : ai.manager_no_fallback ?? true;
+  ai.manager_model = env.AI_MANAGER_MODEL || ai.manager_model || '';
+  ai.timeout_seconds = Number(env.AI_TIMEOUT_SECONDS) || ai.timeout_seconds || 180;
   ai.api_key = env.MINIMAX_API_KEY || ai.api_key || '';
   return ai;
 }

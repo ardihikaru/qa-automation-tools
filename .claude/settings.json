@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "egm": {
+      "source": { "source": "github", "repo": "google/elephant-goldfish-model" }
+    }
+  },
+  "enabledPlugins": {
+    "egm@egm": true
+  },
+  "permissions": {
+    "allow": [
+      "Read(~/.claude/plugins/cache/egm/egm/*/agents/**)",
+      "Read(~/.claude/plugins/cache/egm/egm/*/docs/**)",
+      "Read(~/.claude/plugins/cache/egm/egm/*/resources/**)",
+      "Read(~/.claude/plugins/cache/egm/egm/*/skills/**)",
+      "Read(~/.claude-v2/plugins/cache/egm/egm/*/agents/**)",
+      "Read(~/.claude-v2/plugins/cache/egm/egm/*/docs/**)",
+      "Read(~/.claude-v2/plugins/cache/egm/egm/*/resources/**)",
+      "Read(~/.claude-v2/plugins/cache/egm/egm/*/skills/**)"
+    ],
+    "deny": [
+      "Read(./**/.env)",
+      "Read(./**/.env.prod)",
+      "Read(./config.yaml)",
+      "Read(./playwright-docs/config/credentials.yaml)",
+      "Read(./_data/**)"
+    ]
+  }
+}

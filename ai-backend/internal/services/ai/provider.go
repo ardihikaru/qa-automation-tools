@@ -39,4 +39,6 @@ type ChatProvider interface {
 	Chat(ctx context.Context, messages []models.Message, opts ChatOpts) (ChatResult, error)
 	// Health returns "ok" when the upstream is reachable, otherwise a short reason.
 	Health(ctx context.Context) string
+	// Upstream names the model backend actually targeted (e.g. "claude-v3"); "" if not pinned.
+	Upstream() string
 }

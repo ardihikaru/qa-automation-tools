@@ -63,6 +63,7 @@ type ChatResponse struct {
 }
 
 func (p *minimaxProvider) Name() string     { return ProviderMiniMax }
+func (p *minimaxProvider) Upstream() string { return p.model }
 func (p *minimaxProvider) Configured() bool { return p.apiKey != "" }
 
 func (p *minimaxProvider) Health(ctx context.Context) string {
