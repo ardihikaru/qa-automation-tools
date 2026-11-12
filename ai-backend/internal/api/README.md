@@ -65,12 +65,18 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 - Cookie-session auth is enabled only when the database connects. `cmd/server/main.go` calls `router.SetAuth(...)` inside `if database != nil`. Otherwise `authHandlers` and `requireAuth` stay nil (`router.go:Router` comment), all `/api/*` routes are open, and the `/api/auth/*` routes fall through to 404.
 - The allow-list in `router.go:ServeHTTP` (`OPTIONS`, `/health`, `/api/auth/login`) must stay in sync with `auth/middleware.go:IsAuthAllowList`.
 - CORS (`router.go:applyCORS`): when auth is wired, the router reflects the request `Origin` instead of `*` and sets `Access-Control-Allow-Credentials: true` and `Vary: Origin`. The configured origin comes from `SetAuth`'s `dashboardOrigin`.
-- `/health` (`router.go:serveHealth`) always returns 200 with JSON keys `status`, `database`, `ai_provider` (`aiService.ProviderName()`), `ai_upstream` (`aiService.Upstream()`, `claude-v3` in prod), `ai` (`aiService.Health(ctx)`), and `minimax`. `minimax` is `"configured"` only when the provider is `ai.ProviderMiniMax` and `Configured()` is true. It is kept for backward compatibility.
+- `/health` (`router.go:serveHealth`) always returns 200 with JSON keys `status`, `database`, `ai_provider` (`aiService.ProviderName()`), `ai_upstream` (`aiService.Upstream()`, `claude-v3` in prod), `ai` (`aiService.Health(ctx)`), `minimax`, and `executor` (`ok|degraded|unreachable|not_configured`; the executor's `/health`, cached for 30 s). `minimax` is `"configured"` only when the provider is `ai.ProviderMiniMax` and `Configured()` is true. It is kept for backward compatibility.
 - DB-backed handlers return 503 `Database not available` when `router.go:getDB` returns nil.
 - Pagination (`router.go:parsePagination`): page and limit must be greater than 0, and limit is capped at 100.
 - `auth_handlers.go:Login` lowercases and trims the username, and returns the same 401 `Invalid username or password` for every credential failure. `auth_helpers.go:lookupForLogin` matches only `active = 1` users.
 - `auth_helpers.go:validateNewPassword` requires a new password of at least 8 characters that differs from both the username (case-insensitive) and the current password.
-- Jobs (`router.go:enqueueJob`) get IDs `job-<unixnano>` and move `queued` -> `running` -> `completed` after a simulated 200 ms sleep. No real QA or docs work runs. The in-memory `jobManager` map is guarded by `sync.RWMutex`.
+- Jobs (`router.go:enqueueJob`) get IDs `job-<unixnano>`. The in-memory `jobManager` map is guarded by `sync.RWMutex`. Every state change is upserted into `job_runs`.
+  - **Executor configured** (`SetExecutor`, from `PLAYWRIGHT_EXECUTOR_URL`): `jobs_executor.go:runExecutorJob` submits `qa_run` / `docs_generate` to playwright-executor. It forwards only `roles`, `max_steps`, `interactive_skills` and `flows` (top-level or under `params`). It polls every 3 s, for up to `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES`.
+  - States: `queued` -> `running` (once the executor starts) -> `completed` | `failed`. The result is the executor's result plus `executor_run_id`.
+  - For `qa_run`, issues go into `raw_issues` (`recordExecutorIssues`, `error_type = executor:<type>`, skipping exact duplicates of open issues), and their count is stored in `issues_recorded`.
+  - For `docs_generate`, `summarizeDocsRun` adds `documentation_markdown` (ai-manager / claude-v3), or `ai_error` if that call fails.
+  - **Not configured:** the job completes after a simulated 200 ms with `result.simulated = true`.
+  - At startup, `FailOrphanedJobs` marks `queued`/`running` rows left by a previous process as `failed`.
 - `handleSearch` does a `LIKE` substring match on `learning_cache.intent`, returns at most 10 rows, and never calls the vector or AI services.
 
 ## Side Effects

@@ -53,6 +53,15 @@ type BackendConfig struct {
 	Database DatabaseConfig `yaml:"database"`
 	AI       AIConfig       `yaml:"ai"`
 	Security SecurityConfig `yaml:"security"`
+	Executor ExecutorConfig `yaml:"-"`
+}
+
+// ExecutorConfig points at playwright-executor (systemd service on rnd-v3).
+// Env only. An empty URL keeps /api/jobs/* in simulated mode.
+type ExecutorConfig struct {
+	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.10.0.9:8141
+	Token          string // PLAYWRIGHT_EXECUTOR_TOKEN (shared bearer secret)
+	TimeoutMinutes int    // PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES: max wait per job, incl. queueing
 }
 
 // DatabaseConfig holds database settings
@@ -298,6 +307,11 @@ func LoadConfig() *Config {
 				CORSEnabled:  getEnvBool("CORS_ENABLED", true),
 				CORSOrigins:  getEnvString("CORS_ORIGINS", "*"),
 			},
+			Executor: ExecutorConfig{
+				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),
+				Token:          getEnvString("PLAYWRIGHT_EXECUTOR_TOKEN", ""),
+				TimeoutMinutes: getEnvInt("PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES", 30),
+			},
 		},
 		Staging: StagingConfig{
 			URL:               getEnvString("STAGING_URL", ""),
@@ -334,6 +348,12 @@ func LoadConfig() *Config {
 		} else {
 			log.Printf("   AI: ai-manager selected but AI_MANAGER_LOGIN_ID/AI_MANAGER_SECRET_KEY empty - AI disabled")
 		}
+	}
+
+	if cfg.Backend.Executor.URL != "" {
+		log.Printf("   Playwright: executor at %s", cfg.Backend.Executor.URL)
+	} else {
+		log.Printf("   Playwright: PLAYWRIGHT_EXECUTOR_URL empty - /api/jobs run in simulated mode")
 	}
 
 	// Apply environment overrides

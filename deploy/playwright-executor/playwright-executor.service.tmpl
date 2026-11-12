@@ -1,0 +1,34 @@
+# playwright-executor — systemd USER unit (rendered by install.sh; do not edit the installed copy).
+# Installed at ~/.config/systemd/user/playwright-executor.service on rnd-v3 (user sismedika, linger on),
+# the same pattern as ai-claude-cli.service. The user manager delegates cpu/memory/pids, so the
+# limits below are enforced by the kernel on the whole process tree (node + every Chromium process).
+[Unit]
+Description=playwright-executor (Playwright runner for qa-automation, :@PORT@)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@ENV_FILE@
+# mise resolves node from @APP_DIR@/mise.toml.
+ExecStart=@MISE@ exec -- node dist/src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillMode=mixed
+
+# --- Resource budget (rnd-v3: 4 vCPU, 3.8 GiB RAM) ---
+# Hard cap 2.5 GiB for node + Chromium; throttle/reclaim starts at 2.25 GiB. No swap.
+MemoryHigh=2304M
+MemoryMax=2560M
+MemorySwapMax=0
+# 60 % of all CPUs (nproc x 60 %; 240 % on a 4-vCPU host).
+CPUQuota=@CPU_QUOTA@
+TasksMax=512
+# Prefer the executor when the kernel must kill something, never ai-claude-cli or Docker.
+OOMScoreAdjust=500
+Nice=5
+
+[Install]
+WantedBy=default.target
