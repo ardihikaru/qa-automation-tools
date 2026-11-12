@@ -26,6 +26,45 @@ interface StepRecord {
 }
 
 const safe = (s: string) => s.replace(/[^a-zA-Z0-9._-]+/g, '_');
+const NOT_FOUND = /^\/(404|not-found)\/?$/;
+const SKIP_PATH = /(logout|sign-?out|keluar|delete|hapus)/i;
+
+/**
+ * Same-origin page paths linked from the navigation of the current page
+ * (sidebar/nav/menus), in document order. Collapsed menus are expanded first
+ * by clicking their toggles, without following any link.
+ */
+async function discoverMenu(page: Page, baseUrl: string): Promise<string[]> {
+  const origin = new URL(baseUrl).origin;
+  const NAV = 'nav, aside, [role="navigation"], [role="menu"], [class*="sidebar" i], [class*="menu" i]';
+  // Expand collapsible groups (buttons/summary inside nav that are not links).
+  const toggles = page.locator(
+    `:is(${NAV}) :is(button, summary, [aria-expanded="false"]):not(a):not([type="submit"])`,
+  );
+  const n = Math.min(await toggles.count().catch(() => 0), 40);
+  for (let i = 0; i < n; i++) {
+    const t = toggles.nth(i);
+    if ((await t.getAttribute('aria-expanded').catch(() => null)) === 'true') continue;
+    const label = await t.innerText({ timeout: 500 }).catch(() => '');
+    if (/(log\s?out|sign\s?out|keluar|hapus|delete|profil|profile|akun|account|notif)/i.test(label)) continue;
+    await t.click({ trial: true, timeout: 500 }).then(
+      () => t.click({ timeout: 1_000 }).catch(() => undefined),
+      () => undefined,
+    );
+  }
+  await page.waitForTimeout(300);
+  const hrefs = await page
+    .$$eval(`:is(${NAV}) a[href]`, (as) => as.map((a) => (a as HTMLAnchorElement).href))
+    .catch(() => [] as string[]);
+  const out: string[] = [];
+  for (const h of hrefs) {
+    if (!h.startsWith(origin)) continue;
+    const p = new URL(h).pathname;
+    if (p === '/' || SKIP_PATH.test(p) || NOT_FOUND.test(p) || p.includes('/auth/') || out.includes(p)) continue;
+    out.push(p);
+  }
+  return out;
+}
 
 async function pageFacts(page: Page): Promise<{ title: string; heading: string }> {
   const title = await page.title().catch(() => '');
@@ -73,7 +112,25 @@ export async function docsGenerate(ctx: RunContext, params: RunParams): Promise<
         roleErrors[role] = login.error ?? 'login failed';
         continue;
       }
-      for (const flow of flowsForRole(role, params.flows)) {
+      // Curated flows first, then pages discovered from this role's real menu
+      // (SUT routes differ per role/version; curated paths can go stale).
+      const flows = flowsForRole(role, params.flows);
+      if (params.flows.length === 0) {
+        const known = new Set(flows.flatMap((f) => f.steps.filter((s) => s.action === 'navigate').map((s) => s.selector)));
+        const discovered = (await discoverMenu(page, cfg.stagingUrl)).filter((p) => !known.has(p));
+        for (const p of discovered.slice(0, params.max_steps)) {
+          flows.push({
+            id: `menu${p.replace(/[^a-zA-Z0-9]+/g, '-').replace(/-+$/, '')}`,
+            name: `Menu: ${p}`,
+            description: `Page reached from the ${role} navigation menu`,
+            steps: [
+              { action: 'navigate', selector: p },
+              { action: 'wait', wait: 2000 },
+            ],
+          });
+        }
+      }
+      for (const flow of flows) {
         throwIfAborted(signal);
         const dir = path.join(outDir, safe(role), safe(flow.id));
         fs.mkdirSync(dir, { recursive: true });
@@ -92,6 +149,10 @@ export async function docsGenerate(ctx: RunContext, params: RunParams): Promise<
           }
           rec.url = new URL(page.url()).pathname;
           Object.assign(rec, await pageFacts(page));
+          if (rec.ok && NOT_FOUND.test(rec.url)) {
+            rec.ok = false;
+            rec.error = 'SUT answered 404: route does not exist (or is not allowed) for this role';
+          }
           if (step.action !== 'wait' || i === flow.steps.length - 1) {
             const file = path.join(dir, `step-${String(i + 1).padStart(2, '0')}.png`);
             await page.screenshot({ path: file, fullPage: false }).then(

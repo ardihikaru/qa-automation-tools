@@ -57,7 +57,10 @@ async function randomClick(page: Page, origin: string): Promise<{ target: string
   const total = Math.min(await candidates.count(), 300);
   if (total === 0) return { target: '(no clickable elements)', clicked: false };
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  let blocked = 0;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    // A modal/drawer opened by an earlier click covers the page: dismiss it.
+    if (blocked === 3) await page.keyboard.press('Escape').catch(() => undefined);
     const el = candidates.nth(Math.floor(Math.random() * total));
     const info = await el
       .evaluate((node) => {
@@ -77,6 +80,15 @@ async function randomClick(page: Page, origin: string): Promise<{ target: string
     if (info.type === 'submit') continue; // never submit forms during random exploration
     if (info.href && !info.href.startsWith(origin)) continue;
     const target = info.text || info.href || '(unnamed element)';
+    // Trial click = actionability check only (visible, stable, not covered).
+    const actionable = await el.click({ trial: true, timeout: 1_500 }).then(
+      () => true,
+      () => false,
+    );
+    if (!actionable) {
+      blocked++;
+      continue;
+    }
     try {
       await el.click({ timeout: 5_000 });
       await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => undefined);
