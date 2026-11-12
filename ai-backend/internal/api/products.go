@@ -49,9 +49,8 @@ func scanProduct(s rowScanner) (models.Product, error) {
 func productRole(req *http.Request) (canManage, canVerify bool) {
 	u, ok := auth.GetUser(req.Context())
 	if !ok {
-		// Auth is only wired when the DB is connected, and products need the DB,
-		// so an absent user means auth is off in a dev setup: allow.
-		return true, true
+		// Fail closed: no authenticated user means no product access, whatever the wiring.
+		return false, false
 	}
 	switch u.Role {
 	case "Admin", "DevOps", "Developer":
@@ -74,8 +73,8 @@ func validateProduct(p *models.Product) string {
 	if err := repopool.ValidateRepoURL(p.RepoURL); err != nil {
 		return err.Error()
 	}
-	if u, err := url.Parse(p.StagingURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(p.StagingURL) > 500 {
-		return "staging_url must be an http(s) URL"
+	if u, err := url.Parse(p.StagingURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || len(p.StagingURL) > 500 {
+		return "staging_url must be an http(s) URL without credentials"
 	}
 	if err := repopool.ValidateRelDir(p.RootDir); err != nil {
 		return err.Error()
@@ -86,6 +85,46 @@ func validateProduct(p *models.Product) string {
 		}
 	}
 	return ""
+}
+
+// rootDirOverlap reports whether rel equals, contains or sits inside another product's root_dir
+// (nested checkouts would write into each other's working tree).
+func rootDirOverlap(rel string, others []string) bool {
+	for _, o := range others {
+		if rel == o || strings.HasPrefix(rel, o+"/") || strings.HasPrefix(o, rel+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Router) otherRootDirs(ctx context.Context, exceptID int) ([]string, error) {
+	rows, err := r.db.Query(ctx, `SELECT root_dir FROM products WHERE id <> ?`, exceptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// firstLine returns a short, single-line version of an operation error for API clients.
+func firstLine(err error) string {
+	m := err.Error()
+	if i := strings.IndexByte(m, '\n'); i >= 0 {
+		m = m[:i]
+	}
+	if len(m) > 200 {
+		m = m[:200] + "…"
+	}
+	return m
 }
 
 // handleProducts serves /api/products and /api/products/{id}[/verify|clone|checkout].
@@ -117,6 +156,11 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 				}
 				out = append(out, p)
 			}
+			if err := rows.Err(); err != nil {
+				log.Printf("products list: %v", err)
+				writeJSONError(w, http.StatusInternalServerError, "could not list products")
+				return
+			}
 			writeJSON(w, http.StatusOK, map[string]any{"products": out, "pool_enabled": r.repoPool != nil})
 		case http.MethodPost:
 			if !canManage {
@@ -130,6 +174,15 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 			}
 			if msg := validateProduct(&p); msg != "" {
 				writeJSONError(w, http.StatusBadRequest, msg)
+				return
+			}
+			others, err := r.otherRootDirs(req.Context(), 0)
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if rootDirOverlap(p.RootDir, others) {
+				writeJSONError(w, http.StatusConflict, "root_dir overlaps another product's root_dir")
 				return
 			}
 			res, err := d.Exec(req.Context(),
@@ -179,10 +232,19 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 		if !ok {
 			return
 		}
+		others, err := r.otherRootDirs(req.Context(), id)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if rootDirOverlap(p.RootDir, others) {
+			writeJSONError(w, http.StatusConflict, "root_dir overlaps another product's root_dir")
+			return
+		}
 		// Changing the repo, directory or URL invalidates the previous verification.
 		// Decided here (not in SQL): MySQL evaluates SET assignments left to right,
 		// so a comparison against the column would already see the new value.
-		_, err := d.Exec(req.Context(), `UPDATE products SET name=?, repo_url=?, staging_url=?, root_dir=?, branch=? WHERE id=?`,
+		_, err = d.Exec(req.Context(), `UPDATE products SET name=?, repo_url=?, staging_url=?, root_dir=?, branch=? WHERE id=?`,
 			p.Name, p.RepoURL, p.StagingURL, p.RootDir, p.Branch, id)
 		if err != nil {
 			writeProductDBError(w, err)
@@ -222,7 +284,12 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		if err := r.verifyAndStore(req.Context(), p); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			if errors.Is(err, repopool.ErrBusy) {
+				writeJSONError(w, http.StatusConflict, repopool.ErrBusy.Error())
+				return
+			}
+			log.Printf("products verify %q: %v", p.Name, err)
+			writeJSONError(w, http.StatusInternalServerError, "verify failed")
 			return
 		}
 		r.respondProduct(w, req, id, http.StatusOK)
@@ -240,11 +307,18 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 		if !ok {
 			return
 		}
+		// A client disconnect must not kill gh/git mid-operation (it would leave a partial
+		// checkout), so the operation runs on a context that ignores request cancellation.
+		opCtx := context.WithoutCancel(req.Context())
 		var opErr error
 		if action == "clone" {
-			opErr = r.repoPool.Clone(req.Context(), p.RepoURL, p.RootDir)
+			opErr = r.repoPool.Clone(opCtx, p.RepoURL, p.RootDir)
 			if opErr == nil && p.Branch != "" {
-				_, opErr = r.repoPool.Checkout(req.Context(), p.RootDir, p.Branch)
+				if _, berr := r.repoPool.Checkout(opCtx, p.RootDir, p.Branch); berr != nil {
+					// The clone itself succeeded: say so and point at Switch branch.
+					log.Printf("products clone %q: branch step failed: %v", p.Name, berr)
+					opErr = &repopool.InputError{Msg: "cloned, but switching to branch " + p.Branch + " failed; use Switch branch"}
+				}
 			}
 		} else {
 			var body struct {
@@ -259,23 +333,26 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 				writeJSONError(w, http.StatusBadRequest, "branch is required")
 				return
 			}
-			if _, opErr = r.repoPool.Checkout(req.Context(), p.RootDir, branch); opErr == nil {
+			if _, opErr = r.repoPool.Checkout(opCtx, p.RootDir, branch); opErr == nil {
 				_, opErr = d.Exec(req.Context(), `UPDATE products SET branch=? WHERE id=?`, branch, id)
 			}
 		}
 		if opErr != nil {
+			var inErr *repopool.InputError
 			status := http.StatusBadGateway
-			if errors.Is(opErr, repopool.ErrBusy) {
+			switch {
+			case errors.Is(opErr, repopool.ErrBusy):
 				status = http.StatusConflict
-			} else if strings.Contains(opErr.Error(), "invalid") || strings.Contains(opErr.Error(), "already exists") || strings.Contains(opErr.Error(), "not a git repository") {
+			case errors.As(opErr, &inErr):
 				status = http.StatusBadRequest
 			}
-			writeJSONError(w, status, opErr.Error())
+			log.Printf("products %s %q failed: %v", action, p.Name, opErr)
+			writeJSONError(w, status, firstLine(opErr))
 			return
 		}
 		// Refresh the verification after a successful operation (best effort).
-		if p2, err := r.fetchProduct(req.Context(), id); err == nil {
-			_ = r.verifyAndStore(req.Context(), p2)
+		if p2, err := r.fetchProduct(opCtx, id); err == nil {
+			_ = r.verifyAndStore(opCtx, p2)
 		}
 		r.respondProduct(w, req, id, http.StatusOK)
 
@@ -325,12 +402,18 @@ func (r *Router) respondProduct(w http.ResponseWriter, req *http.Request, id, st
 // verifyAndStore runs the pool checks for p and persists the report.
 func (r *Router) verifyAndStore(ctx context.Context, p models.Product) error {
 	rep := r.repoPool.Verify(ctx, p.RepoURL, p.RootDir, p.StagingURL)
+	if rep.Busy {
+		return repopool.ErrBusy
+	}
 	b, err := json.Marshal(rep)
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(ctx, `UPDATE products SET playwright_accessible=?, last_verified_at=UTC_TIMESTAMP(), verify_report=? WHERE id=?`,
-		rep.OK, string(b), p.ID)
+	// Conditional on the inputs we verified: a PUT that changed repo/URL/dir meanwhile
+	// must not be overwritten by a stale result.
+	_, err = r.db.Exec(ctx, `UPDATE products SET playwright_accessible=?, last_verified_at=UTC_TIMESTAMP(), verify_report=?
+		WHERE id=? AND repo_url=? AND staging_url=? AND root_dir=?`,
+		rep.OK, string(b), p.ID, p.RepoURL, p.StagingURL, p.RootDir)
 	return err
 }
 
@@ -363,13 +446,16 @@ func (r *Router) verifyAllProducts(ctx context.Context) {
 	}
 	var list []models.Product
 	for rows.Next() {
-		if p, err := scanProduct(rows); err == nil {
-			list = append(list, p)
+		p, err := scanProduct(rows)
+		if err != nil {
+			log.Printf("products verify: scan: %v", err)
+			continue
 		}
+		list = append(list, p)
 	}
 	rows.Close()
 	for _, p := range list {
-		if err := r.verifyAndStore(ctx, p); err != nil {
+		if err := r.verifyAndStore(ctx, p); err != nil && !errors.Is(err, repopool.ErrBusy) {
 			log.Printf("products verify %q: %v", p.Name, err)
 		}
 	}

@@ -70,6 +70,7 @@ type ExecutorConfig struct {
 type ProductsConfig struct {
 	PoolDir               string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
 	VerifyIntervalMinutes int    // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
+	AllowedOwners         string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
 }
 
 // DatabaseConfig holds database settings
@@ -318,6 +319,7 @@ func LoadConfig() *Config {
 			Products: ProductsConfig{
 				PoolDir:               getEnvString("REPO_POOL_DIR", ""),
 				VerifyIntervalMinutes: getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
+				AllowedOwners:         getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),

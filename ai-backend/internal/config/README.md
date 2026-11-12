@@ -48,6 +48,7 @@ The result is cached in a package-level singleton. Consumers include
 | `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |
 | `REPO_POOL_DIR` | `Backend.Products.PoolDir` | empty (clone/verify disabled). Prod: `/data/repos` |
 | `PRODUCTS_VERIFY_INTERVAL_MINUTES` | `Backend.Products.VerifyIntervalMinutes` | `360` (`0` disables the scheduled verify) |
+| `REPO_POOL_ALLOWED_OWNERS` | `Backend.Products.AllowedOwners` | empty (any owner). Comma-separated GitHub owners allowed to be cloned |
 | `GH_TOKEN` | not in `Config` | read by `gh`/`git` directly from the process env (secret, never logged) |
 | `MINIMAX_API_KEY` (dormant) | `Backend.AI.APIKey` | empty (secret) |
 | `AI_MODEL` | `Backend.AI.Model` | `MiniMax-M2.5` |

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/qa-automation/ai-backend/internal/api"
@@ -16,8 +17,8 @@ import (
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
-	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
+	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
 
@@ -79,7 +80,15 @@ func main() {
 		TimeoutSeconds:  cfg.Backend.AI.TimeoutSeconds,
 		ExecutorURL:     cfg.Backend.Executor.URL,
 	})
-	router.SetRepoPool(repopool.New(cfg.Backend.Products.PoolDir))
+	pool := repopool.New(cfg.Backend.Products.PoolDir)
+	if pool != nil {
+		for _, o := range strings.Split(cfg.Backend.Products.AllowedOwners, ",") {
+			if o = strings.ToLower(strings.TrimSpace(o)); o != "" {
+				pool.AllowedOwners = append(pool.AllowedOwners, o)
+			}
+		}
+	}
+	router.SetRepoPool(pool)
 	router.StartProductVerifier(context.Background(), time.Duration(cfg.Backend.Products.VerifyIntervalMinutes)*time.Minute)
 	router.FailOrphanedJobs(context.Background())
 
