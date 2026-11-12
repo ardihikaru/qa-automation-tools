@@ -43,7 +43,10 @@ The result is cached in a package-level singleton. Consumers include
 | `AI_MANAGER_PROVIDER` | `Backend.AI.ManagerProvider` | `claude-v3` |
 | `AI_MANAGER_NO_FALLBACK` | `Backend.AI.ManagerNoFallback` | `true` |
 | `AI_MANAGER_MODEL` | `Backend.AI.ManagerModel` | empty |
-| `MINIMAX_API_KEY` | `Backend.AI.APIKey` | empty (secret) |
+| `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (simulated jobs). Prod: `http://10.8.0.9:8141` |
+| `PLAYWRIGHT_EXECUTOR_TOKEN` | `Backend.Executor.Token` | empty (secret) |
+| `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |
+| `MINIMAX_API_KEY` (dormant) | `Backend.AI.APIKey` | empty (secret) |
 | `AI_MODEL` | `Backend.AI.Model` | `MiniMax-M2.5` |
 | `AI_BASE_URL` | `Backend.AI.BaseURL` | `https://api.minimax.io/v1` |
 | `AI_CHAT_ENDPOINT` | `Backend.AI.ChatEndpoint` | `/chat/completions` |

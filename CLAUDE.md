@@ -16,13 +16,15 @@ EGM artifact directory: .dev/docs
 |---|---|---|
 | `ai-backend/` | Go 1.23 REST API (`net/http`, switch router), MySQL, cookie auth, AI facade | `cd ai-backend && go build -mod=mod ./... && go test -mod=mod ./...` |
 | `dashboard/` | React 18 + Vite + Tailwind SPA, same-origin `/api` | `cd dashboard && npm run build` |
-| `playwright-qa/` | Explorer/runner/skills that crawl SUT and report to the backend | `cd playwright-qa && npx tsc --noEmit` |
-| `playwright-docs/` | Records SUT flows and summarises them through ai-manager | `cd playwright-docs && npx tsc --noEmit` (the TS6059 rootDir error is pre-existing) |
+| `playwright-executor/` | **The only Playwright runtime.** HTTP service (`qa_run`, `docs_generate`) on app-host as a systemd user unit, node via mise, capped at 2.5 GiB / 60 % CPU | `cd playwright-executor && mise exec -- npm test` |
+| `deploy/playwright-executor/` | systemd unit template + `install.sh` | see its README |
+| `playwright-qa/` | **Deprecated** (ported into playwright-executor) | — |
+| `playwright-docs/` | **Deprecated** (ported into playwright-executor + backend `summarizeDocsRun`) | — |
 | `this-qa-automation-system-playwright/` | E2E tests of *this* system (API + dashboard) | `cd this-qa-automation-system-playwright && npx playwright test` |
 | `lib/config.ts` | Shared TS loader for `config.yaml` and env | — |
 | `deploy/qa-tool/` | Docker Compose stack, edge nginx mirror, `deploy.sh` | see its README |
 
-`ai-backend`, `dashboard`, `playwright-qa`, `playwright-docs` and `this-qa-automation-system-playwright` each have their own `CLAUDE.md` with local rules.
+`ai-backend`, `dashboard`, `playwright-executor`, `playwright-qa`, `playwright-docs` and `this-qa-automation-system-playwright` each have their own `CLAUDE.md` with local rules.
 
 ## Access prerequisites
 - **WireGuard.** You must be a peer on `10.8.0.0/24`. The hub is `edge-host` (`203.0.113.10:51820`). Ask the infra owner (ardihikaru) to add a peer; the setup script lives in the personal-workspace repo at `apps/ai-antigravity-cli/deploy/wireguard-client/setup-client.sh`.
@@ -36,23 +38,25 @@ EGM artifact directory: .dev/docs
 | 10.8.0.1 / 203.0.113.10 | `edge-host` | Shared nginx TLS edge: `/etc/nginx/conf.d/qa-tool.conf`, cert lineage `qa-tool` |
 | 10.8.0.4 | `db-host` | MySQL `:5306` (container `master-compose-ai-mysqldb-master-1`, DB/user `qa_automation`); **ai-manager `:8099`** |
 | 10.8.0.7 | `taskmgr-host` | taskmgr Neo4j (optional one-shot user seed; port not reachable from app-host) |
-| 10.8.0.9 | `app-host` | This app (Docker Compose, `10.8.0.9:8140`); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |
+| 10.8.0.9 | `app-host` | This app (Docker Compose, `10.8.0.9:8140`); **playwright-executor `:8141`** (systemd `--user`, 2.5 GiB / 60 % CPU cap); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |
 
 ## Environment variable canon
 - DB: `DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME` (or a MySQL `DATABASE_URL`). The local `.env` files also contain `MYSQL_*`. **The code ignores those**; they point at the SUT *production* schema. Never use them for this app.
-- AI: `AI_PROVIDER` (`ai-manager` by default, or `minimax`), `AI_MANAGER_URL` (`http://10.8.0.4:8099`), `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`, `AI_MANAGER_PROVIDER` (**`claude-v3`**, always), `AI_MANAGER_NO_FALLBACK` (`true`), `AI_MANAGER_MODEL` (empty means claude-v3's default, `claude-opus-5`), `AI_TIMEOUT_SECONDS` (180). `MINIMAX_*`/`AI_MODEL`/`AI_BASE_URL` apply only when `AI_PROVIDER=minimax`. That is a **manual** switch; there is no automatic failover in this repo. Provider failover happens *inside* ai-manager.
+- AI: `AI_PROVIDER` (`ai-manager` by default, or `minimax`), `AI_MANAGER_URL` (`http://10.8.0.4:8099`), `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`, `AI_MANAGER_PROVIDER` (**`claude-v3`**, always), `AI_MANAGER_NO_FALLBACK` (`true`), `AI_MANAGER_MODEL` (empty means claude-v3's default, `claude-opus-5`), `AI_TIMEOUT_SECONDS` (180). **claude-v3 via ai-manager is the only supported LLM path.** `MINIMAX_*`/`AI_MODEL`/`AI_BASE_URL` belong to the **dormant** `AI_PROVIDER=minimax` code path. Never enable it without the user's explicit approval. There is no automatic failover in this repo.
+- Playwright: backend `PLAYWRIGHT_EXECUTOR_URL` (`http://10.8.0.9:8141`; empty means simulated jobs), `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` (30). On the executor side: `EXECUTOR_*`, `TARGET_STAGING_URL`, `TARGET_CREDENTIALS_FILE`, `RUN_TIMEOUT_SECONDS`, `MAX_QUEUE`, in `~/.config/qa-automation/playwright-executor.env` on app-host (mode 600). Template: [playwright-executor/.env.example](playwright-executor/.env.example).
 - Auth: `SESSION_COOKIE_*`, `DASHBOARD_ORIGIN`, `ADMIN_*`, `TASKMGR_NEO4J_*`. Users are seeded at server start (`ai-backend/internal/seed/seed_users.go`): `TASKMGR_NEO4J_*` copies taskmgr users once, then `ADMIN_USERNAME`/`ADMIN_PASSWORD` upserts one admin. Production already has the 44 migrated users, so both are left empty there.
 - Templates: [ai-backend/.env.example](ai-backend/.env.example), [deploy/qa-tool/.env.prod.example](deploy/qa-tool/.env.prod.example), [config.yaml.template](config.yaml.template).
 
 ## Hard rules
-1. **Secrets.** Never print, commit or paste the contents of `.env*`, `config.yaml`, `playwright-docs/config/credentials.yaml`, `_data/`, `~/.config/ai-stack/basic-auth.json`, or the infra-prod `.env` on db-host. Load them into env or stdin; print only key names or counts. See `.claude/rules/secrets.md`.
+1. **Secrets.** Never print, commit or paste the contents of `.env*`, `config.yaml`, `playwright-docs/config/credentials.yaml`, `_data/`, `~/.config/ai-stack/basic-auth.json`, the infra-prod `.env` on db-host, or `~/.config/qa-automation/*` on app-host (executor env and SUT credentials). Load them into env or stdin; print only key names or counts. See `.claude/rules/secrets.md`.
 2. **All LLM calls go through ai-manager, pinned to upstream `claude-v3`.** `claude-v3` is the Claude CLI REST service (`ai-claude-cli`) on app-host at `10.8.0.9:8105`. Never call `:8105` directly, never switch to another upstream (antigravity, claude, minimax...), and never disable `no_fallback` without the user's explicit approval. In code, use `ai.Service` / `ChatProvider` in Go (`ai-backend/internal/services/ai/`), or `callAI` in TS (`playwright-docs/src/summarizer/summarizeFlow.ts`; move it to `lib/` before reusing it from `playwright-qa`). Never add a direct provider SDK or HTTP call elsewhere.
 3. **Schema changes** are appended to `ai-backend/internal/db/migrations.go` as idempotent statements and applied with `go run -mod=mod ./cmd/databasemigration`. The server never migrates on its own.
 4. **Auth is enabled only when the DB connects.** If `/health` shows `database: disconnected`, the API is open. Treat that as an incident, not a warning.
 5. **Shared infra.** The edge-host edge serves many products. Always run `sudo nginx -t` before a reload, never add `default_server`, and prefix `map` variables with `$qatool_`. The db-host MySQL is shared, so only touch the `qa_automation` schema.
-6. Never publish container ports on `0.0.0.0` on app-host. Docker bypasses ufw.
+6. Never publish container ports on `0.0.0.0` on app-host. Docker bypasses ufw. The same goes for host services: playwright-executor binds `10.8.0.9` only.
 7. `ai-backend/vendor/` is stale and gitignored, so always use `-mod=mod`.
 8. Git: branch off `main` and use conventional commits. Pushing, merging to `main`, and deploying are three **separate** approvals: being asked to deploy does not authorise a merge to `main`.
+9. **Playwright runs only in playwright-executor**, and only against SUT staging. Don't add Playwright to the backend image or the compose stack, and don't raise the unit's `MemoryMax`/`CPUQuota` without approval.
 
 ## Workflow — Elephant-Goldfish Model (EGM)
 *Design with an elephant, review with a goldfish.* The plugin is `egm@egm` (enabled in `.claude/settings.json`).
