@@ -13,6 +13,8 @@ import {
   Brain,
 } from 'lucide-react';
 import UserChip from './UserChip';
+import PageTransition from './PageTransition';
+import { LogoMark, ArchitectureIcon, ProductsIcon } from './icons';
 
 interface LayoutProps {
   children: ReactNode;
@@ -27,6 +29,8 @@ const navItems = [
   { path: '/skills', label: 'Skills', icon: Zap },
   { path: '/navigation', label: 'Navigation Graph', icon: GitBranch },
   { path: '/learning', label: 'Learning Progress', icon: Brain },
+  { path: '/products', label: 'Products', icon: ProductsIcon },
+  { path: '/settings', label: 'Configuration', icon: ArchitectureIcon },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -51,7 +55,10 @@ export default function Layout({ children }: LayoutProps) {
       `}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
-          <h1 className="text-xl font-bold">QA Dashboard</h1>
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <LogoMark className="w-7 h-7 text-primary-400" />
+            QA Dashboard
+          </h1>
           <button className="lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="w-6 h-6" />
           </button>
@@ -64,7 +71,7 @@ export default function Layout({ children }: LayoutProps) {
               to={item.path}
               className={({ isActive }) => `
                 flex items-center gap-3 px-4 py-3 rounded-lg mb-1
-                transition-colors
+                transition-colors duration-150 ease-out-strong
                 ${isActive ? 'bg-primary-600 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}
               `}
               onClick={() => setSidebarOpen(false)}
@@ -86,7 +93,9 @@ export default function Layout({ children }: LayoutProps) {
           <UserChip />
         </header>
 
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </div>
     </div>
   );

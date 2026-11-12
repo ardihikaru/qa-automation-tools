@@ -30,6 +30,11 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/auth/me` | GET | `AuthHandlers.Me` (auth wired only) |
 | `/api/auth/change-password` | POST | `AuthHandlers.ChangePassword` (auth wired only) |
 | `/api/flows` | GET, POST | `handleFlows` |
+| `/api/products` | GET, POST | `handleProducts` (`products.go`): master list of products (repo link, staging URL, `root_dir` inside the repo pool, branch, `playwright_accessible`, last verify report). Writes: Admin/DevOps/Developer |
+| `/api/products/{id}` | GET, PUT, DELETE | same; DELETE removes the registry row only, never the checkout |
+| `/api/products/{id}/verify` | POST | Runs `repopool.Verify` (root dir, git repo, origin matches, Playwright present, staging reachable) and stores the report. Also run by `StartProductVerifier` on `PRODUCTS_VERIFY_INTERVAL_MINUTES`. Admin/DevOps/Developer/QA/QC |
+| `/api/products/{id}/clone`, `/checkout` | POST | `gh repo clone` into the pool / `git fetch` + checkout + ff-only merge of `{branch}`. 409 when another operation runs on the same dir. Operations run on a context detached from the request (a client disconnect or a proxy 504 does not kill them); a failed clone removes its partial directory. `/verify` also returns 409 while a clone/checkout holds the dir |
+| `/api/settings` | GET | `handleSettings` (`settings.go`): non-secret config snapshot injected by `SetSettings`; returns gateway host only (no URL path, userinfo or keys) and `pinned_to_claude_v3` |
 | `/api/roles` | GET, POST, DELETE (`?id=`) | `handleRoles` |
 | `/api/docs` | GET | `handleDocs` |
 | `/api/videos` | GET | `handleVideos` |
@@ -79,10 +84,20 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
   - At startup, `FailOrphanedJobs` marks `queued`/`running` rows left by a previous process as `failed`.
 - `handleSearch` does a `LIKE` substring match on `learning_cache.intent`, returns at most 10 rows, and never calls the vector or AI services.
 
+## Product repo pool invariants
+
+- `services/repopool` is the only code that runs `gh`/`git`. Inputs are validated (`repo_url` must be `https://github.com/<owner>/<repo>`; `root_dir` relative with no `..`; branch conservative) and commands use argument slices, never a shell.
+- Every path is resolved inside `REPO_POOL_DIR` (symlink escapes rejected). Clone and checkout take a per-directory lock.
+- `staging_url` is fetched by the backend during verify (GET, 10 s, no redirects). Only http(s) without credentials is accepted; the dialer refuses loopback, link-local (cloud metadata), unspecified and multicast addresses on the resolved IP. Failure detail is coarse (`unreachable`, `timeout`, `address not allowed`, `HTTP nnn`).
+- Product access **fails closed**: no authenticated user means no access (`productRole`). `root_dir` values may not overlap (equal, parent or child). Verification results are written only if repo/URL/dir are unchanged since the check started.
+- `playwright_accessible` means: all checks passed, including staging reachable **from the backend container** and a heuristic Playwright dependency/config in the checkout. It does not prove Playwright runs on the host.
+- `GH_TOKEN` is read from the process env by `gh`/`git`, never logged or returned.
+
 ## Side Effects
 
 - MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `flows`, `roles`, `raw_issues`, `issue_suggestions`, `skills`, `skill_logs`, `learning_cache`, `request_logs` (cost endpoints), `ai_cache`, `embedding_cache`, `goal_events`, `navigation_edges`, `action_sequences`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
 - `auth_handlers.go`: `Login` inserts into `sessions` (via `auth.CreateSession`) and sets the HttpOnly, SameSite=Lax cookie (`auth_helpers.go:setSessionCookie`). `Logout` deletes the session row and expires the cookie. `ChangePassword` runs `UPDATE users SET password_hash = ?, must_change_pw = 0`.
+- Products: clone/checkout write under `REPO_POOL_DIR`; verify makes one outbound GET to `staging_url`.
 - LLM call: `POST /api/issues` calls `aiService.ClassifyIssue` when the category is empty and the service is non-nil, then updates `raw_issues.category`. `/health` calls `aiService.Health`. Both go through the `services/ai` ChatProvider.
 - Learning endpoints delegate to `learningService` (`AddNavigationEdge`, `GetNavigationEdges`, `AddActionSequence`, `GetActionSequences`, `AddContextRecord`, `GetContextRecord`, `GetLearningStats`).
 - Filesystem reads relative to the process CWD: `handleDocs` reads `../product-documentations`, and `handleVideos` reads `../playwright-docs/output/videos` (`os.ReadDir`).

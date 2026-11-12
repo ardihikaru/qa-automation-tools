@@ -54,6 +54,7 @@ type BackendConfig struct {
 	AI       AIConfig       `yaml:"ai"`
 	Security SecurityConfig `yaml:"security"`
 	Executor ExecutorConfig `yaml:"-"`
+	Products ProductsConfig `yaml:"-"`
 }
 
 // ExecutorConfig points at playwright-executor (systemd service on app-host).
@@ -62,6 +63,14 @@ type ExecutorConfig struct {
 	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.8.0.9:8141
 	Token          string // PLAYWRIGHT_EXECUTOR_TOKEN (shared bearer secret)
 	TimeoutMinutes int    // PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES: max wait per job, incl. queueing
+}
+
+// ProductsConfig configures the products repo pool. Env only.
+// GH_TOKEN (read by gh/git directly, never logged) authenticates clones.
+type ProductsConfig struct {
+	PoolDir               string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
+	VerifyIntervalMinutes int    // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
+	AllowedOwners         string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
 }
 
 // DatabaseConfig holds database settings
@@ -306,6 +315,11 @@ func LoadConfig() *Config {
 				APISecretKey: getEnvString("API_SECRET_KEY", ""),
 				CORSEnabled:  getEnvBool("CORS_ENABLED", true),
 				CORSOrigins:  getEnvString("CORS_ORIGINS", "*"),
+			},
+			Products: ProductsConfig{
+				PoolDir:               getEnvString("REPO_POOL_DIR", ""),
+				VerifyIntervalMinutes: getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
+				AllowedOwners:         getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),
