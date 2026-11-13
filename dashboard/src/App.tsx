@@ -6,6 +6,9 @@ import IssueDebugger from './views/IssueDebugger';
 import CostAnalytics from './views/CostAnalytics';
 import FixTracking from './views/FixTracking';
 import SkillsView from './views/SkillsView';
+import AgentsView from './views/assistants/AgentsView';
+import RulesView from './views/assistants/RulesView';
+import AssistantDetailView from './views/assistants/AssistantDetailView';
 import NavigationGraphView from './views/NavigationGraphView';
 import LearningProgressView from './views/LearningProgressView';
 import ProductsView from './views/ProductsView';
@@ -41,6 +44,9 @@ function App() {
                 <Route path="/cost" element={<CostAnalytics />} />
                 <Route path="/fixes" element={<FixTracking />} />
                 <Route path="/skills" element={<SkillsView />} />
+                <Route path="/agents" element={<AgentsView />} />
+                <Route path="/rules" element={<RulesView />} />
+                <Route path="/assistants/:productId/:code" element={<AssistantDetailView />} />
                 <Route path="/navigation" element={<NavigationGraphView />} />
                 <Route path="/learning" element={<LearningProgressView />} />
                 <Route path="/products" element={<ProductsView />} />
