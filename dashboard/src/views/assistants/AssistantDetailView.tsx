@@ -2,15 +2,16 @@
 // The body is rendered with the local safe markdown renderer, or shown as source.
 import { ReactNode, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import { TopBarCrumb, usePageHeader } from '../../components/pageHeader';
 import { ApiError } from '../products/api';
 import { Annotation, CODE_RE, canWriteKnowledge } from '../knowledge/api';
 import { useLoad } from '../knowledge/hooks';
 import { ErrorNote, RelTime } from '../knowledge/ui';
 import AnnotationEditor from './AnnotationEditor';
 import Markdown from './Markdown';
-import { AssistantDetail, Frontmatter, KIND_META, getAssistant, isAssistantKind, useProducts } from './api';
+import { AssistantDetail, AssistantKind, Frontmatter, KIND_META, getAssistant, isAssistantKind, useProducts } from './api';
 import { EmptyState, KindBadge, QuietTag, Segmented } from './ui';
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -72,6 +73,18 @@ function FrontmatterList({ fm, skip }: { fm: Frontmatter | null; skip: Record<st
   );
 }
 
+/** Top bar trail of a kind's list page; `from` (the list URL with its filters) replaces the last link. */
+function listCrumbs(kind: AssistantKind | null, from?: string): TopBarCrumb[] {
+  let crumbs: TopBarCrumb[];
+  if (kind === 'agent') crumbs = [{ label: 'Agents', to: '/agents' }];
+  else if (kind === 'skill') crumbs = [{ label: 'Skills', to: KIND_META.skill.listPath }];
+  else if (kind === 'rule') crumbs = [{ label: 'Rules', to: KIND_META.rule.listPath }];
+  else if (kind) crumbs = [{ label: 'Rules', to: '/rules' }, { label: KIND_META[kind].segment, to: KIND_META[kind].listPath }];
+  else crumbs = [{ label: 'Agents', to: '/agents' }];
+  if (from) crumbs[crumbs.length - 1] = { ...crumbs[crumbs.length - 1], to: from };
+  return crumbs;
+}
+
 function DetailSkeleton() {
   return (
     <div aria-hidden="true" className="space-y-4 motion-safe:animate-pulse">
@@ -112,23 +125,18 @@ export default function AssistantDetailView() {
   const from = (location.state as { from?: string } | null)?.from;
   const kindFromCode = code.split('~')[0];
   const kind = data?.kind ?? (isAssistantKind(kindFromCode) ? kindFromCode : null);
-  const backTo = from || (kind ? KIND_META[kind].listPath : '/agents');
-  const backLabel = kind ? `Back to ${kind === 'agent' ? 'agents' : kind === 'skill' ? 'repo skills' : 'rules'}` : 'Back';
-
   const productName = products.find((p) => p.id === pid)?.name;
   const currentAnnotation = annotation?.key === key ? annotation.value : (data?.annotation ?? null);
 
-  const back = (
-    <Link to={backTo} className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900">
-      <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-      {backLabel}
-    </Link>
-  );
+  usePageHeader({
+    title: data ? data.name || data.path : notFound ? 'Not found' : kind ? KIND_META[kind].label : 'Loading…',
+    titleHint: data ? data.path : undefined,
+    crumbs: listCrumbs(kind, from),
+  });
 
   if (notFound) {
     return (
       <div className="space-y-4 min-w-0">
-        {back}
         <div className="card">
           <EmptyState title="This file was not found">
             <p>It may have been removed from the automation repo before the last sync, or the link is wrong.</p>
@@ -141,7 +149,6 @@ export default function AssistantDetailView() {
   if (!data) {
     return (
       <div className="space-y-4 min-w-0">
-        {back}
         {error ? <ErrorNote onRetry={reload}>{error}</ErrorNote> : <DetailSkeleton />}
       </div>
     );
@@ -153,16 +160,12 @@ export default function AssistantDetailView() {
 
   return (
     <div className="space-y-6 min-w-0" aria-busy={loading}>
-      {back}
-
       <header className="space-y-2 min-w-0">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <h2 className="text-2xl font-bold text-gray-900 break-words min-w-0">{data.name || data.path}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            {/* The name is the top bar title; the header keeps kind, product and path. */}
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-600 min-w-0">
               <KindBadge kind={data.kind} />
-            </div>
-            <p className="text-sm text-gray-600">
               {productName ? (
                 <Link to={`/products?product=${pid}`} className="hover:underline underline-offset-2">
                   {productName}
@@ -170,7 +173,7 @@ export default function AssistantDetailView() {
               ) : (
                 `Product #${pid}`
               )}
-              <span className="mx-2 text-gray-300" aria-hidden="true">
+              <span className="text-gray-300" aria-hidden="true">
                 /
               </span>
               <span className="font-mono text-xs break-all">{data.path}</span>
