@@ -37,7 +37,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `src/main.tsx` | Mounts `<BrowserRouter>` > `<AuthProvider>` > `<App />` |
 | `src/App.tsx` | Route table; everything except `/login` is wrapped in `ProtectedRoute` |
 | `src/auth/` | Session client (`api.ts`), `AuthProvider`/`useAuth` (`AuthContext.tsx`), `ProtectedRoute` |
-| `src/components/` | `Layout` (sidebar nav + header), `UserChip` (identity, role badge, "Log in as another user", logout), `ImpersonationBanner` (amber bar above the header while impersonating, with Return), `ImpersonateDialog` (user picker for impersonation), `Modal` (shared centred dialog: Escape, backdrop click, aria), `SubmitButton` (disabled + spinner while pending; use for every write action), `PageTransition` (route-change fade/slide), `icons/` (custom SVG icons) |
+| `src/components/` | `Layout` (sidebar nav + header; owns page width: views fill the content area and must not set `max-w-*`/`mx-auto` on their root), `UserChip` (identity, role badge, "Log in as another user", logout), `ImpersonationBanner` (amber bar above the header while impersonating, with Return), `ImpersonateDialog` (user picker for impersonation), `Modal` (shared centred dialog: Escape, backdrop click, aria), `SubmitButton` (disabled + spinner while pending; use for every write action), `PageTransition` (route-change fade/slide), `icons/` (custom SVG icons) |
 | `src/views/` | Page views (one per route below) |
 | `src/utils/` | Mock data generators (`mockDataGenerator.ts`, `fixTrackingMockGenerator.ts`) |
 

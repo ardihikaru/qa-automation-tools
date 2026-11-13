@@ -39,7 +39,7 @@ The `sismedika` user manager delegates the `cpu memory pids` controllers (`/sys/
 
 ### Install / upgrade
 
-The code must already be on rnd-v3 at `~/devel/projects/qa-automation-tools`. It ships with the same git bundle the `deploy-his-v3-qa` skill uses.
+The code must already be on rnd-v3 at `~/devel/projects/qa-automation-tools`. It ships with the same git bundle the `deploy-qa-tool` skill uses.
 
 ```bash
 ssh rnd-v3-vpn 'cd ~/devel/projects/qa-automation-tools && deploy/playwright-executor/install.sh'

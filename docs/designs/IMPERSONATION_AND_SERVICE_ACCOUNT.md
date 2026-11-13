@@ -252,7 +252,7 @@ Existing handlers:
     *   The new code queries `active_impersonations` on every request. Without the table, every request returns 401 and every user is logged out.
     *   The new tables are unused by the old code, so migrating while it runs is safe.
 3.  Generate the service password with `openssl rand -base64 36`, never echoed. Write it to the rnd-v3 `.env.prod` (`AI_SERVICE_USERNAME=ai-service` and `AI_SERVICE_PASSWORD`) and to `~/.config/qa-automation/ai-service.env` on the workstation, both mode 600.
-4.  Deploy with the `deploy-his-v3-qa` skill. Seeding runs at startup, so the service user appears on this restart.
+4.  Deploy with the `deploy-qa-tool` skill. Seeding runs at startup, so the service user appears on this restart.
 5.  Run the skill's smoke sequence.
 
 **Rollback:** redeploy the old image. The old code ignores both tables, so any live impersonation simply stops applying. Leave the tables and the Service user in place.

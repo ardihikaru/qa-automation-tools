@@ -55,8 +55,13 @@ EGM artifact directory: .dev/docs
 5. **Shared infra.** The clino edge serves many products. Always run `sudo nginx -t` before a reload, never add `default_server`, and prefix `map` variables with `$hisv3qa_`. The rnd-v2 MySQL is shared, so only touch the `qa_automation` schema.
 6. Never publish container ports on `0.0.0.0` on rnd-v3. Docker bypasses ufw. The same goes for host services: playwright-executor binds `10.10.0.9` only.
 7. `ai-backend/vendor/` is stale and gitignored, so always use `-mod=mod`.
-8. Git: branch off `main` and use conventional commits. Pushing, merging to `main`, and deploying are three **separate** approvals: being asked to deploy does not authorise a merge to `main`.
+8. Git: follow [Git workflow](#git-workflow) below. Deploying is a **separate** approval: a merge to `main` never authorises a deploy.
 9. **Playwright runs only in playwright-executor**, and only against HISv3 staging. Don't add Playwright to the backend image or the compose stack, and don't raise the unit's `MemoryMax`/`CPUQuota` without approval.
+
+## Git workflow
+- **Worktrees.** Always work in a git worktree, never in the main checkout: `git worktree add ../qa-automation-tools.worktrees/<branch> -b <branch> main`. Remove it with `git worktree remove` once the work is done.
+- **PRs and merges.** Branch off `main`, use conventional commits, and open PRs periodically (small, reviewable steps). Pushing branches, opening PRs and merging them to `main` are pre-authorised. Deploying stays a separate approval.
+- **Cleanup.** Delete every merged branch (local and remote) and prune worktrees right after the merge: `git branch -d <branch>`, `git push origin --delete <branch>`, `git worktree prune`.
 
 ## Workflow — Elephant-Goldfish Model (EGM)
 *Design with an elephant, review with a goldfish.* The plugin is `egm@egm` (enabled in `.claude/settings.json`).
@@ -70,4 +75,4 @@ When to use it:
 - **Every week, or before a release:** `/egm:egm-drift-report docs/designs/`, then decide whether to fix the doc or the code.
 - **After large refactors:** `/egm:egm-bootstrap <dir>` to refresh the README contracts. It merges into existing files and must cite code.
 
-Project skills: `qa-automation-elephant` (load before any design work), `deploy-his-v3-qa`, `ai-manager-gateway`, `qa-db-ops`, `qa-tool-session` (use the prod app as the `ai-service` account and impersonate any user; agent: `qa-tool-operator`). Rules in `.claude/rules/` load automatically by path.
+Project skills: `qa-automation-elephant` (load before any design work), `deploy-qa-tool`, `ai-manager-gateway`, `qa-db-ops`, `qa-tool-session` (use the prod app as the `ai-service` account and impersonate any user; agent: `qa-tool-operator`). Rules in `.claude/rules/` load automatically by path.
