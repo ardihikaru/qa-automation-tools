@@ -31,6 +31,10 @@ func setupCRUDIntegrationRouter(t *testing.T) (*Router, *db.DB) {
 	t.Helper()
 
 	crudSetupOnce.Do(func() {
+		if reason := integrationOptOut(); reason != "" {
+			crudSkipReason = reason
+			return
+		}
 		loadIntegrationEnvFiles()
 		config.ClearCache()
 
