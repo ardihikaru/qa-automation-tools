@@ -139,6 +139,36 @@ func TestKnowledgeAPI(t *testing.T) {
 	kcall(t, r, "Viewer", http.MethodGet, base+"/parts/A", nil, http.StatusOK)
 	kcall(t, r, "Viewer", http.MethodGet, base+"/epics/OUTREG", nil, http.StatusOK)
 
+	// Coverage at every level.
+	cov := kcall(t, r, "Viewer", http.MethodGet, base+"/coverage?by=module", nil, http.StatusOK)["coverage"].(map[string]any)
+	a01 := cov["A01"].(map[string]any)
+	if a01["test_cases"].(float64) < 1 || a01["state"] == "" {
+		t.Fatalf("A01 coverage: %v", a01)
+	}
+	kcall(t, r, "Viewer", http.MethodGet, base+"/coverage?by=bogus", nil, http.StatusBadRequest)
+	mods := kcall(t, r, "Viewer", http.MethodGet, base+"/modules", nil, http.StatusOK)["modules"].([]any)
+	if len(mods) != 39 || mods[0].(map[string]any)["coverage"] == nil {
+		t.Fatalf("modules: %d", len(mods))
+	}
+	feats := kcall(t, r, "Viewer", http.MethodGet, base+"/features?module=A01&page_size=500", nil, http.StatusOK)
+	untested := kcall(t, r, "Viewer", http.MethodGet, base+"/features?coverage=untested&page_size=500", nil, http.StatusOK)
+	if feats["total"].(float64) < 1 || untested["total"].(float64) < 300 {
+		t.Fatalf("features: module A01 %v, untested %v", feats["total"], untested["total"])
+	}
+	kcall(t, r, "Viewer", http.MethodGet, base+"/features?coverage=meh", nil, http.StatusBadRequest)
+	modTC := kcall(t, r, "Viewer", http.MethodGet, base+"/test-cases?module=A01&automated=0&page_size=5", nil, http.StatusOK)
+	if modTC["total"].(float64) < 1 {
+		t.Fatalf("test cases of A01 not automated: %v", modTC["total"])
+	}
+	mod := kcall(t, r, "Viewer", http.MethodGet, base+"/modules/A01", nil, http.StatusOK)
+	if mod["coverage"].(map[string]any)["test_cases"] != a01["test_cases"] || mod["features"].([]any)[0].(map[string]any)["coverage"] == nil {
+		t.Fatalf("module detail coverage: %v", mod["coverage"])
+	}
+	stCov := kcall(t, r, "Viewer", http.MethodGet, base+"/stories?coverage=full,partial&page_size=500", nil, http.StatusOK)
+	if stCov["total"].(float64) < 1 {
+		t.Fatalf("stories with automation: %v", stCov["total"])
+	}
+
 	// Annotations.
 	kcall(t, r, "Viewer", http.MethodPut, base+"/annotations/story/US-OUTREG-05", map[string]any{"note": "x"}, http.StatusForbidden)
 	kcall(t, r, "QA", http.MethodPut, base+"/annotations/story/US-OUTREG-05", map[string]any{"note": "flaky on staging", "tags": []string{"flaky"}}, http.StatusOK)

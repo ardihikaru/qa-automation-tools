@@ -1,6 +1,6 @@
 // Small presentational pieces shared by the knowledge card, view and drawer.
 import { ReactNode, useState } from 'react';
-import { AlertCircle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight, Loader2, PanelRight } from 'lucide-react';
 import { AiStatus, Diff, DiffKind, Problems, SyncStatus, absoluteTime, commitUrl, relativeTime, shortSha } from './api';
 
 const RELEASE_CLASS: Record<string, string> = {
@@ -292,5 +292,20 @@ export function Pagination({ page, pageSize, total, onPage, disabled }: { page: 
         </button>
       </div>
     </div>
+  );
+}
+
+/** Opens the quick-peek drawer next to a row that links to the full page. */
+export function PeekButton({ label, onClick, active }: { label: string; onClick: () => void; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title="Quick peek"
+      className={`p-1.5 min-h-8 min-w-8 inline-flex items-center justify-center rounded shrink-0 ${active ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}
+    >
+      <PanelRight className="w-4 h-4" aria-hidden="true" />
+    </button>
   );
 }
