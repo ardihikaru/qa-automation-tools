@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, ExternalLink, GitBranch, Pencil, Plus, Trash2, XCircle, Download } from 'lucide-react';
 import SubmitButton from '../components/SubmitButton';
+import Modal from '../components/Modal';
 import { ProductsIcon, RepoCheckIcon } from '../components/icons';
 import { useAuth } from '../auth/AuthContext';
 
@@ -397,22 +398,6 @@ function ProductRows({ p, open, toggle, children }: { p: Product; open: boolean;
         </tr>
       )}
     </>
-  );
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="modal-enter bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-semibold mb-4">{title}</h3>
-        {children}
-      </div>
-    </div>
   );
 }
 

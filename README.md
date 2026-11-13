@@ -352,6 +352,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | `DASHBOARD_ORIGIN` | CORS origin when auth is on | `http://localhost:6173` |
 | `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE` | Session cookie | `qa_session`, `12`, `false` |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | Seeded admin user | — |
+| `AI_SERVICE_USERNAME`, `AI_SERVICE_PASSWORD` | Seeded AI service account (role `Service`, may impersonate; password ≥ 32 chars) | — |
 | `TASKMGR_NEO4J_URI`, `TASKMGR_NEO4J_USERNAME`, `TASKMGR_NEO4J_PASSWORD`, `TASKMGR_NEO4J_DATABASE` | Optional read-only user import | database `neo4j` |
 
 `API_SECRET_KEY`, `CORS_ENABLED` and `CORS_ORIGINS` are loaded into config but are not read by the HTTP router.
@@ -385,6 +386,7 @@ Only `/health` and `/api/auth/login` are public. When the backend has a DB, ever
 |----------|---------|-------------|
 | `/health` | GET | Status, DB, AI provider and AI health |
 | `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/change-password` | POST / GET | Cookie-session auth (only when DB connected) |
+| `/api/auth/impersonate`, `/api/auth/impersonate/stop`, `/api/users` | POST / GET | Admin/Service impersonation of another user, and the user list for its picker ([spec](docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md)) |
 | `/api/flows` | GET, POST | Flows |
 | `/api/roles` | GET, POST, DELETE | Roles |
 | `/api/docs`, `/api/videos` | GET | Product docs and recorded videos from disk |

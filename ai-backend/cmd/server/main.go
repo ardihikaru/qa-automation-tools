@@ -97,12 +97,14 @@ func main() {
 	// a warning so it's obvious in journalctl.
 	if database != nil {
 		seedCount, err := seed.SeedUsers(context.Background(), database.SQL, seed.Options{
-			Neo4jURI:      os.Getenv("TASKMGR_NEO4J_URI"),
-			Neo4jUser:     os.Getenv("TASKMGR_NEO4J_USERNAME"),
-			Neo4jPassword: os.Getenv("TASKMGR_NEO4J_PASSWORD"),
-			Neo4jDatabase: getEnv("TASKMGR_NEO4J_DATABASE", "neo4j"),
-			AdminUsername: os.Getenv("ADMIN_USERNAME"),
-			AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+			Neo4jURI:        os.Getenv("TASKMGR_NEO4J_URI"),
+			Neo4jUser:       os.Getenv("TASKMGR_NEO4J_USERNAME"),
+			Neo4jPassword:   os.Getenv("TASKMGR_NEO4J_PASSWORD"),
+			Neo4jDatabase:   getEnv("TASKMGR_NEO4J_DATABASE", "neo4j"),
+			AdminUsername:   os.Getenv("ADMIN_USERNAME"),
+			AdminPassword:   os.Getenv("ADMIN_PASSWORD"),
+			ServiceUsername: os.Getenv("AI_SERVICE_USERNAME"),
+			ServicePassword: os.Getenv("AI_SERVICE_PASSWORD"),
 		})
 		if err != nil {
 			log.Printf("⚠️  seed failed: %v", err)

@@ -37,7 +37,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `src/main.tsx` | Mounts `<BrowserRouter>` > `<AuthProvider>` > `<App />` |
 | `src/App.tsx` | Route table; everything except `/login` is wrapped in `ProtectedRoute` |
 | `src/auth/` | Session client (`api.ts`), `AuthProvider`/`useAuth` (`AuthContext.tsx`), `ProtectedRoute` |
-| `src/components/` | `Layout` (sidebar nav + header; owns page width: views fill the content area and must not set `max-w-*`/`mx-auto` on their root), `UserChip` (identity, role badge, logout), `SubmitButton` (disabled + spinner while pending; use for every write action), `PageTransition` (route-change fade/slide), `icons/` (custom SVG icons) |
+| `src/components/` | `Layout` (sidebar nav + header; owns page width: views fill the content area and must not set `max-w-*`/`mx-auto` on their root), `UserChip` (identity, role badge, "Log in as another user", logout), `ImpersonationBanner` (amber bar above the header while impersonating, with Return), `ImpersonateDialog` (user picker for impersonation), `Modal` (shared centred dialog: Escape, backdrop click, aria), `SubmitButton` (disabled + spinner while pending; use for every write action), `PageTransition` (route-change fade/slide), `icons/` (custom SVG icons) |
 | `src/views/` | Page views (one per route below) |
 | `src/utils/` | Mock data generators (`mockDataGenerator.ts`, `fixTrackingMockGenerator.ts`) |
 
@@ -61,11 +61,36 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 
 ### Auth module (`src/auth/`)
 
-- `api.ts`: `login()`, `logout()`, `me()`, `changePassword()`, `roleBadgeClass()`,
-  types `AuthUser`, `LoginResponse`, class `AuthError`.
+- `api.ts`: `login()`, `logout()`, `me()`, `changePassword()`, `listUsers()`,
+  `impersonate(username)`, `stopImpersonation()`, `roleBadgeClass()`,
+  `IMPERSONATOR_ROLES` (`Admin`, `Service`; UI hint only), types `AuthUser`
+  (with optional `impersonator`), `Impersonator`, `UserSummary`, `LoginResponse`
+  (the shared `{user, mustChangePassword}` shape), class `AuthError` (carries the
+  backend's `{error}` text and the HTTP status).
 - `AuthContext.tsx`: `AuthProvider`, `useAuth()` exposing `user`, `loading`,
-  `mustChangePassword`, `login`, `logout`, `refresh`, `markPasswordChanged`.
+  `mustChangePassword`, `login`, `logout`, `refresh`, `markPasswordChanged`,
+  `impersonate`, `stopImpersonation`.
 - `ProtectedRoute.tsx`: `ProtectedRoute` gate component.
+
+### Impersonation flow ([spec](../docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md) §6)
+
+1. `UserChip` shows a `UserCog` button (`aria-label="Log in as another user"`) when
+   `user.role` is `Admin` or `Service` and `user.impersonator` is absent.
+2. `ImpersonateDialog` loads `GET /api/users`, filters by username or full name
+   (case-insensitive), shows role badges, hides the caller (by `id`), disables
+   inactive users, and shows the backend `{error}` inline. Rows are locked while a
+   request is in flight.
+3. `useAuth().impersonate(username)` posts `/api/auth/impersonate`; on 200 it does
+   `window.location.assign('/')` (full reload, so no page state from the previous
+   identity survives).
+4. While `user.impersonator` is set, `Layout` renders `ImpersonationBanner`
+   (`role="status"`): "Viewing as X (role). Signed in as Y. [Return to Y]". The
+   banner calls `refresh()` on window focus, so an expired impersonation (the
+   backend falls back to the real user) clears it.
+5. Return calls `useAuth().stopImpersonation()` (`POST /api/auth/impersonate/stop`),
+   then reloads to `/`. The button is disabled while in flight; errors show inline.
+6. Logout while impersonating confirms with "This signs out <real name> completely."
+   and ends both the impersonation and the real session.
 
 ### Backend API paths called (grep of `fetch(` in `src/`)
 
@@ -75,6 +100,9 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/auth/logout` | POST | `auth/api.ts` `logout` |
 | `/api/auth/me` | GET | `auth/api.ts` `me` |
 | `/api/auth/change-password` | POST | `auth/api.ts` `changePassword` |
+| `/api/users` | GET | `auth/api.ts` `listUsers` (Admin/Service only) |
+| `/api/auth/impersonate` | POST | `auth/api.ts` `impersonate` |
+| `/api/auth/impersonate/stop` | POST | `auth/api.ts` `stopImpersonation` |
 | `/api/docs?limit&page&search&product&sort_by` | GET | `views/DocsView.tsx` |
 | `/api/flows`, `/api/roles` | GET | `views/DocsView.tsx` |
 | `/api/analytics`, `/api/cost/overview`, `/api/issues?...`, `/api/jobs?page&limit&sort_by` | GET | `views/QAInsights.tsx` (only when `USE_MOCK_QA_INSIGHTS` is false) |
@@ -95,10 +123,12 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 
 - **Login gating**: `ProtectedRoute` renders a "Loading session" panel while `loading`,
   redirects to `/login` (with `state.from`) when `user` is null, and redirects to
-  `/change-password` whenever `mustChangePassword` is true. Every route except `/login`
-  must stay inside `ProtectedRoute` (`src/App.tsx`).
+  `/change-password` whenever `mustChangePassword` is true. While `user.impersonator`
+  is set it redirects `/change-password` to `/` (the backend returns 403 there). Every
+  route except `/login` must stay inside `ProtectedRoute` (`src/App.tsx`).
 - **Session source of truth**: `AuthProvider` calls `me()` (`GET /api/auth/me`) on mount;
-  a 401 yields `user = null`. The session itself is an HttpOnly cookie set by the backend
+  a 401 yields `user = null`. A network or 5xx error from a later `refresh()` keeps the
+  current identity instead of signing the user out. The session itself is an HttpOnly cookie set by the backend
   (`SESSION_COOKIE_NAME`, default `qa_session`, in `ai-backend/cmd/server/main.go`;
   `HttpOnly` in `ai-backend/internal/api/auth_helpers.go`); the
   dashboard never reads or stores tokens (no `localStorage`/`sessionStorage` use in `src/`).
@@ -106,13 +136,17 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
   calls rely on the default same-origin cookie behaviour, so all API paths must stay
   relative (`/api/...`) and be served same-origin (Vite proxy in dev, nginx `/api`
   proxy in production).
-- There is **no** global 401 interceptor: the header comment in `auth/api.ts` mentions
-  one in `AuthContext`, but `AuthContext.tsx` only handles 401 from `me()`. A view whose
-  session expires mid-use shows its own error until the next `refresh()`/reload.
+- There is **no** global 401 interceptor. `AuthContext.tsx` handles a 401 only from
+  `me()` (user becomes null) and from `impersonate()`/`stopImpersonation()` (user
+  becomes null and the app navigates to `/login`). A view whose session expires
+  mid-use shows its own error until the next `refresh()`/reload.
+- **Identity changes reload the app**: after a successful impersonate or stop, the
+  dashboard calls `window.location.assign('/')`; it never swaps identity in place.
 - **Role badges**: `UserChip` shows `user.role` styled by `roleBadgeClass()` from the
-  `ROLE_BADGE` map (`Admin`, `Developer`, `DevOps`, `QA`, `QC`, `UI/UX Designer`);
-  unknown roles fall back to the `Admin` (slate) style. Roles are display-only in the
-  dashboard; no client-side route is restricted by role.
+  `ROLE_BADGE` map (`Admin`, `Developer`, `DevOps`, `QA`, `QC`, `UI/UX Designer`,
+  `Service` in cyan); unknown roles fall back to the `Admin` (slate) style. Roles are
+  display-only in the dashboard, except that the impersonation button is shown only to
+  `Admin`/`Service`; the backend enforces every permission.
 - `QAInsights` has `USE_MOCK_QA_INSIGHTS = true` hard-coded, so its summary panels
   render `generateMockQAInsightsData()` output instead of calling the backend; the job
   detail and job trigger actions still call the real API.
@@ -123,11 +157,15 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 ## Side Effects
 
 - Network: same-origin HTTP calls to the backend paths listed above. Mutating calls are
-  `POST /api/auth/login|logout|change-password`, `POST /api/jobs/qa/run`,
+  `POST /api/auth/login|logout|change-password|impersonate|impersonate/stop`, `POST /api/jobs/qa/run`,
   `POST /api/jobs/docs/generate` (body `{ triggered_by: 'dashboard', source: 'qa_insights' }`),
   `POST /api/issues/status`, and `POST /api/issues/notes`.
 - Cookies: login/logout cause the backend to set/clear the session cookie in the browser.
 - `QAInsights` navigates with `window.location.href = '/issues'` (full page load).
+- `AuthContext` `impersonate`/`stopImpersonation` reload the app with
+  `window.location.assign('/')`.
+- `ImpersonationBanner` adds a window `focus` listener (only while impersonating) that
+  calls `GET /api/auth/me`.
 - Container image: nginx serves `/health` (in `nginx.conf.example`) used by the
   `Dockerfile` `HEALTHCHECK`; the production compose healthcheck uses `/nginx-health`
   from `deploy/his-v3-qa/nginx.dashboard.conf`.
