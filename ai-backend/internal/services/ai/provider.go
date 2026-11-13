@@ -16,16 +16,24 @@ const (
 type ChatOpts struct {
 	Temperature float64
 	MaxTokens   int
+	// Feature labels the call for the cost ledger (e.g. "classify-issue"); Caller is sent to
+	// ai-manager for its own usage attribution. Both are optional.
+	Feature string
+	Caller  string
 }
 
 // ChatResult is the provider-neutral reply of a chat call.
 type ChatResult struct {
-	Text         string
-	Provider     string // upstream provider that actually answered (e.g. antigravity, minimax)
-	Model        string
-	InputTokens  int
-	OutputTokens int
-	CostUSD      float64
+	Text              string
+	Provider          string // upstream provider that actually answered (e.g. antigravity, minimax)
+	Model             string
+	InputTokens       int
+	OutputTokens      int
+	CostUSD           float64
+	CostIDR           float64
+	CostSource        string // "" = real cost, "payg_estimate" = notional subscription cost
+	Fallback          bool
+	RequestedProvider string
 }
 
 // ChatProvider is the single seam between the backend and any LLM gateway.

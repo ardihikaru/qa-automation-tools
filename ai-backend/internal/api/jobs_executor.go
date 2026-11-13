@@ -274,7 +274,7 @@ func (r *Router) summarizeDocsRun(ctx context.Context, result map[string]interfa
 		"Write concise Markdown: one section per flow with a one-paragraph purpose, numbered steps a user follows, and a short 'Known problems' list only for failed steps. " +
 		"Do not invent screens that are not in the data.\n\nFLOWS JSON:\n" + clip(string(data), 60000)
 
-	text, err := r.aiService.ChatMessages(ctx, []models.Message{{Role: "user", Content: prompt}}, ai.ChatOpts{Temperature: 0.3})
+	text, err := r.aiService.ChatMessages(ctx, []models.Message{{Role: "user", Content: prompt}}, ai.ChatOpts{Temperature: 0.3, Feature: "job-analysis"})
 	if err != nil {
 		return "", err
 	}

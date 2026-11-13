@@ -28,6 +28,14 @@ type Service struct {
 
 	usageMu   sync.Mutex
 	lastUsage ChatResult
+	recorder  CallRecorder
+}
+
+// SetRecorder installs the ledger that receives one record per AI call (success or failure).
+func (s *Service) SetRecorder(r CallRecorder) {
+	s.usageMu.Lock()
+	s.recorder = r
+	s.usageMu.Unlock()
 }
 
 // NewService creates a MiniMax-backed AI service (legacy constructor).
@@ -98,7 +106,12 @@ func (s *Service) LastUsage() ChatResult {
 
 // Chat sends a single user prompt and returns the reply text.
 func (s *Service) Chat(prompt string) (string, error) {
-	return s.ChatMessages(context.Background(), []models.Message{{Role: "user", Content: prompt}}, ChatOpts{Temperature: 0.7})
+	return s.ChatFeature(prompt, "")
+}
+
+// ChatFeature is Chat with a feature label for the cost ledger.
+func (s *Service) ChatFeature(prompt, feature string) (string, error) {
+	return s.ChatMessages(context.Background(), []models.Message{{Role: "user", Content: prompt}}, ChatOpts{Temperature: 0.7, Feature: feature})
 }
 
 // ChatMessages sends a full message list through the active provider.
@@ -108,13 +121,35 @@ func (s *Service) ChatMessages(ctx context.Context, messages []models.Message, o
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+	start := time.Now()
 	res, err := s.provider.Chat(ctx, messages, opts)
+	latency := time.Since(start)
+	s.usageMu.Lock()
+	rec := s.recorder
+	if err == nil {
+		s.lastUsage = res
+	}
+	s.usageMu.Unlock()
+	if rec != nil {
+		cr := CallRecord{
+			At: start, Feature: opts.Feature, Caller: opts.Caller,
+			Provider: res.Provider, Model: res.Model, RequestedProvider: res.RequestedProvider,
+			Status: "ok", Fallback: res.Fallback,
+			InputTokens: res.InputTokens, OutputTokens: res.OutputTokens,
+			CostUSD: res.CostUSD, CostIDR: res.CostIDR, CostSource: res.CostSource,
+			LatencyMS: int(latency.Milliseconds()),
+		}
+		if cr.Provider == "" {
+			cr.Provider = s.provider.Name()
+		}
+		if err != nil {
+			cr.Status, cr.Error = "error", err.Error()
+		}
+		rec.RecordCall(cr)
+	}
 	if err != nil {
 		return "", err
 	}
-	s.usageMu.Lock()
-	s.lastUsage = res
-	s.usageMu.Unlock()
 	return res.Text, nil
 }
 
@@ -185,7 +220,7 @@ Return just one word: frontend or backend
 
 	// An AI failure (gateway down, 401/502, timeout) is not fatal: fall through to the
 	// keyword heuristic so the issue still gets a category.
-	result, err := s.Chat(prompt)
+	result, err := s.ChatFeature(prompt, "classify-issue")
 	if err == nil {
 		result = strings.ToLower(strings.Trim(strings.TrimSpace(result), ".\"'`"))
 		if result == "frontend" || result == "backend" {
@@ -219,7 +254,7 @@ Suggestion: <your suggestion>
 Confidence: <score>
 `, issue.Page, issue.Action, issue.ErrorText, issue.Category)
 
-	result, err := s.Chat(prompt)
+	result, err := s.ChatFeature(prompt, "issue-suggestion")
 	if err != nil {
 		return "", 0, err
 	}
@@ -258,7 +293,7 @@ Format as JSON array:
 [{"name": "...", "check_type": "...", "check_query": "...", "severity": "..."}]
 `, formatIssues(issues))
 
-	result, err := s.Chat(prompt)
+	result, err := s.ChatFeature(prompt, "skill-generation")
 	if err != nil {
 		return "", err
 	}
