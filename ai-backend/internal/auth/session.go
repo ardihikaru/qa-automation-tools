@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -33,8 +34,14 @@ func CreateSession(ctx context.Context, db *sql.DB, userID string, ttl time.Dura
 	return token, expires, nil
 }
 
-// ValidateSession looks up the token and returns the owning user.
-// Expired or unknown tokens return ErrSessionInvalid.
+// ValidateSession looks up the token and returns the identity the request
+// acts as. Expired or unknown tokens, and inactive real users, return
+// ErrSessionInvalid.
+//
+// When the session has an active, unexpired impersonation whose real user is
+// still an impersonator role and whose target exists and is active, the
+// returned User is the target with Impersonator set. In every other case the
+// real user is returned with Impersonator nil — never a bare target.
 func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, error) {
 	if token == "" {
 		return nil, ErrSessionInvalid
@@ -43,28 +50,74 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, erro
 	const q = `
 		SELECT u.id, u.username, COALESCE(u.full_name, ''), COALESCE(u.email, ''),
 		       COALESCE(u.whatsapp, ''), COALESCE(u.odoo_id, ''), u.role,
-		       u.is_lead, u.active, u.must_change_pw
+		       u.is_lead, u.active, u.must_change_pw, s.expires_at AS s_expires_at,
+		       ai.expires_at AS ai_expires_at,
+		       t.id, t.username, t.full_name, t.email, t.whatsapp, t.odoo_id,
+		       t.role, t.is_lead, t.active
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
+		LEFT JOIN active_impersonations ai
+		       ON ai.parent_token = s.token AND ai.expires_at > ?
+		LEFT JOIN users t ON t.id = ai.target_user_id
 		WHERE s.token = ? AND s.expires_at > UTC_TIMESTAMP()
 		LIMIT 1
 	`
-	var u User
-	err := db.QueryRowContext(ctx, q, token).Scan(
+	var (
+		u                                  User
+		aiExpires                          sql.NullTime
+		tID, tUser, tName, tMail, tWA, tOd sql.NullString
+		tRole                              sql.NullString
+		tLead, tActive                     sql.NullBool
+	)
+	// ai.expires_at is compared with a Go timestamp, not UTC_TIMESTAMP(): it is
+	// written from Go too, so the driver's loc= conversion applies to both sides
+	// and the check holds whatever the host time zone.
+	err := db.QueryRowContext(ctx, q, time.Now().UTC(), token).Scan(
 		&u.ID, &u.Username, &u.FullName, &u.Email,
 		&u.WhatsApp, &u.OdooID, &u.Role,
-		&u.IsLead, &u.Active, &u.MustChangePW,
+		&u.IsLead, &u.Active, &u.MustChangePW, &u.SessionExpires,
+		&aiExpires,
+		&tID, &tUser, &tName, &tMail, &tWA, &tOd,
+		&tRole, &tLead, &tActive,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrSessionInvalid
 	}
 	if err != nil {
+		log.Printf("⚠️  auth: session query failed: %v", err)
 		return nil, fmt.Errorf("query session: %w", err)
 	}
 	if !u.Active {
 		return nil, ErrSessionInvalid
 	}
-	return &u, nil
+	u.SessionToken = token
+
+	impersonating := aiExpires.Valid && tID.Valid &&
+		tActive.Valid && tActive.Bool && ImpersonatorRoles[u.Role]
+	if !impersonating {
+		return &u, nil
+	}
+
+	return &User{
+		ID:           tID.String,
+		Username:     tUser.String,
+		FullName:     tName.String,
+		Email:        tMail.String,
+		WhatsApp:     tWA.String,
+		OdooID:       tOd.String,
+		Role:         tRole.String,
+		IsLead:       tLead.Valid && tLead.Bool,
+		Active:       true,
+		MustChangePW: false,
+		Impersonator: &Actor{
+			ID:       u.ID,
+			Username: u.Username,
+			FullName: u.FullName,
+			Role:     u.Role,
+		},
+		SessionToken:   token,
+		SessionExpires: u.SessionExpires,
+	}, nil
 }
 
 // RevokeSession deletes a single session row. Safe to call with an unknown

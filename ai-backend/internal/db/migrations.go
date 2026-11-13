@@ -293,6 +293,34 @@ var migrations = []string{
 		UNIQUE KEY uq_products_name (name),
 		UNIQUE KEY uq_products_root_dir (root_dir)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Impersonation (docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md).
+	// One row per session that is currently acting as another user, keyed by
+	// the real session's token (the cookie never changes value).
+	`CREATE TABLE IF NOT EXISTS active_impersonations (
+		parent_token    CHAR(64) NOT NULL PRIMARY KEY,
+		impersonator_id CHAR(36) NOT NULL,
+		target_user_id  CHAR(36) NOT NULL,
+		audit_id        BIGINT   NOT NULL,
+		expires_at      DATETIME NOT NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Append-only audit of every impersonation. Never purge.
+	// ended_reason: stop | logout | superseded; NULL with expires_at in the
+	// past means the impersonation expired.
+	`CREATE TABLE IF NOT EXISTS impersonation_audit (
+		id              BIGINT AUTO_INCREMENT PRIMARY KEY,
+		impersonator_id CHAR(36)     NOT NULL,
+		target_user_id  CHAR(36)     NOT NULL,
+		started_at      DATETIME     NOT NULL,
+		expires_at      DATETIME     NOT NULL,
+		ended_at        DATETIME     NULL,
+		ended_reason    VARCHAR(16)  NULL,
+		ip              VARCHAR(64)  NULL,
+		user_agent      VARCHAR(255) NULL,
+		KEY idx_ia_impersonator (impersonator_id),
+		KEY idx_ia_target (target_user_id)
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 // RunMigrations executes all MySQL migrations sequentially.
