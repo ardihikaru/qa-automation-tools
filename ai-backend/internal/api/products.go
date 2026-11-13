@@ -8,11 +8,14 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/qa-automation/ai-backend/internal/auth"
+	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 )
@@ -23,7 +26,18 @@ func (r *Router) SetRepoPool(p *repopool.Pool) { r.repoPool = p }
 const productCols = `id, name, repo_url, staging_url, root_dir, branch, playwright_accessible,
 	last_verified_at, verify_report, created_at, updated_at`
 
+// repoCols selects from product_repos aliased as r.
+const repoCols = `r.id, r.product_id, r.name, r.repo_url, r.root_dir, r.is_main, r.is_central,
+	r.playwright_accessible, r.last_verified_at, r.verify_report, r.sync_report, r.created_at, r.updated_at`
+
 type rowScanner interface{ Scan(dest ...any) error }
+
+// queryer is satisfied by *sql.DB and *sql.Tx, so loaders work inside and outside transactions.
+type queryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
 
 func scanProduct(s rowScanner) (models.Product, error) {
 	var p models.Product
@@ -42,7 +56,181 @@ func scanProduct(s rowScanner) (models.Product, error) {
 	if report.Valid && report.String != "" {
 		p.VerifyReport = json.RawMessage(report.String)
 	}
+	p.Repos = []models.ProductRepo{}
 	return p, nil
+}
+
+func scanRepo(s rowScanner) (models.ProductRepo, error) {
+	var rp models.ProductRepo
+	var verified sql.NullTime
+	var verifyRep, syncRep sql.NullString
+	if err := s.Scan(&rp.ID, &rp.ProductID, &rp.Name, &rp.RepoURL, &rp.RootDir, &rp.IsMain, &rp.IsCentral,
+		&rp.PlaywrightAccessible, &verified, &verifyRep, &syncRep, &rp.CreatedAt, &rp.UpdatedAt); err != nil {
+		return rp, err
+	}
+	if verified.Valid {
+		t := verified.Time
+		rp.LastVerifiedAt = &t
+	}
+	if verifyRep.Valid && verifyRep.String != "" {
+		rp.VerifyReport = json.RawMessage(verifyRep.String)
+	}
+	if syncRep.Valid && syncRep.String != "" {
+		rp.SyncReport = json.RawMessage(syncRep.String)
+	}
+	rp.Branches = []string{}
+	return rp, nil
+}
+
+// sortRepos orders repos: main first, then central (if not main), then by name.
+func sortRepos(repos []models.ProductRepo) {
+	rank := func(r models.ProductRepo) int {
+		switch {
+		case r.IsMain:
+			return 0
+		case r.IsCentral:
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(repos, func(i, j int) bool {
+		if ri, rj := rank(repos[i]), rank(repos[j]); ri != rj {
+			return ri < rj
+		}
+		return repos[i].Name < repos[j].Name
+	})
+}
+
+// orderBranches puts the default branch first, then the rest alphabetically.
+func orderBranches(branches []string, def string) []string {
+	out := append([]string{}, branches...)
+	sort.Slice(out, func(i, j int) bool {
+		if (out[i] == def) != (out[j] == def) {
+			return out[i] == def
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+// loadRepos reads repos (with branches) matching a WHERE clause on product_repos aliased r.
+func loadRepos(ctx context.Context, q queryer, where string, args ...any) ([]models.ProductRepo, error) {
+	rows, err := q.QueryContext(ctx, `SELECT `+repoCols+` FROM product_repos r WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	repos := []models.ProductRepo{}
+	for rows.Next() {
+		rp, err := scanRepo(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		repos = append(repos, rp)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(repos) == 0 {
+		return repos, nil
+	}
+	brows, err := q.QueryContext(ctx, `SELECT b.repo_id, b.branch, b.is_default FROM product_repo_branches b
+		JOIN product_repos r ON r.id = b.repo_id WHERE `+where, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer brows.Close()
+	idx := map[int]int{}
+	for i, rp := range repos {
+		idx[rp.ID] = i
+	}
+	for brows.Next() {
+		var rid int
+		var name string
+		var def bool
+		if err := brows.Scan(&rid, &name, &def); err != nil {
+			return nil, err
+		}
+		if i, ok := idx[rid]; ok {
+			repos[i].Branches = append(repos[i].Branches, name)
+			if def {
+				repos[i].DefaultBranch = name
+			}
+		}
+	}
+	if err := brows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range repos {
+		repos[i].Branches = orderBranches(repos[i].Branches, repos[i].DefaultBranch)
+	}
+	return repos, nil
+}
+
+// loadProducts returns one product (id > 0) or all products (id == 0) with flag and repos.
+func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, error) {
+	query, args := `SELECT `+productCols+` FROM products ORDER BY name`, []any{}
+	if id > 0 {
+		query, args = `SELECT `+productCols+` FROM products WHERE id = ?`, []any{id}
+	}
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	products := []models.Product{}
+	for rows.Next() {
+		p, err := scanProduct(rows)
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		products = append(products, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(products) == 0 {
+		return products, nil
+	}
+	flags := map[int]bool{}
+	frows, err := q.QueryContext(ctx, `SELECT product_id, allow_non_automation_work FROM product_settings`)
+	if err != nil {
+		return nil, err
+	}
+	for frows.Next() {
+		var pid int
+		var on bool
+		if err := frows.Scan(&pid, &on); err != nil {
+			frows.Close()
+			return nil, err
+		}
+		flags[pid] = on
+	}
+	frows.Close()
+	where, rargs := `1=1`, []any{}
+	if id > 0 {
+		where, rargs = `r.product_id = ?`, []any{id}
+	}
+	repos, err := loadRepos(ctx, q, where, rargs...)
+	if err != nil {
+		return nil, err
+	}
+	byProduct := map[int][]models.ProductRepo{}
+	for _, rp := range repos {
+		byProduct[rp.ProductID] = append(byProduct[rp.ProductID], rp)
+	}
+	for i := range products {
+		products[i].AllowNonAutomationWork = flags[products[i].ID]
+		rs := byProduct[products[i].ID]
+		if rs == nil {
+			rs = []models.ProductRepo{}
+		}
+		sortRepos(rs)
+		products[i].Repos = rs
+	}
+	return products, nil
 }
 
 // productRole classifies the caller for product actions.
@@ -61,58 +249,51 @@ func productRole(req *http.Request) (canManage, canVerify bool) {
 	return false, false
 }
 
+// canToggleWork reports whether the caller may change allow_non_automation_work (Admin, DevOps).
+func canToggleWork(req *http.Request) bool {
+	u, ok := auth.GetUser(req.Context())
+	if !ok {
+		return false
+	}
+	return u.Role == "Admin" || u.Role == "DevOps"
+}
+
+// validateProduct normalises and validates the product-level fields (name, staging URL).
 func validateProduct(p *models.Product) string {
 	p.Name = strings.TrimSpace(p.Name)
-	p.RepoURL = strings.TrimSpace(p.RepoURL)
 	p.StagingURL = strings.TrimSpace(p.StagingURL)
-	p.RootDir = strings.Trim(strings.TrimSpace(p.RootDir), "/")
-	p.Branch = strings.TrimSpace(p.Branch)
 	if p.Name == "" || len(p.Name) > 100 {
 		return "name is required (max 100 characters)"
-	}
-	if err := repopool.ValidateRepoURL(p.RepoURL); err != nil {
-		return err.Error()
 	}
 	if u, err := url.Parse(p.StagingURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || len(p.StagingURL) > 500 {
 		return "staging_url must be an http(s) URL without credentials"
 	}
-	if err := repopool.ValidateRelDir(p.RootDir); err != nil {
-		return err.Error()
-	}
-	if p.Branch != "" {
-		if err := repopool.ValidateBranch(p.Branch); err != nil {
-			return err.Error()
-		}
-	}
 	return ""
 }
 
-// rootDirOverlap reports whether rel equals, contains or sits inside another product's root_dir
-// (nested checkouts would write into each other's working tree).
+// footprint is every path a repo claims inside the pool: its clone and its worktree area.
+func footprint(rootDir string) []string {
+	return []string{rootDir, rootDir + repopool.BranchesSuffix}
+}
+
+func pathsNested(a, b string) bool {
+	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
+}
+
+// rootDirOverlap reports whether rel's footprint (the clone and its ".branches" area) equals,
+// contains or sits inside the footprint of any other repo's root_dir (nested checkouts would
+// write into each other's working tree).
 func rootDirOverlap(rel string, others []string) bool {
 	for _, o := range others {
-		if rel == o || strings.HasPrefix(rel, o+"/") || strings.HasPrefix(o, rel+"/") {
-			return true
+		for _, a := range footprint(rel) {
+			for _, b := range footprint(o) {
+				if pathsNested(a, b) {
+					return true
+				}
+			}
 		}
 	}
 	return false
-}
-
-func (r *Router) otherRootDirs(ctx context.Context, exceptID int) ([]string, error) {
-	rows, err := r.db.Query(ctx, `SELECT root_dir FROM products WHERE id <> ?`, exceptID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var d string
-		if err := rows.Scan(&d); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, nil
 }
 
 // firstLine returns a short, single-line version of an operation error for API clients.
@@ -127,7 +308,119 @@ func firstLine(err error) string {
 	return m
 }
 
-// handleProducts serves /api/products and /api/products/{id}[/verify|clone|checkout].
+// apiError is an error with an HTTP status, returned from handlers and transactions.
+type apiError struct {
+	status int
+	msg    string
+}
+
+func (e *apiError) Error() string { return e.msg }
+
+func badRequest(msg string) *apiError { return &apiError{http.StatusBadRequest, msg} }
+func conflict(msg string) *apiError   { return &apiError{http.StatusConflict, msg} }
+func notFound(msg string) *apiError   { return &apiError{http.StatusNotFound, msg} }
+
+var (
+	errNoMain       = conflict("product has no main repo")
+	errProductGone  = notFound("product not found")
+	errRepoNotFound = notFound("repo not found")
+)
+
+// duplicateKeyMessages maps a violated unique key to its 409 message.
+var duplicateKeyMessages = map[string]string{
+	"uq_products_name":               "a product with this name already exists",
+	"uq_products_root_dir":           "this root_dir is used by another product",
+	"uq_product_repos_root_dir":      "root_dir is already used by another repo",
+	"uq_product_repos_name":          "a repo with this name already exists in the product",
+	"uq_product_repos_url":           "this repository is already listed for the product",
+	"uq_product_repos_main":          "the product already has a main repo",
+	"uq_product_repos_central":       "the product already has a central repo",
+	"uq_product_repo_branches":       "duplicate or colliding branch name",
+	"uq_product_repo_branch_slug":    "duplicate or colliding branch name",
+	"uq_product_repo_branch_default": "only one default branch is allowed",
+}
+
+// conflictMessage maps a MySQL duplicate-key error (1062) to its 409 message by key name.
+// Unknown keys and other errors report false.
+func conflictMessage(err error) (string, bool) {
+	var me *mysql.MySQLError
+	if !errors.As(err, &me) || me.Number != 1062 {
+		return "", false
+	}
+	i := strings.LastIndex(me.Message, "for key '")
+	if i < 0 {
+		return "", false
+	}
+	key := me.Message[i+len("for key '"):]
+	if j := strings.IndexByte(key, '\''); j >= 0 {
+		key = key[:j]
+	}
+	if j := strings.LastIndexByte(key, '.'); j >= 0 {
+		key = key[j+1:]
+	}
+	msg, ok := duplicateKeyMessages[key]
+	return msg, ok && msg != ""
+}
+
+// writeDBConflict answers a duplicate-key error with 409 and reports whether it did.
+func writeDBConflict(w http.ResponseWriter, err error) bool {
+	if msg, ok := conflictMessage(err); ok {
+		writeJSONError(w, http.StatusConflict, msg)
+		return true
+	}
+	return false
+}
+
+// poolError maps a repopool failure to an API error: busy 409, input 400, anything else 502.
+func poolError(err error) error {
+	var inErr *repopool.InputError
+	switch {
+	case errors.Is(err, repopool.ErrBusy):
+		return conflict(repopool.ErrBusy.Error())
+	case errors.As(err, &inErr):
+		return badRequest(inErr.Msg)
+	}
+	return &apiError{http.StatusBadGateway, firstLine(err)}
+}
+
+// writeOpError answers any handler error: apiError as is, duplicate keys 409, the rest 500 with
+// a generic text (the detail is logged, never sent).
+func writeOpError(w http.ResponseWriter, what string, err error) {
+	var ae *apiError
+	if errors.As(err, &ae) {
+		writeJSONError(w, ae.status, ae.msg)
+		return
+	}
+	if writeDBConflict(w, err) {
+		return
+	}
+	log.Printf("products %s: %v", what, err)
+	writeJSONError(w, http.StatusInternalServerError, "internal error")
+}
+
+// lockProduct is the first statement of every mutating transaction: it serialises all
+// mutations of one product (see PRODUCT_REPOS.md, Concurrency).
+func lockProduct(ctx context.Context, tx *sql.Tx, id int) error {
+	var x int
+	err := tx.QueryRowContext(ctx, `SELECT id FROM products WHERE id = ? FOR UPDATE`, id).Scan(&x)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errProductGone
+	}
+	return err
+}
+
+// productTx runs fn in a transaction that starts by locking the product row.
+func productTx(ctx context.Context, d *db.DB, id int, fn func(tx *sql.Tx) error) error {
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := lockProduct(ctx, tx, id); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
+// handleProducts serves /api/products, /api/products/{id}[/verify|clone|checkout] and
+// /api/products/{id}/repos[/{rid}[/branches|verify|clone|checkout]].
 func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 	d := r.getDB()
 	if d == nil {
@@ -141,58 +434,18 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 	if rest == "" {
 		switch req.Method {
 		case http.MethodGet:
-			rows, err := d.Query(req.Context(), `SELECT `+productCols+` FROM products ORDER BY name`)
+			list, err := loadProducts(req.Context(), d.SQL, 0)
 			if err != nil {
-				writeJSONError(w, http.StatusInternalServerError, err.Error())
+				writeOpError(w, "list", err)
 				return
 			}
-			defer rows.Close()
-			out := []models.Product{}
-			for rows.Next() {
-				p, err := scanProduct(rows)
-				if err != nil {
-					writeJSONError(w, http.StatusInternalServerError, err.Error())
-					return
-				}
-				out = append(out, p)
-			}
-			if err := rows.Err(); err != nil {
-				log.Printf("products list: %v", err)
-				writeJSONError(w, http.StatusInternalServerError, "could not list products")
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"products": out, "pool_enabled": r.repoPool != nil})
+			writeJSON(w, http.StatusOK, map[string]any{"products": list, "pool_enabled": r.repoPool != nil})
 		case http.MethodPost:
 			if !canManage {
 				writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
 				return
 			}
-			var p models.Product
-			if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&p); err != nil {
-				writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
-				return
-			}
-			if msg := validateProduct(&p); msg != "" {
-				writeJSONError(w, http.StatusBadRequest, msg)
-				return
-			}
-			others, err := r.otherRootDirs(req.Context(), 0)
-			if err != nil {
-				writeJSONError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			if rootDirOverlap(p.RootDir, others) {
-				writeJSONError(w, http.StatusConflict, "root_dir overlaps another product's root_dir")
-				return
-			}
-			res, err := d.Exec(req.Context(),
-				`INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES (?, ?, ?, ?, ?)`,
-				p.Name, p.RepoURL, p.StagingURL, p.RootDir, p.Branch)
-			if err != nil {
-				writeProductDBError(w, err)
-				return
-			}
-			r.respondProduct(w, req, int(res.LastInsertId()), http.StatusCreated)
+			r.createProduct(w, req, d)
 		default:
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
@@ -201,194 +454,249 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 
 	parts := strings.Split(rest, "/")
 	id, err := strconv.Atoi(parts[0])
-	if err != nil || id <= 0 || len(parts) > 2 {
+	if err != nil || id <= 0 || len(parts) > 5 {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
-	action := ""
-	if len(parts) == 2 {
-		action = parts[1]
-	}
 
 	switch {
-	case action == "" && req.Method == http.MethodGet:
-		r.respondProduct(w, req, id, http.StatusOK)
-
-	case action == "" && req.Method == http.MethodPut:
-		if !canManage {
-			writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
-			return
-		}
-		var p models.Product
-		if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&p); err != nil {
-			writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
-			return
-		}
-		if msg := validateProduct(&p); msg != "" {
-			writeJSONError(w, http.StatusBadRequest, msg)
-			return
-		}
-		old, ok := r.loadProduct(w, req, id)
-		if !ok {
-			return
-		}
-		others, err := r.otherRootDirs(req.Context(), id)
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if rootDirOverlap(p.RootDir, others) {
-			writeJSONError(w, http.StatusConflict, "root_dir overlaps another product's root_dir")
-			return
-		}
-		// Changing the repo, directory or URL invalidates the previous verification.
-		// Decided here (not in SQL): MySQL evaluates SET assignments left to right,
-		// so a comparison against the column would already see the new value.
-		_, err = d.Exec(req.Context(), `UPDATE products SET name=?, repo_url=?, staging_url=?, root_dir=?, branch=? WHERE id=?`,
-			p.Name, p.RepoURL, p.StagingURL, p.RootDir, p.Branch, id)
-		if err != nil {
-			writeProductDBError(w, err)
-			return
-		}
-		if productVerificationStale(old, p) {
-			if _, err := d.Exec(req.Context(), `UPDATE products SET playwright_accessible=0, last_verified_at=NULL, verify_report=NULL WHERE id=?`, id); err != nil {
-				writeJSONError(w, http.StatusInternalServerError, err.Error())
+	case len(parts) == 1:
+		switch req.Method {
+		case http.MethodGet:
+			r.respondProduct(w, req, id, http.StatusOK)
+		case http.MethodPut:
+			if !canManage {
+				writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
 				return
 			}
-		}
-		r.respondProduct(w, req, id, http.StatusOK)
-
-	case action == "" && req.Method == http.MethodDelete:
-		if !canManage {
-			writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
-			return
-		}
-		// Deletes the registry row only; the checkout stays on disk.
-		if _, err := d.Exec(req.Context(), `DELETE FROM products WHERE id=?`, id); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-
-	case action == "verify" && req.Method == http.MethodPost:
-		if !canVerify {
-			writeJSONError(w, http.StatusForbidden, "your role cannot verify products")
-			return
-		}
-		if r.repoPool == nil {
-			writeJSONError(w, http.StatusServiceUnavailable, "repo pool is not configured (REPO_POOL_DIR)")
-			return
-		}
-		p, ok := r.loadProduct(w, req, id)
-		if !ok {
-			return
-		}
-		if err := r.verifyAndStore(req.Context(), p); err != nil {
-			if errors.Is(err, repopool.ErrBusy) {
-				writeJSONError(w, http.StatusConflict, repopool.ErrBusy.Error())
+			r.updateProduct(w, req, d, id)
+		case http.MethodDelete:
+			if !canManage {
+				writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
 				return
 			}
-			log.Printf("products verify %q: %v", p.Name, err)
-			writeJSONError(w, http.StatusInternalServerError, "verify failed")
-			return
-		}
-		r.respondProduct(w, req, id, http.StatusOK)
-
-	case (action == "clone" || action == "checkout") && req.Method == http.MethodPost:
-		if !canManage {
-			writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
-			return
-		}
-		if r.repoPool == nil {
-			writeJSONError(w, http.StatusServiceUnavailable, "repo pool is not configured (REPO_POOL_DIR)")
-			return
-		}
-		p, ok := r.loadProduct(w, req, id)
-		if !ok {
-			return
-		}
-		// A client disconnect must not kill gh/git mid-operation (it would leave a partial
-		// checkout), so the operation runs on a context that ignores request cancellation.
-		opCtx := context.WithoutCancel(req.Context())
-		var opErr error
-		if action == "clone" {
-			opErr = r.repoPool.Clone(opCtx, p.RepoURL, p.RootDir)
-			if opErr == nil && p.Branch != "" {
-				if _, berr := r.repoPool.Checkout(opCtx, p.RootDir, p.Branch); berr != nil {
-					// The clone itself succeeded: say so and point at Switch branch.
-					log.Printf("products clone %q: branch step failed: %v", p.Name, berr)
-					opErr = &repopool.InputError{Msg: "cloned, but switching to branch " + p.Branch + " failed; use Switch branch"}
-				}
-			}
-		} else {
-			var body struct {
-				Branch string `json:"branch"`
-			}
-			_ = json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<12)).Decode(&body)
-			branch := strings.TrimSpace(body.Branch)
-			if branch == "" {
-				branch = p.Branch
-			}
-			if branch == "" {
-				writeJSONError(w, http.StatusBadRequest, "branch is required")
+			// Deletes the registry rows only (repos, branches and settings cascade); checkouts stay on disk.
+			if _, err := d.Exec(req.Context(), `DELETE FROM products WHERE id=?`, id); err != nil {
+				writeOpError(w, "delete", err)
 				return
 			}
-			if _, opErr = r.repoPool.Checkout(opCtx, p.RootDir, branch); opErr == nil {
-				_, opErr = d.Exec(req.Context(), `UPDATE products SET branch=? WHERE id=?`, branch, id)
-			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
-		if opErr != nil {
-			var inErr *repopool.InputError
-			status := http.StatusBadGateway
-			switch {
-			case errors.Is(opErr, repopool.ErrBusy):
-				status = http.StatusConflict
-			case errors.As(opErr, &inErr):
-				status = http.StatusBadRequest
-			}
-			log.Printf("products %s %q failed: %v", action, p.Name, opErr)
-			writeJSONError(w, status, firstLine(opErr))
+
+	case len(parts) == 2 && (parts[1] == "verify" || parts[1] == "clone" || parts[1] == "checkout"):
+		if req.Method != http.MethodPost {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		// Refresh the verification after a successful operation (best effort).
-		if p2, err := r.fetchProduct(opCtx, id); err == nil {
-			_ = r.verifyAndStore(opCtx, p2)
-		}
-		r.respondProduct(w, req, id, http.StatusOK)
+		r.legacyRepoAction(w, req, d, id, parts[1], canManage, canVerify)
+
+	case parts[1] == "repos":
+		r.handleProductRepos(w, req, d, id, parts[2:], canManage, canVerify)
 
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
 	}
 }
 
-// productVerificationStale reports whether an edit changes anything verification depends on.
-func productVerificationStale(old, next models.Product) bool {
-	return old.RepoURL != next.RepoURL || old.StagingURL != next.StagingURL || old.RootDir != next.RootDir
+type productCreateBody struct {
+	Name       string      `json:"name"`
+	StagingURL string      `json:"staging_url"`
+	Repos      *[]repoBody `json:"repos"`
+	// Legacy flat form: creates one main repo named "main".
+	RepoURL string `json:"repo_url"`
+	RootDir string `json:"root_dir"`
+	Branch  string `json:"branch"`
 }
 
-func writeProductDBError(w http.ResponseWriter, err error) {
-	if strings.Contains(err.Error(), "Duplicate entry") {
-		writeJSONError(w, http.StatusConflict, "a product with this name or root_dir already exists")
+func (r *Router) createProduct(w http.ResponseWriter, req *http.Request, d *db.DB) {
+	var body productCreateBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	writeJSONError(w, http.StatusInternalServerError, err.Error())
+	p := models.Product{Name: body.Name, StagingURL: body.StagingURL}
+	if msg := validateProduct(&p); msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
+		return
+	}
+	legacy := body.RepoURL != "" || body.RootDir != "" || body.Branch != ""
+	var repos []repoBody
+	switch {
+	case body.Repos != nil && legacy:
+		writeJSONError(w, http.StatusBadRequest, "send either repos or the flat repo_url/root_dir/branch fields, not both")
+		return
+	case body.Repos != nil:
+		repos = *body.Repos
+	default:
+		in := repoBody{Name: "main", RepoURL: body.RepoURL, RootDir: body.RootDir, IsMain: true}
+		if strings.TrimSpace(body.Branch) != "" {
+			in.Branches = []string{body.Branch}
+			in.DefaultBranch = body.Branch
+		}
+		repos = []repoBody{in}
+	}
+	if msg := validateRepoSet(repos); msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
+		return
+	}
+	// Advisory overlap check against every other repo (the unique keys are the authority).
+	others, err := otherRootDirs(req.Context(), d.SQL, 0)
+	if err != nil {
+		writeOpError(w, "create", err)
+		return
+	}
+	for _, in := range repos {
+		if rootDirOverlap(in.RootDir, others) {
+			writeJSONError(w, http.StatusConflict, "root_dir overlaps another repo's root_dir")
+			return
+		}
+	}
+
+	var newID int
+	err = d.WithTx(req.Context(), func(tx *sql.Tx) error {
+		var main repoBody
+		for _, in := range repos {
+			if in.IsMain {
+				main = in
+			}
+		}
+		res, err := tx.ExecContext(req.Context(),
+			`INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES (?, ?, ?, ?, '')`,
+			p.Name, main.RepoURL, p.StagingURL, main.RootDir)
+		if err != nil {
+			return err
+		}
+		pid, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		for _, in := range repos {
+			if _, err := insertRepo(req.Context(), tx, int(pid), in); err != nil {
+				return err
+			}
+		}
+		newID = int(pid)
+		return mirrorMainToLegacy(tx, newID)
+	})
+	if err != nil {
+		writeOpError(w, "create", err)
+		return
+	}
+	r.respondProduct(w, req, newID, http.StatusCreated)
 }
 
-func (r *Router) fetchProduct(ctx context.Context, id int) (models.Product, error) {
-	return scanProduct(r.db.QueryRow(ctx, `SELECT `+productCols+` FROM products WHERE id=?`, id))
+type productUpdateBody struct {
+	Name       *string `json:"name"`
+	StagingURL *string `json:"staging_url"`
+	Allow      *bool   `json:"allow_non_automation_work"`
+}
+
+// updateProduct applies name, staging_url and the flag. Legacy repo fields in the body are ignored.
+func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.DB, id int) {
+	var body productUpdateBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	toggle := canToggleWork(req)
+	ctx := req.Context()
+	var flagChanged bool
+	var newFlag bool
+	err := productTx(ctx, d, id, func(tx *sql.Tx) error {
+		flagChanged = false
+		var cur models.Product
+		if err := tx.QueryRowContext(ctx, `SELECT name, staging_url FROM products WHERE id = ?`, id).Scan(&cur.Name, &cur.StagingURL); err != nil {
+			return err
+		}
+		oldStaging := cur.StagingURL
+		if body.Name != nil {
+			cur.Name = *body.Name
+		}
+		if body.StagingURL != nil {
+			cur.StagingURL = *body.StagingURL
+		}
+		if msg := validateProduct(&cur); msg != "" {
+			return badRequest(msg)
+		}
+		curFlag := false
+		err := tx.QueryRowContext(ctx, `SELECT allow_non_automation_work FROM product_settings WHERE product_id = ?`, id).Scan(&curFlag)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if body.Allow != nil && *body.Allow != curFlag {
+			if !toggle {
+				return &apiError{http.StatusForbidden, "only Admin and DevOps can change allow_non_automation_work"}
+			}
+			flagChanged, newFlag = true, *body.Allow
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE products SET name=?, staging_url=? WHERE id=?`, cur.Name, cur.StagingURL, id); err != nil {
+			return err
+		}
+		if flagChanged {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO product_settings (product_id, allow_non_automation_work) VALUES (?, ?)
+				ON DUPLICATE KEY UPDATE allow_non_automation_work = VALUES(allow_non_automation_work)`, id, newFlag); err != nil {
+				return err
+			}
+		}
+		if cur.StagingURL != oldStaging {
+			// The main repo's report includes the staging probe: it is stale now. Siblings are unaffected.
+			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET playwright_accessible=0, last_verified_at=NULL, verify_report=NULL
+				WHERE product_id=? AND is_main=1`, id); err != nil {
+				return err
+			}
+			return mirrorMainToLegacy(tx, id)
+		}
+		return nil
+	})
+	if err != nil {
+		writeOpError(w, "update", err)
+		return
+	}
+	if flagChanged {
+		r.applyPushPolicies(ctx, d, id)
+	}
+	r.respondProduct(w, req, id, http.StatusOK)
+}
+
+// applyPushPolicies re-applies the origin push policy of every repo of a product after the DB
+// commit (best effort: busy or missing checkouts are logged and fixed by the next sync).
+func (r *Router) applyPushPolicies(ctx context.Context, d *db.DB, productID int) {
+	if r.repoPool == nil {
+		return
+	}
+	list, err := loadProducts(context.WithoutCancel(ctx), d.SQL, productID)
+	if err != nil || len(list) == 0 {
+		return
+	}
+	p := list[0]
+	for _, rp := range p.Repos {
+		allow := rp.IsMain || p.AllowNonAutomationWork
+		if err := r.repoPool.SetPushPolicy(context.WithoutCancel(ctx), rp.RootDir, allow); err != nil {
+			log.Printf("products %q: push policy for repo %q: %v", p.Name, rp.Name, err)
+		}
+	}
 }
 
 func (r *Router) loadProduct(w http.ResponseWriter, req *http.Request, id int) (models.Product, bool) {
-	p, err := r.fetchProduct(req.Context(), id)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "product not found")
-		return p, false
-	}
+	p, err := fetchProduct(req.Context(), r.db, id)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		writeOpError(w, "load", err)
 		return p, false
 	}
 	return p, true
+}
+
+func fetchProduct(ctx context.Context, d *db.DB, id int) (models.Product, error) {
+	list, err := loadProducts(ctx, d.SQL, id)
+	if err != nil {
+		return models.Product{}, err
+	}
+	if len(list) == 0 {
+		return models.Product{}, errProductGone
+	}
+	return list[0], nil
 }
 
 func (r *Router) respondProduct(w http.ResponseWriter, req *http.Request, id, status int) {
@@ -399,25 +707,55 @@ func (r *Router) respondProduct(w http.ResponseWriter, req *http.Request, id, st
 	writeJSON(w, status, p)
 }
 
-// verifyAndStore runs the pool checks for p and persists the report.
-func (r *Router) verifyAndStore(ctx context.Context, p models.Product) error {
-	rep := r.repoPool.Verify(ctx, p.RepoURL, p.RootDir, p.StagingURL)
+// verifyAndStore verifies one repo of p and persists its report (and, for the main repo, the legacy mirror).
+func (r *Router) verifyAndStore(ctx context.Context, p models.Product, repo models.ProductRepo) error {
+	var rep repopool.Report
+	if repo.IsMain {
+		rep = r.repoPool.Verify(ctx, repo.RepoURL, repo.RootDir, p.StagingURL)
+	} else {
+		rep = r.repoPool.VerifyRepo(ctx, repo.RepoURL, repo.RootDir, false)
+	}
 	if rep.Busy {
 		return repopool.ErrBusy
 	}
+	return r.storeVerify(ctx, p.ID, repo, p.StagingURL, rep)
+}
+
+// storeVerify persists a report conditionally, in one transaction that starts by locking the
+// product row: a result is dropped when the inputs it was computed from changed meanwhile
+// (repo_url, root_dir; for the main repo also staging_url and its main role).
+func (r *Router) storeVerify(ctx context.Context, productID int, repo models.ProductRepo, probedStaging string, rep repopool.Report) error {
 	b, err := json.Marshal(rep)
 	if err != nil {
 		return err
 	}
-	// Conditional on the inputs we verified: a PUT that changed repo/URL/dir meanwhile
-	// must not be overwritten by a stale result.
-	_, err = r.db.Exec(ctx, `UPDATE products SET playwright_accessible=?, last_verified_at=UTC_TIMESTAMP(), verify_report=?
-		WHERE id=? AND repo_url=? AND staging_url=? AND root_dir=?`,
-		rep.OK, string(b), p.ID, p.RepoURL, p.StagingURL, p.RootDir)
-	return err
+	return productTx(ctx, r.db, productID, func(tx *sql.Tx) error {
+		var staging string
+		if err := tx.QueryRowContext(ctx, `SELECT staging_url FROM products WHERE id = ?`, productID).Scan(&staging); err != nil {
+			return err
+		}
+		var isMain bool
+		if err := tx.QueryRowContext(ctx, `SELECT is_main FROM product_repos WHERE id = ? AND product_id = ?`, repo.ID, productID).Scan(&isMain); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil // repo deleted meanwhile
+			}
+			return err
+		}
+		if isMain != repo.IsMain || (isMain && staging != probedStaging) {
+			return nil // stale: role or staging URL changed since the check ran
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET playwright_accessible=?, last_verified_at=UTC_TIMESTAMP(), verify_report=?
+			WHERE id=? AND repo_url=? AND root_dir=?`, rep.OK, string(b), repo.ID, repo.RepoURL, repo.RootDir); err != nil {
+			return err
+		}
+		if isMain {
+			return mirrorMainToLegacy(tx, productID)
+		}
+		return nil
+	})
 }
 
-// StartProductVerifier re-verifies every product on an interval until ctx ends.
+// StartProductVerifier re-verifies every repo of every product on an interval until ctx ends.
 // interval <= 0 or a missing pool/DB disables it.
 func (r *Router) StartProductVerifier(ctx context.Context, interval time.Duration) {
 	if interval <= 0 || r.repoPool == nil || r.getDB() == nil {
@@ -438,25 +776,40 @@ func (r *Router) StartProductVerifier(ctx context.Context, interval time.Duratio
 	log.Printf("   Products: scheduled verify every %s", interval)
 }
 
+// verifyAllProducts probes each product's staging URL once, then verifies every repo
+// (the main repo with the Playwright check and the probe result merged in). Products without
+// a main repo are skipped; busy repos are skipped silently.
 func (r *Router) verifyAllProducts(ctx context.Context) {
-	rows, err := r.db.Query(ctx, `SELECT `+productCols+` FROM products`)
+	list, err := loadProducts(ctx, r.db.SQL, 0)
 	if err != nil {
 		log.Printf("products verify: %v", err)
 		return
 	}
-	var list []models.Product
-	for rows.Next() {
-		p, err := scanProduct(rows)
-		if err != nil {
-			log.Printf("products verify: scan: %v", err)
+	for _, p := range list {
+		hasMain := false
+		for _, rp := range p.Repos {
+			hasMain = hasMain || rp.IsMain
+		}
+		if !hasMain {
 			continue
 		}
-		list = append(list, p)
-	}
-	rows.Close()
-	for _, p := range list {
-		if err := r.verifyAndStore(ctx, p); err != nil && !errors.Is(err, repopool.ErrBusy) {
-			log.Printf("products verify %q: %v", p.Name, err)
+		probe := r.repoPool.ProbeStaging(ctx, p.StagingURL)
+		for _, rp := range p.Repos {
+			var rep repopool.Report
+			if rp.IsMain {
+				rep = r.repoPool.VerifyRepo(ctx, rp.RepoURL, rp.RootDir, true)
+				if !rep.Busy {
+					rep.Append(probe)
+				}
+			} else {
+				rep = r.repoPool.VerifyRepo(ctx, rp.RepoURL, rp.RootDir, false)
+			}
+			if rep.Busy {
+				continue
+			}
+			if err := r.storeVerify(ctx, p.ID, rp, p.StagingURL, rep); err != nil {
+				log.Printf("products verify %q repo %q: %v", p.Name, rp.Name, err)
+			}
 		}
 	}
 }

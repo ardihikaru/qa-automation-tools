@@ -202,6 +202,148 @@ func TestChildEnvHasNoSecretsAndScopesSafeDirectory(t *testing.T) {
 	if !strings.Contains(env, "GH_TOKEN=tok") || !strings.Contains(env, "safe.directory") || strings.Contains(env, "GIT_CONFIG_VALUE_1=*") {
 		t.Fatalf("env wrong: %s", env)
 	}
+	two := strings.Join(childEnv("/data/repos/a", "/data/repos/a.branches/dev", ""), "\n")
+	if !strings.Contains(two, "GIT_CONFIG_COUNT=3") ||
+		!strings.Contains(two, "GIT_CONFIG_VALUE_1=/data/repos/a\n") && !strings.Contains(two, "GIT_CONFIG_VALUE_1=/data/repos/a") ||
+		!strings.Contains(two, "GIT_CONFIG_VALUE_2=/data/repos/a.branches/dev") {
+		t.Fatalf("two safe dirs must yield two keys (empty skipped): %s", two)
+	}
+	if none := strings.Join(childEnv(), "\n"); !strings.Contains(none, "GIT_CONFIG_COUNT=1") {
+		t.Fatalf("no safe dir: %s", none)
+	}
+}
+
+func TestValidateRelDir_BansBranchesSuffix(t *testing.T) {
+	for _, s := range []string{"a.branches", "a.BRANCHES/x", "x/y.Branches", "x/y.branches/z"} {
+		if err := ValidateRelDir(s); err == nil {
+			t.Errorf("%q must be rejected", s)
+		}
+	}
+	for _, s := range []string{"a.branchesx", "branches", "a/branches"} {
+		if err := ValidateRelDir(s); err != nil {
+			t.Errorf("%q should be valid: %v", s, err)
+		}
+	}
+}
+
+func TestSlugAndValidateSlug(t *testing.T) {
+	if Slug("release/1.0") != "release--1.0" || Slug("main") != "main" {
+		t.Fatal("slug mapping wrong")
+	}
+	for _, s := range []string{"main", "a--b", "x.y_z"} {
+		if err := ValidateSlug(s); err != nil {
+			t.Errorf("%q should be valid: %v", s, err)
+		}
+	}
+	for _, s := range []string{"", ".", "..", "-x", "a/b", strings.Repeat("a", 101)} {
+		if err := ValidateSlug(s); err == nil {
+			t.Errorf("%q should be rejected", s)
+		}
+	}
+}
+
+func TestResolveWorktreeDir(t *testing.T) {
+	root := t.TempDir()
+	p := New(root)
+	got, err := p.ResolveWorktreeDir("o/r", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(got, "/o/r.branches/dev") {
+		t.Fatalf("path: %s", got)
+	}
+	for _, c := range [][2]string{{"o/r", ".."}, {"o/r", "a/b"}, {"../x", "dev"}, {"o/r.lock", "dev"}, {"o/r", strings.Repeat("a", 101)}, {"o/r", ""}} {
+		if _, err := p.ResolveWorktreeDir(c[0], c[1]); err == nil {
+			t.Errorf("%v must be rejected", c)
+		}
+	}
+	// The stored root_dir is not re-banned for ".branches" (it was vetted at write time).
+	if _, err := p.ResolveWorktreeDir("a.branches", "dev"); err != nil {
+		t.Errorf("stored root_dir is not re-validated against the ban: %v", err)
+	}
+	// Longest legal pair: 200 + len(".branches/") + 100 = 310, exactly the cap.
+	if _, err := p.ResolveWorktreeDir(strings.Repeat("a", 200), strings.Repeat("s", 100)); err != nil {
+		t.Errorf("maximum legal worktree path must resolve: %v", err)
+	}
+}
+
+func TestResolveWorktreeDir_Symlinks(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "o"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "o", "r.branches")); err != nil {
+		t.Skip("symlink unsupported")
+	}
+	p := New(root)
+	if _, err := p.ResolveWorktreeDir("o/r", "dev"); err == nil {
+		t.Fatal(".branches symlinked outside the pool must be rejected")
+	}
+	// A symlink at the slug directory that points at another in-pool checkout.
+	root2 := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root2, "o", "r.branches"), 0o755)
+	_ = os.MkdirAll(filepath.Join(root2, "other"), 0o755)
+	if err := os.Symlink(filepath.Join(root2, "other"), filepath.Join(root2, "o", "r.branches", "dev")); err != nil {
+		t.Skip("symlink unsupported")
+	}
+	if _, err := New(root2).ResolveWorktreeDir("o/r", "dev"); err == nil {
+		t.Fatal("symlink at the slug directory must be rejected")
+	}
+}
+
+func TestValidateBranchSpecs(t *testing.T) {
+	ok := []BranchSpec{{"main", true}, {"release/1.0", false}}
+	if def, err := validateBranchSpecs(ok); err != nil || def != "main" {
+		t.Fatalf("valid specs: %q %v", def, err)
+	}
+	if def, err := validateBranchSpecs(nil); err != nil || def != "" {
+		t.Fatalf("empty (legacy) list is valid: %q %v", def, err)
+	}
+	bad := [][]BranchSpec{
+		{{"-x", true}}, {{"a/../b", true}}, {{"a/b", true}, {"a--b", false}}, {{"main", false}},
+		{{"main", true}, {"dev", true}}, {{"main", true}, {"main", false}},
+		{{strings.Repeat("a", 101), true}},
+	}
+	for i, b := range bad {
+		if _, err := validateBranchSpecs(b); err == nil {
+			t.Errorf("case %d must be rejected: %v", i, b)
+		}
+	}
+}
+
+func TestPorcelainWorktrees(t *testing.T) {
+	out := "worktree /p/r\nHEAD abc\nbranch refs/heads/main\n\nworktree /p/r.branches/dev\nHEAD def\nbranch refs/heads/dev\n\nworktree /p/r.branches/det\nHEAD 123\ndetached\n"
+	m := porcelainWorktrees(out)
+	if m["/p/r"] != "main" || m["/p/r.branches/dev"] != "dev" || m["/p/r.branches/det"] != "" || len(m) != 3 {
+		t.Fatalf("parsed: %v", m)
+	}
+}
+
+func TestVerifyRepoSiblingSkipsPlaywright(t *testing.T) {
+	root := t.TempDir()
+	p := New(root)
+	_ = os.MkdirAll(filepath.Join(root, "o", "r"), 0o755)
+	sib := p.VerifyRepo(context.Background(), "https://github.com/o/r", "o/r", false)
+	for _, c := range sib.Checks {
+		if c.Name == "playwright" || c.Name == "staging_url" {
+			t.Fatalf("sibling report must not include %s", c.Name)
+		}
+	}
+	main := p.VerifyRepo(context.Background(), "https://github.com/o/r", "o/r", true)
+	found := false
+	for _, c := range main.Checks {
+		found = found || c.Name == "playwright"
+	}
+	if !found || main.OK {
+		t.Fatalf("main report needs a (failing) playwright check: %+v", main)
+	}
+}
+
+func TestErrBusyMessage(t *testing.T) {
+	if ErrBusy.Error() != "another operation is already running for this repo" {
+		t.Fatal(ErrBusy.Error())
+	}
 }
 
 func TestValidateRepoURL_DotSegments(t *testing.T) {
@@ -245,7 +387,7 @@ func TestHasPlaywright_IgnoresLooseMatchesAndSymlinks(t *testing.T) {
 func TestRunKillsProcessGroupOnTimeout(t *testing.T) {
 	start := time.Now()
 	// sh spawns a child that would outlive a plain kill and hold the pipe open.
-	_, err := run(context.Background(), t.TempDir(), "", 300*time.Millisecond, "sh", "-c", "sleep 30 & sleep 30")
+	_, err := run(context.Background(), t.TempDir(), nil, 300*time.Millisecond, "sh", "-c", "sleep 30 & sleep 30")
 	if err == nil || time.Since(start) > 6*time.Second {
 		t.Fatalf("timeout must return promptly with an error (err=%v, took %s)", err, time.Since(start))
 	}
