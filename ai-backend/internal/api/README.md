@@ -33,10 +33,14 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/auth/impersonate/stop` | POST | `AuthHandlers.StopImpersonation` (auth wired only) |
 | `/api/users` | GET | `AuthHandlers.ListUsers` (auth wired only; real role Admin/Service) |
 | `/api/flows` | GET, POST | `handleFlows` |
-| `/api/products` | GET, POST | `handleProducts` (`products.go`): master list of products (repo link, staging URL, `root_dir` inside the repo pool, branch, `playwright_accessible`, last verify report). Writes: Admin/DevOps/Developer |
-| `/api/products/{id}` | GET, PUT, DELETE | same; DELETE removes the registry row only, never the checkout |
-| `/api/products/{id}/verify` | POST | Runs `repopool.Verify` (root dir, git repo, origin matches, Playwright present, staging reachable) and stores the report. Also run by `StartProductVerifier` on `PRODUCTS_VERIFY_INTERVAL_MINUTES`. Admin/DevOps/Developer/QA/QC |
-| `/api/products/{id}/clone`, `/checkout` | POST | `gh repo clone` into the pool / `git fetch` + checkout + ff-only merge of `{branch}`. 409 when another operation runs on the same dir. Operations run on a context detached from the request (a client disconnect or a proxy 504 does not kill them); a failed clone removes its partial directory. `/verify` also returns 409 while a clone/checkout holds the dir |
+| `/api/products` | GET, POST | `handleProducts` (`products.go`): list products with their `repos` (main first, then central, then by name), `allow_non_automation_work`, and the legacy fields mirrored from the main repo. POST takes `{name, staging_url, repos:[...]}` (exactly one `is_main`) or the legacy flat `{repo_url, root_dir, branch}` (one repo named `main`; both forms is 400). Writes: Admin/DevOps/Developer |
+| `/api/products/{id}` | GET, PUT, DELETE | PUT applies `name`, `staging_url` and `allow_non_automation_work` (Admin/DevOps only; another role changing it gets 403 and nothing is saved); legacy `repo_url`/`root_dir`/`branch` in the body are ignored with 200. DELETE removes registry rows (repos, branches, settings cascade), never checkouts |
+| `/api/products/{id}/repos` | POST | Add a repo (`product_repos.go`); `is_main:true` promotes atomically (old main becomes a sibling), `is_central:true` moves the central flag. 201 Product |
+| `/api/products/{id}/repos/{rid}` | PUT, DELETE | PUT is partial (`name`, `repo_url`, `root_dir`, `is_main`, `is_central`); `is_main:false` on the main and DELETE of the main are 409. DELETE of the central repo is allowed. 200 Product |
+| `/api/products/{id}/repos/{rid}/branches` | PUT | Replaces the branch list and the single default in one tx (1 to 10 branches; legacy empty list may stay empty). Does not touch disk |
+| `/api/products/{id}/repos/{rid}/verify` | POST | `repopool.VerifyRepo` (main repo: with Playwright check and staging probe) and stores that repo's report. Also run per repo by `StartProductVerifier` (staging probed once per product). Admin/DevOps/Developer/QA/QC |
+| `/api/products/{id}/repos/{rid}/clone`, `/checkout` | POST | Clone (clone only) then `SyncBranches` / `SyncBranches` for every listed branch; 200 `{product, results:[BranchResult]}`; the report is stored in `sync_report`. Detached 10 min context. 409 when the repo is busy |
+| `/api/products/{id}/verify`, `/clone`, `/checkout` | POST | Legacy routes, all on the main repo; `checkout` takes optional `{branch}` (made the main repo's default, added to the list if absent). 409 `product has no main repo` for a repo-less product |
 | `/api/settings` | GET | `handleSettings` (`settings.go`): non-secret config snapshot injected by `SetSettings`; returns gateway host only (no URL path, userinfo or keys) and `pinned_to_claude_v3` |
 | `/api/roles` | GET, POST, DELETE (`?id=`) | `handleRoles` |
 | `/api/docs` | GET | `handleDocs` |
@@ -96,17 +100,21 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 ## Product repo pool invariants
 
 - `services/repopool` is the only code that runs `gh`/`git`. Inputs are validated (`repo_url` must be `https://github.com/<owner>/<repo>`; `root_dir` relative with no `..`; branch conservative) and commands use argument slices, never a shell.
-- Every path is resolved inside `REPO_POOL_DIR` (symlink escapes rejected). Clone and checkout take a per-directory lock.
+- Every path is resolved inside `REPO_POOL_DIR` (symlink escapes rejected). Every pool operation takes a per-repo-directory lock.
 - `staging_url` is fetched by the backend during verify (GET, 10 s, no redirects). Only http(s) without credentials is accepted; the dialer refuses loopback, link-local (cloud metadata), unspecified and multicast addresses on the resolved IP. Failure detail is coarse (`unreachable`, `timeout`, `address not allowed`, `HTTP nnn`).
-- Product access **fails closed**: no authenticated user means no access (`productRole`). `root_dir` values may not overlap (equal, parent or child). Verification results are written only if repo/URL/dir are unchanged since the check started.
+- Product access **fails closed**: no authenticated user means no access (`productRole`). Repo `root_dir` footprints (`root_dir` and `root_dir.branches`) may not overlap across all repos of all products. Verification results are written only if repo URL/dir (and, for the main repo, staging URL and main role) are unchanged since the check started.
 - `playwright_accessible` means: all checks passed, including staging reachable **from the backend container** and a heuristic Playwright dependency/config in the checkout. It does not prove Playwright runs on the host.
 - `GH_TOKEN` is read from the process env by `gh`/`git`, never logged or returned.
+- **Multi-repo invariants (PRODUCT_REPOS.md).** One main repo (DB-enforced at most one; handlers never delete or unset it) and at most one central repo per product; at most one default branch per repo; names unique per product; `repo_url` compared with `repopool.NormalizeRepo` in handlers (the DB index is exact-string). Every mutating handler runs in `db.WithTx` whose first statement is `SELECT ... FROM products WHERE id=? FOR UPDATE`; git work happens outside any transaction. A 1062 is mapped to 409 by key name (`writeDBConflict`); other DB errors are 500 with a generic text.
+- `mirrorMainToLegacy` is the only writer of the legacy `products.repo_url/root_dir/branch/playwright_accessible/last_verified_at/verify_report` columns (kept for rollback); it runs in the same tx as every change to the main repo.
+- **Write guard.** Any endpoint that creates a remote branch, pushes or opens a PR MUST call `repoWriteAllowed(ctx, db, repoID, op)` first (main repo or `allow_non_automation_work`). No route does yet; clone, sync and verify are read-class. `SyncBranches` also disables the origin push URL for non-main repos while the flag is off.
+- Repo-less products (backfill conflict or rollback window) list with `repos: []`; repo routes return 409 `product has no main repo` except `POST /repos` with `is_main:true`; the scheduled verifier skips them.
 
 ## Side Effects
 
 - MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `flows`, `roles`, `raw_issues`, `issue_suggestions`, `skills`, `skill_logs`, `learning_cache`, `request_logs` (cost endpoints), `ai_cache`, `embedding_cache`, `goal_events`, `navigation_edges`, `action_sequences`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
 - `auth_handlers.go`: `Login` inserts into `sessions` (via `auth.CreateSession`) and sets the HttpOnly, SameSite=Lax cookie (`auth_helpers.go:setSessionCookie`). `Logout` deletes the session row and expires the cookie. `ChangePassword` runs `UPDATE users SET password_hash = ?, must_change_pw = 0`.
-- Products: clone/checkout write under `REPO_POOL_DIR`; verify makes one outbound GET to `staging_url`.
+- Products: clone/sync write under `REPO_POOL_DIR` (worktrees in `<root_dir>.branches/<slug>`); tables `products`, `product_settings`, `product_repos`, `product_repo_branches`; verify makes one outbound GET to `staging_url`.
 - LLM call: `POST /api/issues` calls `aiService.ClassifyIssue` when the category is empty and the service is non-nil, then updates `raw_issues.category`. `/health` calls `aiService.Health`. Both go through the `services/ai` ChatProvider.
 - Learning endpoints delegate to `learningService` (`AddNavigationEdge`, `GetNavigationEdges`, `AddActionSequence`, `GetActionSequences`, `AddContextRecord`, `GetContextRecord`, `GetLearningStats`).
 - Filesystem reads relative to the process CWD: `handleDocs` reads `../product-documentations`, and `handleVideos` reads `../playwright-docs/output/videos` (`os.ReadDir`).
