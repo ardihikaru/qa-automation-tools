@@ -25,7 +25,8 @@ import {
 } from '../api';
 import { ErrorNote, Loading } from '../ui';
 import { Crumbs } from './kit';
-import { PageCtx, baseCrumbs, useTreeIndex } from './data';
+import { PageCtx, baseCrumbs, topBarCrumbs, useTreeIndex } from './data';
+import { usePageHeader } from '../../../components/pageHeader';
 import PartPage from './PartPage';
 import ModulePage from './ModulePage';
 import SubmodulePage from './SubmodulePage';
@@ -89,11 +90,20 @@ export default function KnowledgeEntityPage() {
   );
 
   const label = type ? TYPE_LABEL[type] : 'Entry';
+  const loaded = valid && !error && !!entity && entity.type === type && entity.code === code;
+  // Until the page renders, this shell owns the top bar; then EntityShell takes over.
+  usePageHeader(loaded ? null : { title: code || label, crumbs: topBarCrumbs(baseCrumbs(ctx)) });
+  const crumbsRow = (
+    <div className="lg:hidden">
+      <Crumbs items={[...baseCrumbs(ctx), { label: code || label }]} />
+    </div>
+  );
+
   if (!valid || error) {
     const notFound = !valid || error?.status === 404;
     return (
       <div className="space-y-4">
-        <Crumbs items={[...baseCrumbs(ctx), { label: code || label }]} />
+        {crumbsRow}
         <ErrorNote onRetry={notFound ? undefined : () => setRetry((n) => n + 1)}>
           {notFound ? `${label} ${code} was not found in this knowledge base.` : error?.msg}
         </ErrorNote>
@@ -108,7 +118,7 @@ export default function KnowledgeEntityPage() {
   if (!entity || entity.type !== type || entity.code !== code) {
     return (
       <div className="space-y-4">
-        <Crumbs items={[...baseCrumbs(ctx), { label: code }]} />
+        {crumbsRow}
         <Loading />
       </div>
     );

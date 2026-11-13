@@ -60,7 +60,6 @@ export default function SettingsView() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Configuration</h2>
           <p className="text-sm text-gray-500">Read-only. Secrets are never shown.</p>
         </div>
         <SubmitButton

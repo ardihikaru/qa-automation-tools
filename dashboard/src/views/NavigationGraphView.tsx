@@ -158,7 +158,6 @@ export default function NavigationGraphView() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Navigation Graph</h2>
         <p className="text-gray-600">Visualize page navigation paths and connections</p>
       </div>
 

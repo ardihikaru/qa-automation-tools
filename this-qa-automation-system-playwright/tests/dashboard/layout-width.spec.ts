@@ -25,7 +25,7 @@ test.describe('Layout width (all pages fill the content area)', () => {
   for (const route of ROUTES) {
     test(`/${route} root is as wide as the content area`, async ({ page }) => {
       await page.goto(`${config.dashboardUrl}/${route}`);
-      await page.waitForSelector('main h1, main h2', { timeout: 10000 });
+      await page.waitForSelector('header h1', { timeout: 10000 });
       const m = await page.evaluate(() => {
         const main = document.querySelector('main')!;
         const root = main.firstElementChild!.firstElementChild as HTMLElement; // PageTransition > view root

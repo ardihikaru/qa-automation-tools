@@ -210,7 +210,6 @@ export default function QAInsights() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">QA Insights</h2>
         <p className="text-gray-600">Overview of QA automation activities and system health</p>
       </div>
 

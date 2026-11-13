@@ -1,7 +1,8 @@
 import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import { usePageHeader } from '../../components/pageHeader';
 import { Product, api } from '../products/api';
 import {
   EntityDetail,
@@ -26,6 +27,8 @@ import StoriesTab from './StoriesTab';
 import TestCasesTab from './TestCasesTab';
 import SyncsTab from './SyncsTab';
 import { ErrorNote, Loading, RelTime, ShaLink, SyncStatusChip } from './ui';
+import { useKnowledgeSync } from './useKnowledgeSync';
+import SyncButton from './SyncButton';
 
 const TABS = [
   { id: 'modules', label: 'Modules' },
@@ -171,49 +174,55 @@ export default function KnowledgeView() {
   const featureOptions = useMemo(() => features ?? [], [features]);
   const selectedCode = target?.code ?? null;
 
+  // Sync from the top bar. A finished sync reloads the counts and the open tab.
+  const sync = useKnowledgeSync(validId ? pid : 0, summary?.latest_sync ?? null, () => {
+    if (validId) void getSummary(pid).then(setSummary).catch(() => undefined);
+  });
+  const syncStatus = sync.latest?.status;
+  const prevStatus = useRef(syncStatus);
+  useEffect(() => {
+    if (prevStatus.current === 'running' && syncStatus && syncStatus !== 'running') setRefreshKey((n) => n + 1);
+    prevStatus.current = syncStatus;
+  }, [syncStatus]);
+
   const backTo = `/products?product=${pid}`;
-  const back = (
-    <Link to={backTo} className="inline-flex items-center gap-1 text-sm text-primary-600 hover:underline min-h-8 max-w-full">
-      <ArrowLeft className="w-4 h-4 shrink-0" aria-hidden="true" />
-      <span className="truncate">{product ? product.name : 'Back to products'}</span>
-    </Link>
-  );
+  const productLabel = product?.name ?? (validId ? `Product #${pid}` : 'Product');
+  const noRepo = !!summary && !summary.repo;
+  usePageHeader({
+    title: 'Knowledge base',
+    titleHint: product ? `Knowledge base of ${product.name}` : 'Knowledge base',
+    crumbs: [{ label: 'Products', to: '/products' }, ...(validId ? [{ label: productLabel, to: backTo }] : [])],
+    actions:
+      canWrite && summary?.configured ? (
+        <SyncButton
+          withText
+          label={`Sync knowledge base of ${productLabel}`}
+          busy={sync.busy}
+          disabled={noRepo}
+          reason={noRepo ? 'Set an automation repo first' : undefined}
+          onClick={() => void sync.start()}
+        />
+      ) : undefined,
+  });
 
   if (!validId) {
-    return (
-      <div className="space-y-4">
-        <Link to="/products" className="inline-flex items-center gap-1 text-sm text-primary-600 hover:underline">
-          <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Products
-        </Link>
-        <ErrorNote>Unknown product.</ErrorNote>
-      </div>
-    );
+    return <ErrorNote>Unknown product.</ErrorNote>;
   }
 
   if (!summary) {
-    return (
-      <div className="space-y-4">
-        {back}
-        {loadError ? <ErrorNote onRetry={() => void loadAll()}>{loadError}</ErrorNote> : <Loading />}
-      </div>
-    );
+    return loadError ? <ErrorNote onRetry={() => void loadAll()}>{loadError}</ErrorNote> : <Loading />;
   }
 
-  const latest = summary.latest_sync;
+  const latest = sync.latest;
 
   // Fixed overlays (drawer, modal) sit outside the space-y container, whose child margins
   // would otherwise offset them.
   return (
     <>
       <div className="space-y-4">
-        {back}
-
-        <header className="flex flex-wrap items-start justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold inline-flex items-center gap-2">
-              <BookOpen className="w-6 h-6 text-primary-600" aria-hidden="true" /> Knowledge base
-            </h2>
-            <p className="text-sm text-gray-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-sm text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>
                 {summary.counts.features} features · {summary.counts.stories} stories · {summary.counts.test_cases} test cases · {Math.round(summary.coverage.pct)}% automated
               </span>
@@ -236,6 +245,18 @@ export default function KnowledgeView() {
             </div>
           )}
         </header>
+
+        {sync.error && <ErrorNote>{sync.error}</ErrorNote>}
+        {sync.note && (
+          <p role="status" className="text-sm text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+            {sync.note}
+          </p>
+        )}
+        {latest?.status === 'failed' && latest.error && (
+          <ErrorNote>
+            Sync #{latest.id} failed: {latest.error}
+          </ErrorNote>
+        )}
 
         {!summary.configured ? (
           <div className="card p-6 text-sm text-gray-600">

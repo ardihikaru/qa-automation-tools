@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Annotation, Coverage, TestCase, TestCaseFilter, entityHref, errorText, getTree, isAbort, knowledgeHref, listAllTestCases } from '../api';
 import type { Crumb } from './kit';
+import type { TopBarCrumb } from '../../../components/pageHeader';
 
 /** What every detail page needs besides its entity. */
 export interface PageCtx {
@@ -10,6 +11,12 @@ export interface PageCtx {
   canWrite: boolean;
   onAnnotation: (a: Annotation | null) => void;
 }
+
+/** Top bar crumbs from page crumbs: the "Products" root, then every crumb that links somewhere. */
+export const topBarCrumbs = (items: Crumb[]): TopBarCrumb[] => [
+  { label: 'Products', to: '/products' },
+  ...items.filter((c) => c.to).map((c) => ({ label: String(c.label), to: c.to as string, title: c.title })),
+];
 
 /** The first two crumbs every page starts with. */
 export const baseCrumbs = (ctx: PageCtx): Crumb[] => [
