@@ -52,6 +52,9 @@ test.describe('Cost Analytics View (/cost)', () => {
   });
 
   test('has no console errors', async ({ page }) => {
+    // The post-login landing page (/docs) may still be fetching; let it settle so its aborted
+    // request is not blamed on /cost.
+    await page.waitForLoadState('networkidle');
     const errors: string[] = [];
     page.on('console', (m) => {
       if (m.type() === 'error' && !/favicon|404|net::ERR/.test(m.text())) errors.push(m.text());
