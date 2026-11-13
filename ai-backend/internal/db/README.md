@@ -17,6 +17,8 @@ referenced by any Go code.
 
 ## Interface
 
+- `connection.go:NormalizeDSN(dsn string) (string, error)`: pins a MySQL DSN to UTC (see Invariants). `NewConnection` applies it.
+
 - `connection.go:DB` - struct wrapping `SQL *sql.DB`.
 - `connection.go:NewConnection(cfg *config.Config) (*DB, error)` - builds the
   DSN with `config.Config.GetDatabaseURL` (see [config](../config/README.md)),
@@ -37,6 +39,8 @@ referenced by any Go code.
   `active_impersonations`, `impersonation_audit` (append-only; never purge).
 
 ## Invariants
+
+- Every connection is pinned to UTC: `connection.go:NormalizeDSN` forces `loc=UTC`, `parseTime=true` and session `time_zone='+00:00'` on any DSN, including verbatim `DATABASE_URL` / `connection_string` values. Go `time.Time` values, `NOW()`/`CURRENT_TIMESTAMP` and `UTC_TIMESTAMP()` therefore agree on any host time zone. `NormalizeDSN` rejects non-MySQL DSNs.
 
 - `connection.go:NewConnection` returns an error (and opens nothing) when
   `GetDatabaseURL()` is empty, and closes the pool if the 10-second startup
