@@ -1,5 +1,7 @@
 # Google Cloud Run Deployment Tutorial
 
+> **Legacy.** Production now runs as a Docker Compose stack on app-host (see [deploy/qa-tool/README.md](deploy/qa-tool/README.md)). The database is MySQL 8 (schema `qa_automation` on db-host `10.8.0.4:5306`), configured with `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` or a MySQL `DATABASE_URL` DSN.
+
 This document describes how to deploy the QA Automation Tools (ai-backend and dashboard) to Google Cloud Run.
 
 ## Prerequisites
@@ -71,7 +73,7 @@ gcloud run deploy ai-backend \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require" \
+  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.8.0.4:5306)/qa_automation?parseTime=true" \
   --set-env-vars "MINIMAX_API_KEY=YOUR_API_KEY" \
   --set-env-vars "AI_MODEL=MiniMax-M2.5" \
   --set-env-vars "AI_BASE_URL=https://api.minimax.io/v1" \
@@ -81,7 +83,7 @@ gcloud run deploy ai-backend \
 ```
 
 **Important Notes:**
-- The `DATABASE_URL` must include `channel_binding=require` for Neon database connections
+- `DATABASE_URL` is a go-sql-driver/mysql DSN (`user:pass@tcp(host:port)/dbname?parseTime=true`); you can set `DB_*` instead
 - The `PORT` environment variable is automatically set by Cloud Run - do not set it manually
 - Replace `YOUR_PASSWORD` and `YOUR_API_KEY` with actual credentials from your `.env` file
 
@@ -113,7 +115,7 @@ gcloud run services describe dashboard --platform managed --region asia-southeas
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | Neon PostgreSQL connection string (include `channel_binding=require` for Neon) | `postgresql://user:pass@host/db?sslmode=require&channel_binding=require` |
+| `DATABASE_URL` | MySQL DSN (go-sql-driver/mysql format); alternative to `DB_*` | `user:pass@tcp(host:port)/qa_automation?parseTime=true` |
 | `MINIMAX_API_KEY` | Minimax API key | `sk-api-...` |
 | `AI_MODEL` | AI model name | `MiniMax-M2.5` |
 | `AI_BASE_URL` | AI API base URL | `https://api.minimax.io/v1` |
@@ -192,7 +194,7 @@ gcloud run deploy ai-backend \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=postgresql://neondb_owner:REDACTED@ep-example-000000-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require,MINIMAX_API_KEY=YOUR_API_KEY,AI_MODEL=MiniMax-M2.5,AI_BASE_URL=https://api.minimax.io/v1,API_SECRET_KEY=your-secret-key,CORS_ENABLED=true,CORS_ORIGINS=*"
+  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.8.0.4:5306)/qa_automation?parseTime=true,MINIMAX_API_KEY=YOUR_API_KEY,AI_MODEL=MiniMax-M2.5,AI_BASE_URL=https://api.minimax.io/v1,API_SECRET_KEY=your-secret-key,CORS_ENABLED=true,CORS_ORIGINS=*"
 ```
 
 ### Rebuild and Deploy Dashboard
@@ -215,7 +217,7 @@ gcloud run deploy dashboard \
 ```
 User → Dashboard (Cloud Run) → /api → ai-backend (Cloud Run)
                                     ↓
-                              Neon Database
+                              MySQL (qa_automation)
 ```
 
 The dashboard proxies API requests to the ai-backend via nginx configuration. The nginx config is in `dashboard/nginx.conf`.

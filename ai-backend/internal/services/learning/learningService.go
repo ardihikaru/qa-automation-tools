@@ -13,9 +13,8 @@ import (
 	"github.com/qa-automation/ai-backend/internal/models"
 )
 
-// Service handles learning cache operations. All queries are MySQL-flavored
-// after the Neon → MySQL migration; the *db.DB wrapper preserves the
-// pgx-style API shape (Query/QueryRow/Exec with ctx).
+// Service handles learning cache operations. All queries use MySQL syntax
+// through the *db.DB wrapper (Query/QueryRow/Exec with ctx).
 type Service struct {
 	db *db.DB
 }
