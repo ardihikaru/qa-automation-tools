@@ -24,7 +24,10 @@ import (
 
 // Impersonation integration test. It needs a disposable MySQL 8 database:
 //
-//	IMPERSONATION_IT_DSN='root:pw@tcp(127.0.0.1:33306)/qa_it?parseTime=true&loc=Local&multiStatements=true'
+//	IMPERSONATION_IT_DSN='root:pw@tcp(127.0.0.1:33306)/qa_it?multiStatements=true'
+//
+// Run it once more with a non-UTC host zone (e.g. TZ=Asia/Jakarta) to cover
+// TestSessionExpiryIT_HostTimeZone.
 //
 // It runs the migrations on that database, so never point it at production.
 // Skipped when the variable is unset.
@@ -41,6 +44,10 @@ func setupImpersonationIT(t *testing.T) *itEnv {
 	dsn := os.Getenv("IMPERSONATION_IT_DSN")
 	if dsn == "" {
 		t.Skip("IMPERSONATION_IT_DSN not set")
+	}
+	dsn, err := db.NormalizeDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
 	}
 	sqlDB, err := stdsql.Open("mysql", dsn)
 	if err != nil {
@@ -327,4 +334,37 @@ func mustURL(s string) *url.URL {
 		panic(err)
 	}
 	return u
+}
+
+// Sessions must expire on time whatever the host time zone: Go writes
+// expires_at and SQL compares it with UTC_TIMESTAMP() (db.NormalizeDSN).
+func TestSessionExpiryIT_HostTimeZone(t *testing.T) {
+	e := setupImpersonationIT(t)
+	uid := e.user("tz", "QA", true)
+	ctx := context.Background()
+
+	live, _, err := auth.CreateSession(ctx, e.sql, uid, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ValidateSession(ctx, e.sql, live); err != nil {
+		t.Fatalf("2-minute session must be valid (host zone %s): %v", time.Local, err)
+	}
+
+	expired, _, err := auth.CreateSession(ctx, e.sql, uid, -2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.ValidateSession(ctx, e.sql, expired); err != auth.ErrSessionInvalid {
+		t.Fatalf("expired session must be invalid (host zone %s): %v", time.Local, err)
+	}
+
+	// NOW() and UTC_TIMESTAMP() agree in our sessions.
+	var drift int
+	if err := e.sql.QueryRow(`SELECT ABS(TIMESTAMPDIFF(SECOND, NOW(), UTC_TIMESTAMP()))`).Scan(&drift); err != nil {
+		t.Fatal(err)
+	}
+	if drift > 1 {
+		t.Fatalf("session time_zone is not UTC: NOW() differs from UTC_TIMESTAMP() by %ds", drift)
+	}
 }

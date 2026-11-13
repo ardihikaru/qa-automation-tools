@@ -31,7 +31,7 @@ wires them up only when the database connects.
 - `RevokeSession` with an empty or unknown token is a no-op and returns nil.
 - `IsAuthAllowList` must stay consistent with the allow-list in `api/router.go:ServeHTTP`.
 - **Impersonation** ([spec](../../../docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md)). An impersonation is an `active_impersonations` row keyed by the real session token, so the cookie never changes. `ValidateSession` returns the target with `Impersonator` set only when that row is unexpired, the real user's role is in `ImpersonatorRoles`, and the target exists and is active. In every other case it returns the real user with `Impersonator == nil`. A target identity never exists without `Impersonator`.
-- The impersonation expiry is `min(real session expiry, now + 1h)`. It is compared with a Go timestamp, not `UTC_TIMESTAMP()`, because it is written from Go and the driver's `loc=` conversion then applies to both sides.
+- The impersonation expiry is `min(real session expiry, now + 1h)`. Every connection is pinned to UTC (`db.NormalizeDSN`), so Go-written expiries and `UTC_TIMESTAMP()` agree on any host time zone. `TestSessionExpiryIT_HostTimeZone` covers this; run it once with `TZ=Asia/Jakarta`.
 - `CanImpersonate` requires `Impersonator == nil`, so impersonations never nest. `MustChangePW` is false for an impersonated identity.
 - Every endpoint that changes a user account or its credentials must refuse when `RequireRealUser(u)` is false (today: `ChangePassword`).
 - `impersonation_audit` rows are never deleted. `ended_reason` is `stop`, `logout` or `superseded`; NULL with `expires_at` in the past means the impersonation expired.
@@ -48,4 +48,4 @@ wires them up only when the database connects.
 ## Verification
 
 - Run: `cd ai-backend && go test -mod=mod ./internal/auth/...` (`impersonate_test.go`, `middleware_test.go`).
-- The DB-backed impersonation flow is in `api/impersonation_integration_test.go`. It needs `IMPERSONATION_IT_DSN` pointing at a **disposable** MySQL 8, for example `docker run -d --rm --name qa-it-mysql -e MYSQL_ROOT_PASSWORD=itpw -e MYSQL_DATABASE=qa_it -p 127.0.0.1:33306:3306 mysql:8.0`, then `IMPERSONATION_IT_DSN='root:itpw@tcp(127.0.0.1:33306)/qa_it?parseTime=true&loc=Local&multiStatements=true'`.
+- The DB-backed impersonation flow is in `api/impersonation_integration_test.go`. It needs `IMPERSONATION_IT_DSN` pointing at a **disposable** MySQL 8, for example `docker run -d --rm --name qa-it-mysql -e MYSQL_ROOT_PASSWORD=itpw -e MYSQL_DATABASE=qa_it -p 127.0.0.1:33306:3306 mysql:8.0`, then `IMPERSONATION_IT_DSN='root:itpw@tcp(127.0.0.1:33306)/qa_it?multiStatements=true'`. The test normalizes the DSN to UTC itself.

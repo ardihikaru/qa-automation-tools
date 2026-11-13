@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/qa-automation/ai-backend/internal/config"
 )
 
@@ -62,10 +62,38 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (Exec
 
 // NewConnection opens the MySQL pool described by cfg.GetDatabaseURL()
 // (by default the shared db-host MySQL at 10.8.0.4:5306, schema qa_automation).
+// NormalizeDSN pins every connection to UTC, whatever the host time zone or
+// the DSN supplied (DATABASE_URL / connection_string are used verbatim):
+//   - loc=UTC: Go time.Time values are written and read as UTC;
+//   - time_zone='+00:00': NOW()/CURRENT_TIMESTAMP in this session are UTC,
+//     matching UTC_TIMESTAMP();
+//   - parseTime=true: DATETIME scans into time.Time.
+//
+// Without this, a non-UTC host (loc=Local) stored Go timestamps in local
+// time while queries compared them against UTC_TIMESTAMP(), so e.g. sessions
+// on a UTC+7 host lived 7 hours longer than their TTL.
+func NormalizeDSN(dsn string) (string, error) {
+	c, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return "", fmt.Errorf("invalid MySQL DSN: %w", err)
+	}
+	c.Loc = time.UTC
+	c.ParseTime = true
+	if c.Params == nil {
+		c.Params = map[string]string{}
+	}
+	c.Params["time_zone"] = "'+00:00'"
+	return c.FormatDSN(), nil
+}
+
 func NewConnection(cfg *config.Config) (*DB, error) {
 	dsn := cfg.GetDatabaseURL()
 	if dsn == "" {
 		return nil, fmt.Errorf("database DSN is empty: check DB_HOST/DB_USER or DATABASE_URL")
+	}
+	dsn, err := NormalizeDSN(dsn)
+	if err != nil {
+		return nil, err
 	}
 
 	sqlDB, err := sql.Open("mysql", dsn)

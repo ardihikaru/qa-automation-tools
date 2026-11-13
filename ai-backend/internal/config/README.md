@@ -82,7 +82,7 @@ The result is cached in a package-level singleton. Consumers include
   verbatim (set from `DATABASE_URL` by `LoadConfig`); (2) `DATABASE_URL`
   verbatim;
   (3) DSN built from `DB_*` as
-  `user:pass@tcp(host:port)/dbname?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true`.
+  `user:pass@tcp(host:port)/dbname?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true`.
   It returns `""` when host, user, or name is empty.
 - Caveat: `LoadConfig` copies any non-empty `DATABASE_URL` into
   `ConnectionString`, so with a config from `LoadConfig` step (1) already
