@@ -32,7 +32,7 @@ It builds to a single binary from `cmd/server` (module `github.com/qa-automation
 | `internal/services/executor/` | playwright-executor HTTP client (`Submit`, `Get`, `Wait`, `Health`) | [playwright-executor](../playwright-executor/README.md) |
 | `internal/services/skills/` | Skill registry and built-in skills | [README](./internal/services/skills/README.md) |
 | `internal/services/learning/` | Learning cache, navigation, sequences and context records | [README](./internal/services/learning/README.md) |
-| `internal/seed/` | `SeedUsers`: imports users from the taskmgr Neo4j (read-only, `TASKMGR_NEO4J_*`), falling back to an `ADMIN_USERNAME`/`ADMIN_PASSWORD` admin | n/a |
+| `internal/seed/` | `SeedUsers`: imports users from the taskmgr Neo4j (read-only, `TASKMGR_NEO4J_*`), plus an `ADMIN_USERNAME`/`ADMIN_PASSWORD` admin and an `AI_SERVICE_USERNAME`/`AI_SERVICE_PASSWORD` AI service account (role `Service`, may impersonate) | n/a |
 | `internal/models/` | Shared data structs (`Flow`, `Skill`, `RawIssue`, `LearningRecord`, `CostOverview`, ...) | n/a |
 
 `internal/migrations/`, `internal/services/ast/` and `internal/services/patch/` are currently empty and hold no code.
@@ -63,6 +63,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 - CORS is set by `api/router.go:applyCORS` from `DASHBOARD_ORIGIN` (default `http://localhost:6173`).
   `config.go` also loads `CORS_ENABLED`, `CORS_ORIGINS` and `API_SECRET_KEY`, but the router does not read them.
 - Seeding never overwrites an existing user's password (`seed/upsert.go:upsertUser`).
+- The `Service` role is written only by `seed/seed_users.go:upsertServiceUser`. It never comes from taskmgr (`normalizeRole` maps it to `Developer`), the metadata update never changes a `Service` row, and an existing non-Service username is never promoted. The service password must be at least 32 characters, and the account has `must_change_pw = 0`.
   New users are created with `must_change_pw = 1`.
 
 ## Global Side Effects

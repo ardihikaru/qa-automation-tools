@@ -44,7 +44,7 @@ EGM artifact directory: .dev/docs
 - DB: `DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME` (or a MySQL `DATABASE_URL`). The local `.env` files also contain `MYSQL_*`. **The code ignores those**; they point at the SUT *production* schema. Never use them for this app.
 - AI: `AI_PROVIDER` (`ai-manager` by default, or `minimax`), `AI_MANAGER_URL` (`http://10.8.0.4:8099`), `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`, `AI_MANAGER_PROVIDER` (**`claude-v3`**, always), `AI_MANAGER_NO_FALLBACK` (`true`), `AI_MANAGER_MODEL` (empty means claude-v3's default, `claude-opus-5`), `AI_TIMEOUT_SECONDS` (180). **claude-v3 via ai-manager is the only supported LLM path.** `MINIMAX_*`/`AI_MODEL`/`AI_BASE_URL` belong to the **dormant** `AI_PROVIDER=minimax` code path. Never enable it without the user's explicit approval. There is no automatic failover in this repo.
 - Playwright: backend `PLAYWRIGHT_EXECUTOR_URL` (`http://10.8.0.9:8141`; empty means simulated jobs), `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` (30). On the executor side: `EXECUTOR_*`, `TARGET_STAGING_URL`, `TARGET_CREDENTIALS_FILE`, `RUN_TIMEOUT_SECONDS`, `MAX_QUEUE`, in `~/.config/qa-automation/playwright-executor.env` on app-host (mode 600). Template: [playwright-executor/.env.example](playwright-executor/.env.example).
-- Auth: `SESSION_COOKIE_*`, `DASHBOARD_ORIGIN`, `ADMIN_*`, `TASKMGR_NEO4J_*`. Users are seeded at server start (`ai-backend/internal/seed/seed_users.go`): `TASKMGR_NEO4J_*` copies taskmgr users once, then `ADMIN_USERNAME`/`ADMIN_PASSWORD` upserts one admin. Production already has the 44 migrated users, so both are left empty there.
+- Auth: `SESSION_COOKIE_*`, `DASHBOARD_ORIGIN`, `ADMIN_*`, `AI_SERVICE_*`, `TASKMGR_NEO4J_*`. `AI_SERVICE_USERNAME`/`AI_SERVICE_PASSWORD` seed the AI service account (role `Service`, which may impersonate any user; see `.claude/rules/qa-tool-ai-account.md`). Users are seeded at server start (`ai-backend/internal/seed/seed_users.go`): `TASKMGR_NEO4J_*` copies taskmgr users once, then `ADMIN_USERNAME`/`ADMIN_PASSWORD` upserts one admin. Production already has the 44 migrated users, so both are left empty there.
 - Templates: [ai-backend/.env.example](ai-backend/.env.example), [deploy/qa-tool/.env.prod.example](deploy/qa-tool/.env.prod.example), [config.yaml.template](config.yaml.template).
 
 ## Hard rules
@@ -55,8 +55,13 @@ EGM artifact directory: .dev/docs
 5. **Shared infra.** The edge-host edge serves many products. Always run `sudo nginx -t` before a reload, never add `default_server`, and prefix `map` variables with `$qatool_`. The db-host MySQL is shared, so only touch the `qa_automation` schema.
 6. Never publish container ports on `0.0.0.0` on app-host. Docker bypasses ufw. The same goes for host services: playwright-executor binds `10.8.0.9` only.
 7. `ai-backend/vendor/` is stale and gitignored, so always use `-mod=mod`.
-8. Git: branch off `main` and use conventional commits. Pushing, merging to `main`, and deploying are three **separate** approvals: being asked to deploy does not authorise a merge to `main`.
+8. Git: follow [Git workflow](#git-workflow) below. Deploying is a **separate** approval: a merge to `main` never authorises a deploy.
 9. **Playwright runs only in playwright-executor**, and only against SUT staging. Don't add Playwright to the backend image or the compose stack, and don't raise the unit's `MemoryMax`/`CPUQuota` without approval.
+
+## Git workflow
+- **Worktrees.** Always work in a git worktree, never in the main checkout: `git worktree add ../qa-automation-tools.worktrees/<branch> -b <branch> main`. Remove it with `git worktree remove` once the work is done.
+- **PRs and merges.** Branch off `main`, use conventional commits, and open PRs periodically (small, reviewable steps). Pushing branches, opening PRs and merging them to `main` are pre-authorised. Deploying stays a separate approval.
+- **Cleanup.** Delete every merged branch (local and remote) and prune worktrees right after the merge: `git branch -d <branch>`, `git push origin --delete <branch>`, `git worktree prune`.
 
 ## Workflow — Elephant-Goldfish Model (EGM)
 *Design with an elephant, review with a goldfish.* The plugin is `egm@egm` (enabled in `.claude/settings.json`).
@@ -70,4 +75,4 @@ When to use it:
 - **Every week, or before a release:** `/egm:egm-drift-report docs/designs/`, then decide whether to fix the doc or the code.
 - **After large refactors:** `/egm:egm-bootstrap <dir>` to refresh the README contracts. It merges into existing files and must cite code.
 
-Project skills: `qa-automation-elephant` (load before any design work), `deploy-qa-tool`, `ai-manager-gateway`, `qa-db-ops`. Rules in `.claude/rules/` load automatically by path.
+Project skills: `qa-automation-elephant` (load before any design work), `deploy-qa-tool`, `ai-manager-gateway`, `qa-db-ops`, `qa-tool-session` (use the prod app as the `ai-service` account and impersonate any user; agent: `qa-tool-operator`). Rules in `.claude/rules/` load automatically by path.

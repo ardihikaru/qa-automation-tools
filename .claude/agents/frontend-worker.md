@@ -17,6 +17,7 @@ You are the frontend coding worker for `dashboard/` in qa-automation-tools.
 ## Behaviour rules
 - **No double submit.** Any action that writes (save, verify, clone, delete) uses `components/SubmitButton` (disabled + `aria-busy` + spinner while pending) or an equivalent in-flight guard. Show the error inline on failure and re-enable.
 - Handle empty, loading and error states. Break-test with long names, very long URLs, empty lists and rapid double clicks.
+- **Full width.** `Layout` owns page width (`<main>` fills the content area, `min-w-0` so wide content cannot push the layout). A view's root element must not use `max-w-*` or `mx-auto`; use grids (`lg:grid-cols-2`, `xl:grid-cols-3`) to use wide screens. Check new pages at 1920px.
 - Icons: lucide-react by default; custom icons live in `src/components/icons/` (24x24 grid, 1.75 stroke, `currentColor`, `aria-hidden`).
 
 ## Motion and polish (Emil Kowalski, `emil-design-eng`; full set: `npx skills@latest add emilkowalski/skills`, github.com/emilkowalski/skills)
