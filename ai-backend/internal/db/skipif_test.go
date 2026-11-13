@@ -42,6 +42,7 @@ func TestGuardedMigrationsAreKnown(t *testing.T) {
 		"INSERT INTO product_settings (product_id, knowledge_format)",
 		"ALTER TABLE kb_annotations MODIFY entity_type",
 		"ALTER TABLE skills ADD COLUMN product_id",
+		"ADD COLUMN gaos_integrated",
 	}
 	var got []string
 	for _, m := range migrations {
