@@ -1,0 +1,443 @@
+// Types and fetchers for the product knowledge base
+// (docs/designs/PRODUCT_KNOWLEDGE_SYNC.md, ai-backend/internal/api/knowledge.go).
+// Shapes mirror ai-backend/internal/services/knowledge/query.go; the server stays the authority.
+import { ApiError, api } from '../products/api';
+
+export { ApiError };
+
+// ---- roles (mirror products.go: canVerify writes the knowledge base, canToggleWork sets the format) ----
+
+export const canWriteKnowledge = (role: string) => ['Admin', 'DevOps', 'Developer', 'QA', 'QC'].includes(role);
+export const canSetFormat = (role: string) => ['Admin', 'DevOps'].includes(role);
+
+// ---- entity types ----
+
+export type EntityType = 'part' | 'module' | 'submodule' | 'feature' | 'epic' | 'story' | 'test_case';
+
+/** URL segment of each entity collection. */
+export const TYPE_PATH: Record<EntityType, string> = {
+  part: 'parts',
+  module: 'modules',
+  submodule: 'submodules',
+  feature: 'features',
+  epic: 'epics',
+  story: 'stories',
+  test_case: 'test-cases',
+};
+
+export const TYPE_LABEL: Record<EntityType, string> = {
+  part: 'Part',
+  module: 'Module',
+  submodule: 'Sub-module',
+  feature: 'Feature',
+  epic: 'Epic',
+  story: 'User story',
+  test_case: 'Test case',
+};
+
+export const isEntityType = (v: string): v is EntityType => v in TYPE_PATH;
+
+/** Local draft codes (mirrors knowledge.LocalCodeRe). */
+export const LOCAL_CODE_RE = /^L-[A-Z0-9-]{1,30}$/;
+/** Any code accepted in an API path (mirrors knowledge.CodeRe). */
+export const CODE_RE = /^[A-Za-z0-9.~_-]{1,64}$/;
+
+export type Origin = 'sync' | 'local';
+
+export interface Annotation {
+  note: string | null;
+  tags: string[] | null;
+  updated_at: string;
+}
+
+/** Fields every entity item carries. */
+export interface EntityBase {
+  type: EntityType;
+  code: string;
+  origin: Origin;
+  removed_at: string | null;
+  removed_sync_id: number | null;
+  changed_sync_id: number | null;
+  first_sync_id: number | null;
+  source_file: string | null;
+  source_line: number | null;
+  source_url: string | null;
+  annotation: Annotation | null;
+}
+
+/** A slim reference to a related entity (`refs` in query.go). `name` is the title, text or scenario. */
+export interface Ref {
+  code: string;
+  name: string;
+  origin: Origin;
+  removed_at: string | null;
+}
+
+export interface Part extends EntityBase {
+  name: string;
+}
+export interface Module extends EntityBase {
+  part_code: string;
+  name: string;
+}
+export interface Submodule extends EntityBase {
+  module_code: string;
+  name: string;
+}
+export interface Feature extends EntityBase {
+  module_code: string;
+  submodule_code: string | null;
+  name: string;
+  repo_entry: string;
+  release_status: string;
+  status_as_of: string;
+  evidence: string;
+  notes: string;
+}
+export interface Epic extends EntityBase {
+  title: string;
+  service: string;
+  area: string;
+  /** Only in the epics list. */
+  case_counts?: Record<string, number>;
+  test_cases?: number;
+}
+export interface Story extends EntityBase {
+  epic_code: string;
+  text: string;
+  unmapped_reason: string | null;
+}
+export interface TestCase extends EntityBase {
+  epic_code: string;
+  story_code: string | null;
+  scenario: string;
+  polarity: string;
+  level: string;
+  priority: string;
+  status: string;
+  automated: boolean;
+  spec_paths: string[] | null;
+  reason_category: string;
+  reason_detail: string;
+}
+
+export interface FeatureStats {
+  stories: number;
+  test_cases: number;
+  automated: number;
+  coverage_pct: number;
+}
+
+// Detail shapes (GET {type}/{code}). Single parents come back as 0- or 1-item arrays.
+export type PartDetail = Part & { modules: Ref[] };
+export type ModuleDetail = Module & { part: Ref[]; submodules: Ref[]; features: Feature[] };
+export type SubmoduleDetail = Submodule & { module: Ref[]; features: Feature[] };
+export type FeatureDetail = Feature & {
+  module: Ref[];
+  submodule: Ref[];
+  stories: (Story & { test_cases: TestCase[] })[];
+  stats: FeatureStats;
+};
+export type EpicDetail = Epic & { stories: Story[]; test_cases: Ref[] };
+export type StoryDetail = Story & { epic: Ref[]; features: Ref[]; test_cases: TestCase[]; feature_codes: string[] };
+export type TestCaseDetail = TestCase & { epic: Ref[]; story: Ref[]; features: Ref[] };
+
+export type EntityDetail = PartDetail | ModuleDetail | SubmoduleDetail | FeatureDetail | EpicDetail | StoryDetail | TestCaseDetail;
+
+// ---- syncs ----
+
+export type SyncStatus = 'running' | 'succeeded' | 'failed' | 'skipped';
+export type AiStatus = 'none' | 'pending' | 'done' | 'failed';
+export type DiffKind = 'added' | 'updated' | 'removed' | 'restored';
+
+export interface Counts {
+  parts: number;
+  modules: number;
+  submodules: number;
+  features: number;
+  features_with_stories: number;
+  epics: number;
+  stories: number;
+  stories_unmapped: number;
+  test_cases: number;
+  automated: number;
+}
+
+export interface Diff {
+  unchanged: boolean;
+  total: Record<DiffKind, number>;
+  /** Only on GET syncs/{id}. Keys are entity types. */
+  by_type?: Partial<Record<EntityType, Partial<Record<DiffKind, string[]>>>>;
+  truncated: boolean;
+}
+
+export interface ProblemItem {
+  file: string;
+  line: number;
+  msg: string;
+}
+export interface Problems {
+  total: number;
+  by_message: Record<string, number>;
+  /** Only on GET syncs/{id}; capped at 500. */
+  items?: ProblemItem[];
+}
+
+export interface SyncRow {
+  id: number;
+  status: SyncStatus;
+  trigger_kind: 'manual' | 'schedule';
+  triggered_by: string | null;
+  repo_id: number | null;
+  repo_name: string;
+  repo_url: string;
+  branch: string;
+  format: string;
+  parser_version: number;
+  commit_sha: string | null;
+  started_at: string;
+  finished_at: string | null;
+  counts: Counts | null;
+  diff: Diff | null;
+  problems: Problems | null;
+  ai_status: AiStatus;
+  ai_summary: string | null;
+  ai_error: string | null;
+  error: string | null;
+}
+
+export type Enums = Record<'release' | 'polarity' | 'level' | 'priority' | 'status' | 'reason_category', string[]>;
+
+export interface Summary {
+  format: string;
+  formats: string[];
+  configured: boolean;
+  enums: Enums;
+  repo: { id: number; name: string; url: string; branch: string } | null;
+  latest_sync: SyncRow | null;
+  last_success: SyncRow | null;
+  counts: Counts;
+  coverage: { test_cases: number; automated: number; pct: number };
+  local: { stories: number; test_cases: number };
+}
+
+// ---- tree ----
+
+export interface TreeFeature {
+  code: string;
+  name: string;
+  release_status: string;
+  status_as_of: string;
+  origin: Origin;
+  removed_at: string | null;
+  stories: number;
+  test_cases: number;
+  automated: number;
+  coverage_pct: number;
+  has_annotation: boolean;
+}
+interface TreeNode {
+  code: string;
+  name: string;
+  origin: Origin;
+  removed_at: string | null;
+  has_annotation: boolean;
+}
+export interface TreeSubmodule extends TreeNode {
+  features: TreeFeature[];
+}
+export interface TreeModule extends TreeNode {
+  submodules: TreeSubmodule[];
+  features_without_submodule: TreeFeature[];
+}
+export interface TreePart extends TreeNode {
+  modules: TreeModule[];
+}
+export interface Tree {
+  parts: TreePart[];
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// ---- request bodies ----
+
+export interface StoryDraft {
+  code?: string;
+  epic_code: string;
+  text: string;
+  feature_codes: string[];
+}
+export interface TestCaseDraft {
+  code?: string;
+  epic_code: string;
+  story_code: string;
+  scenario: string;
+  polarity: string;
+  level: string;
+  priority: string;
+  status: string;
+  spec_paths: string[];
+  reason_category: string;
+  reason_detail: string;
+}
+
+/** Test case statuses that must state a reason (mirrors knowledge.NeedsReason). */
+export const NEEDS_REASON = ['blocked', 'manual-only', 'wont'];
+
+// ---- fetchers ----
+
+const enc = encodeURIComponent;
+const kb = (pid: number) => `/api/products/${pid}/knowledge`;
+
+function qs(params: Record<string, string | number | boolean | undefined>): string {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === '' || v === false) continue;
+    u.set(k, v === true ? '1' : String(v));
+  }
+  const s = u.toString();
+  return s ? `?${s}` : '';
+}
+
+const json = (method: string, body: unknown, signal?: AbortSignal): RequestInit => ({ method, body: JSON.stringify(body), signal });
+
+export const getSummary = (pid: number, signal?: AbortSignal) => api<Summary>(`${kb(pid)}/summary`, { signal });
+
+export const getTree = (pid: number, includeRemoved: boolean, signal?: AbortSignal) =>
+  api<Tree>(`${kb(pid)}/tree${qs({ include_removed: includeRemoved })}`, { signal });
+
+export const listSyncs = (pid: number, limit = 50, signal?: AbortSignal) =>
+  api<{ syncs: SyncRow[] }>(`${kb(pid)}/syncs${qs({ limit })}`, { signal }).then((r) => r.syncs ?? []);
+
+export const getSync = (pid: number, sid: number, signal?: AbortSignal) => api<SyncRow>(`${kb(pid)}/syncs/${sid}`, { signal });
+
+/** Starts a sync. A 409 for a running sync is returned as `{sync_id, attached: true}` so the caller can follow it. */
+export async function startSync(pid: number): Promise<{ sync_id: number; attached: boolean }> {
+  try {
+    const r = await api<{ sync_id: number }>(`${kb(pid)}/sync`, { method: 'POST' });
+    return { sync_id: r.sync_id, attached: false };
+  } catch (e) {
+    const sid = e instanceof ApiError && e.status === 409 ? Number(e.body.sync_id) : NaN;
+    if (Number.isFinite(sid) && sid > 0) return { sync_id: sid, attached: true };
+    throw e;
+  }
+}
+
+export const listEpics = (pid: number, includeRemoved = false, signal?: AbortSignal) =>
+  api<{ epics: Epic[] }>(`${kb(pid)}/epics${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.epics ?? []);
+
+export interface StoryFilter {
+  epic?: string;
+  feature?: string;
+  origin?: string;
+  tag?: string;
+  q?: string;
+  include_removed?: boolean;
+  page?: number;
+  page_size?: number;
+}
+export const listStories = (pid: number, f: StoryFilter, signal?: AbortSignal) =>
+  api<Page<Story>>(`${kb(pid)}/stories${qs({ ...f })}`, { signal });
+
+export interface TestCaseFilter extends StoryFilter {
+  story?: string;
+  status?: string;
+  level?: string;
+  priority?: string;
+  /** "1" or "0" */
+  automated?: string;
+}
+export const listTestCases = (pid: number, f: TestCaseFilter, signal?: AbortSignal) =>
+  api<Page<TestCase>>(`${kb(pid)}/test-cases${qs({ ...f })}`, { signal });
+
+export const getEntity = <T extends EntityDetail = EntityDetail>(pid: number, type: EntityType, code: string, signal?: AbortSignal) =>
+  api<T>(`${kb(pid)}/${TYPE_PATH[type]}/${enc(code)}`, { signal });
+
+export const putAnnotation = (pid: number, type: EntityType, code: string, note: string, tags: string[]) =>
+  api<Annotation>(`${kb(pid)}/annotations/${type}/${enc(code)}`, json('PUT', { note, tags }));
+
+export const deleteAnnotation = (pid: number, type: EntityType, code: string) =>
+  api<void>(`${kb(pid)}/annotations/${type}/${enc(code)}`, { method: 'DELETE' });
+
+type DraftType = 'story' | 'test_case';
+
+/** Creates (no `code` argument) or updates a local draft. */
+export function saveDraft(pid: number, type: DraftType, body: StoryDraft | TestCaseDraft, code?: string) {
+  const base = `${kb(pid)}/${TYPE_PATH[type]}`;
+  if (code === undefined) return api<EntityDetail>(base, json('POST', body));
+  const rest = { ...body };
+  delete rest.code;
+  return api<EntityDetail>(`${base}/${enc(code)}`, json('PUT', rest));
+}
+
+export const deleteDraft = (pid: number, type: DraftType, code: string) =>
+  api<void>(`${kb(pid)}/${TYPE_PATH[type]}/${enc(code)}`, { method: 'DELETE' });
+
+// ---- formatting helpers ----
+
+/** Parses a backend timestamp (RFC 3339; a bare "YYYY-MM-DD hh:mm:ss" is read as UTC). */
+export function parseTime(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  let v = s.trim();
+  if (/^\d{4}-\d{2}-\d{2} \d/.test(v)) v = v.replace(' ', 'T');
+  if (/T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(v)) v += 'Z';
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+export function relativeTime(s: string | null | undefined, now = Date.now()): string {
+  const d = parseTime(s);
+  if (!d) return '';
+  const sec = Math.round((d.getTime() - now) / 1000);
+  const abs = Math.abs(sec);
+  if (abs < 45) return 'just now';
+  if (abs < 3600) return rtf.format(Math.round(sec / 60), 'minute');
+  if (abs < 86400) return rtf.format(Math.round(sec / 3600), 'hour');
+  if (abs < 86400 * 30) return rtf.format(Math.round(sec / 86400), 'day');
+  return d.toLocaleDateString();
+}
+
+export const absoluteTime = (s: string | null | undefined) => parseTime(s)?.toLocaleString() ?? '';
+
+export function duration(from: string | null | undefined, to: string | null | undefined): string {
+  const a = parseTime(from);
+  const b = parseTime(to);
+  if (!a || !b) return '';
+  const sec = Math.max(0, Math.round((b.getTime() - a.getTime()) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  return m < 60 ? `${m}m ${sec % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+export const shortSha = (sha: string | null | undefined) => (sha ? sha.slice(0, 7) : '');
+
+/** `owner/repo` of a GitHub URL (https or ssh form), or null for other hosts. */
+export function githubSlug(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.trim().match(/github\.com[/:]([^/\s]+\/[^/\s]+?)(?:\.git)?\/*$/i);
+  return m ? m[1] : null;
+}
+
+export function commitUrl(repoUrl: string | null | undefined, sha: string | null | undefined): string | null {
+  const slug = githubSlug(repoUrl);
+  return slug && sha ? `https://github.com/${slug}/commit/${sha}` : null;
+}
+
+export function errorText(e: unknown, fallback = 'Request failed'): string {
+  if (e instanceof ApiError) {
+    if (e.status === 503) return `${e.message} (the knowledge base service is unavailable)`;
+    return e.message;
+  }
+  return e instanceof Error ? e.message : fallback;
+}
+
+export const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+
+export const pct = (n: number) => `${Math.round(n)}%`;

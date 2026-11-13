@@ -45,6 +45,8 @@ export interface Product {
   name: string;
   staging_url: string;
   allow_non_automation_work: boolean;
+  /** Catalog format of the automation repo ("" = knowledge sync off). See PRODUCT_KNOWLEDGE_SYNC.md. */
+  knowledge_format: string;
   // Legacy fields, mirrored from the automation repo.
   repo_url: string;
   root_dir: string;
@@ -63,9 +65,12 @@ export interface SyncResponse {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  /** The parsed JSON error body, e.g. `{error, sync_id}` for a 409 on a running knowledge sync. */
+  body: Record<string, unknown>;
+  constructor(message: string, status: number, body: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -77,7 +82,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(body?.error || `Request failed (${res.status})`, res.status);
+  if (!res.ok) throw new ApiError(body?.error || `Request failed (${res.status})`, res.status, body && typeof body === 'object' ? body : {});
   return body as T;
 }
 
