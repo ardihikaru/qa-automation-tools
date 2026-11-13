@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -77,6 +78,15 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c, err := r.Cookie(h.CookieName); err == nil {
+		// Best-effort: end any impersonation first so the audit row records
+		// "logout"; the session itself is revoked regardless.
+		if u, ok := auth.GetUser(r.Context()); ok && u.Impersonator != nil {
+			if err := auth.EndImpersonation(r.Context(), h.DB, c.Value, "logout"); err != nil {
+				log.Printf("⚠️  impersonate end on logout failed: %v", err)
+			} else {
+				log.Printf("impersonate stop actor=%s target=%s reason=logout", u.Impersonator.Username, u.Username)
+			}
+		}
 		_ = auth.RevokeSession(r.Context(), h.DB, c.Value)
 	}
 	setSessionCookie(w, h.CookieName, "", time.Unix(0, 0), h.Secure)
@@ -94,10 +104,7 @@ func (h *AuthHandlers) Me(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, errorPayload("unauthorized"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"user":               u,
-		"mustChangePassword": u.MustChangePW,
-	})
+	writeJSON(w, http.StatusOK, identityPayload(u))
 }
 
 // ChangePassword updates the bcrypt hash and clears must_change_pw.
@@ -109,6 +116,10 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.GetUser(r.Context())
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, errorPayload("unauthorized"))
+		return
+	}
+	if !auth.RequireRealUser(u) {
+		writeJSON(w, http.StatusForbidden, errorPayload("not allowed while impersonating"))
 		return
 	}
 	var body changePwReq

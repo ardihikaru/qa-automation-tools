@@ -10,7 +10,7 @@ import (
 )
 
 // Service handles QA skills operations against MySQL. Uses *db.DB (the
-// pgx-compatible wrapper around *sql.DB).
+// context-first wrapper around *sql.DB).
 type Service struct {
 	db        *db.DB
 	aiService *ai.Service
@@ -74,7 +74,7 @@ func BuiltinSkills() []models.Skill {
 }
 
 // EnsureBuiltinSkills makes sure all builtin skills exist in the database.
-// MySQL: INSERT IGNORE replaces PostgreSQL's ON CONFLICT (name) DO NOTHING.
+// It uses INSERT IGNORE, so existing rows (matched on the unique name) are kept.
 func (s *Service) EnsureBuiltinSkills(ctx context.Context) error {
 	skills := BuiltinSkills()
 

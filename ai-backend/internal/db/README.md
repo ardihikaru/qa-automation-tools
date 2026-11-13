@@ -4,8 +4,8 @@
 
 Package `db` owns the MySQL connection for ai-backend and the full schema DDL.
 It wraps `database/sql` (driver `github.com/go-sql-driver/mysql`) in a small
-`DB` struct whose method signatures mimic pgx, so call sites written for the
-earlier PostgreSQL (Neon) backend keep working after the move to MySQL.
+`DB` struct with context-first `Query`/`QueryRow`/`Exec` helpers. All SQL is
+MySQL 8 syntax (`?` placeholders, no `RETURNING`; use `ExecResult.LastInsertId`).
 
 Schema migrations are an in-code ordered list of SQL statements. The only
 production caller of `RunMigrations` is the dedicated command
@@ -16,6 +16,8 @@ directory `ai-backend/internal/migrations` exists but is empty and is not
 referenced by any Go code.
 
 ## Interface
+
+- `connection.go:NormalizeDSN(dsn string) (string, error)`: pins a MySQL DSN to UTC (see Invariants). `NewConnection` applies it.
 
 - `connection.go:DB` - struct wrapping `SQL *sql.DB`.
 - `connection.go:NewConnection(cfg *config.Config) (*DB, error)` - builds the
@@ -33,12 +35,19 @@ referenced by any Go code.
   `ai_cache`, `embedding_cache`, `learning_cache`, `skills`, `skill_logs`,
   `learned_skills`, `raw_issues`, `issue_suggestions`, `request_logs`,
   `flow_outcomes`, `job_runs`, `goal_events`, `navigation_edges`,
+<<<<<<< HEAD
   `action_sequences`, `context_cache`, `users`, `sessions`, `products`, `product_settings`,
   `product_repos`, `product_repo_branches`.
 - `connection.go:DB.WithTx(ctx, fn func(*sql.Tx) error)` - commits on nil, rolls back otherwise, and retries the whole
   function up to 3 times on MySQL error 1213 (deadlock) or 1205 (lock wait timeout); `IsRetryableTxError` is the predicate.
+=======
+  `action_sequences`, `context_cache`, `users`, `sessions`, `products`,
+  `active_impersonations`, `impersonation_audit` (append-only; never purge).
+>>>>>>> origin/main
 
 ## Invariants
+
+- Every connection is pinned to UTC: `connection.go:NormalizeDSN` forces `loc=UTC`, `parseTime=true` and session `time_zone='+00:00'` on any DSN, including verbatim `DATABASE_URL` / `connection_string` values. Go `time.Time` values, `NOW()`/`CURRENT_TIMESTAMP` and `UTC_TIMESTAMP()` therefore agree on any host time zone. `NormalizeDSN` rejects non-MySQL DSNs.
 
 - `connection.go:NewConnection` returns an error (and opens nothing) when
   `GetDatabaseURL()` is empty, and closes the pool if the 10-second startup
@@ -55,8 +64,6 @@ referenced by any Go code.
   returns `migration <index> failed` with the first non-empty SQL line
   (`migrations.go:summarize`). Earlier statements are not rolled back.
 - All tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`.
-- The header comment in `migrations.go` mentions `ensureCheckConstraint`, but no
-  such function exists in the codebase. Do not rely on it.
 
 ## Product repos tables (PRODUCT_REPOS.md)
 

@@ -16,7 +16,7 @@ primitives come from [`auth`](../auth/README.md).
 - `router.go:NewRouter(db *db.DB, aiService *ai.Service, learningService *learning.Service, skillsService *skills.Service) *Router`: every dependency may be nil. `skillsService` ([`services/skills`](../services/skills/README.md)) is stored on the struct, but no handler in `router.go` calls it.
 - `router.go:(*Router).ServeHTTP`: the entry point. It runs in this order: `applyCORS`, then `OPTIONS` returns 200, then the allow-list (`/api/auth/login` when auth is wired, and `/health`), then `requireAuth` (if set) wrapping `dispatchAuthenticated`.
 - `router.go:(*Router).SetAuth(h *AuthHandlers, mw func(http.Handler) http.Handler, dashboardOrigin string)`: wires the auth handlers, the middleware, and the CORS origin.
-- `auth_handlers.go:AuthHandlers{DB *sql.DB, CookieName string, SessionTTL time.Duration, Secure bool}` with methods `Login`, `Logout`, `Me`, `ChangePassword`.
+- `auth_handlers.go:AuthHandlers{DB *sql.DB, CookieName string, SessionTTL time.Duration, Secure bool}` with methods `Login`, `Logout`, `Me`, `ChangePassword`, and in `impersonation.go` `ListUsers`, `Impersonate`, `StopImpersonation`.
 
 ### Routes (as registered in `router.go:ServeHTTP` / `dispatchAuthenticated` / `handleJobs`)
 
@@ -28,7 +28,10 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/auth/login` | POST | `AuthHandlers.Login` (no auth; registered only when auth is wired) |
 | `/api/auth/logout` | POST | `AuthHandlers.Logout` (auth wired only) |
 | `/api/auth/me` | GET | `AuthHandlers.Me` (auth wired only) |
-| `/api/auth/change-password` | POST | `AuthHandlers.ChangePassword` (auth wired only) |
+| `/api/auth/change-password` | POST | `AuthHandlers.ChangePassword` (auth wired only; 403 while impersonating) |
+| `/api/auth/impersonate` | POST | `AuthHandlers.Impersonate` (auth wired only; real role Admin/Service) |
+| `/api/auth/impersonate/stop` | POST | `AuthHandlers.StopImpersonation` (auth wired only) |
+| `/api/users` | GET | `AuthHandlers.ListUsers` (auth wired only; real role Admin/Service) |
 | `/api/flows` | GET, POST | `handleFlows` |
 | `/api/products` | GET, POST | `handleProducts` (`products.go`): list products with their `repos` (main first, then central, then by name), `allow_non_automation_work`, and the legacy fields mirrored from the main repo. POST takes `{name, staging_url, repos:[...]}` (exactly one `is_main`) or the legacy flat `{repo_url, root_dir, branch}` (one repo named `main`; both forms is 400). Writes: Admin/DevOps/Developer |
 | `/api/products/{id}` | GET, PUT, DELETE | PUT applies `name`, `staging_url` and `allow_non_automation_work` (Admin/DevOps only; another role changing it gets 403 and nothing is saved); legacy `repo_url`/`root_dir`/`branch` in the body are ignored with 200. DELETE removes registry rows (repos, branches, settings cascade), never checkouts |
@@ -73,11 +76,17 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
 - Cookie-session auth is enabled only when the database connects. `cmd/server/main.go` calls `router.SetAuth(...)` inside `if database != nil`. Otherwise `authHandlers` and `requireAuth` stay nil (`router.go:Router` comment), all `/api/*` routes are open, and the `/api/auth/*` routes fall through to 404.
 - The allow-list in `router.go:ServeHTTP` (`OPTIONS`, `/health`, `/api/auth/login`) must stay in sync with `auth/middleware.go:IsAuthAllowList`.
-- CORS (`router.go:applyCORS`): when auth is wired, the router reflects the request `Origin` instead of `*` and sets `Access-Control-Allow-Credentials: true` and `Vary: Origin`. The configured origin comes from `SetAuth`'s `dashboardOrigin`.
+- CORS (`router.go:applyCORS`): the configured origin is sent as-is. Only when it is `*` or empty, and auth is wired, does the router reflect the request `Origin`. With auth wired it also sets `Access-Control-Allow-Credentials: true` and `Vary: Origin`. Production pins `DASHBOARD_ORIGIN`, so it never reflects. The configured origin comes from `SetAuth`'s `dashboardOrigin`.
 - `/health` (`router.go:serveHealth`) always returns 200 with JSON keys `status`, `database`, `ai_provider` (`aiService.ProviderName()`), `ai_upstream` (`aiService.Upstream()`, `claude-v3` in prod), `ai` (`aiService.Health(ctx)`), `minimax`, and `executor` (`ok|degraded|unreachable|not_configured`; the executor's `/health`, cached for 30 s). `minimax` is `"configured"` only when the provider is `ai.ProviderMiniMax` and `Configured()` is true. It is kept for backward compatibility.
 - DB-backed handlers return 503 `Database not available` when `router.go:getDB` returns nil.
 - Pagination (`router.go:parsePagination`): page and limit must be greater than 0, and limit is capped at 100.
 - `auth_handlers.go:Login` lowercases and trims the username, and returns the same 401 `Invalid username or password` for every credential failure. `auth_helpers.go:lookupForLogin` matches only `active = 1` users.
+- **Impersonation** ([spec](../../../docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md)):
+  - `Me`, `Impersonate` (200) and `StopImpersonation` (200) all return `{"user": User, "mustChangePassword": bool}`, built from `auth.ValidateSession`. `user.impersonator` is present only while impersonating.
+  - `Impersonate` checks run in this order: 405, then 415 (the `Content-Type` must be `application/json`), then 403 `forbidden` (not `auth.CanImpersonate`, which includes nesting), then 400 `invalid request body`, then 404 `user not found`, then 400 `cannot impersonate yourself`, then 409 `user is inactive`, then 500 `could not start impersonation`. The cookie is never changed.
+  - `StopImpersonation`: 405, 415, 400 `not impersonating`, 500 `could not stop impersonation`.
+  - `ListUsers`: 405, 403. It returns `id, username, fullName, role, active` and never the password hash.
+  - `Logout` while impersonating ends the impersonation (audit reason `logout`) and revokes the real session.
 - `auth_helpers.go:validateNewPassword` requires a new password of at least 8 characters that differs from both the username (case-insensitive) and the current password.
 - Jobs (`router.go:enqueueJob`) get IDs `job-<unixnano>`. The in-memory `jobManager` map is guarded by `sync.RWMutex`. Every state change is upserted into `job_runs`.
   - **Executor configured** (`SetExecutor`, from `PLAYWRIGHT_EXECUTOR_URL`): `jobs_executor.go:runExecutorJob` submits `qa_run` / `docs_generate` to playwright-executor. It forwards only `roles`, `max_steps`, `interactive_skills` and `flows` (top-level or under `params`). It polls every 3 s, for up to `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES`.
@@ -114,6 +123,6 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 ## Verification
 
 - Run: `cd ai-backend && go test -mod=mod ./internal/api/...`
-- The tests use no build tags. `router_test.go` runs without a DB. The integration tests (`crud_integration_test.go`, `search_integration_test.go`) call `t.Skip` when no database URL is configured or the DB is unreachable. `testenv_integration_test.go:loadIntegrationEnvFiles` loads `DATABASE_URL` (or `NEON_DB_CONN`) from nearby `.env` files.
+- The tests use no build tags. `router_test.go` runs without a DB. The integration tests (`crud_integration_test.go`, `search_integration_test.go`) call `t.Skip` when no database URL is configured or the DB is unreachable. `testenv_integration_test.go:loadIntegrationEnvFiles` loads `DB_*`/`DATABASE_URL` from nearby `.env` files.
 - When a DB is reachable, `setupCRUDIntegrationRouter` runs `db.RunMigrations` and the CRUD tests write rows to that database. Point the tests at a disposable MySQL instance.
 - Some search tests also skip when the MiniMax API key is not configured.

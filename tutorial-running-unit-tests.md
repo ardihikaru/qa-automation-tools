@@ -2,7 +2,7 @@
 
 ## Scope
 
-This guide is for running **unit tests** in `ai-backend` that do not require Neon DB or external API connectivity.
+This guide is for running **unit tests** in `ai-backend` that do not require a MySQL database or external API connectivity.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ ok   github.com/qa-automation/ai-backend/internal/api  <duration>
 - Fix: run with proper filesystem permissions in your environment.
 
 2. Tests unexpectedly hitting DB:
-- Symptom: connection attempts to PostgreSQL/Neon.
+- Symptom: connection attempts to MySQL.
 - Fix: use the explicit `-run` command above to run unit-only tests.
 
 3. Slow first run:

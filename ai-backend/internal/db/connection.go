@@ -11,16 +11,15 @@ import (
 	"github.com/qa-automation/ai-backend/internal/config"
 )
 
-// DB wraps *sql.DB and exposes pgx-compatible method signatures so the rest of
-// the codebase keeps reading naturally after the Neon (PostgreSQL) → MySQL
-// migration. Connection lifecycle (Ping, Close) lives here; query execution
+// DB wraps the MySQL *sql.DB and exposes context-first Query/QueryRow/Exec
+// helpers. Connection lifecycle (Ping, Close) lives here; query execution
 // lives on this struct.
 type DB struct {
 	SQL *sql.DB
 }
 
 // ExecResult wraps sql.Result to expose RowsAffected/LastInsertId without
-// requiring callers to handle a second error return — matches pgx semantics.
+// requiring callers to handle a second error return.
 type ExecResult struct {
 	inner sql.Result
 }
@@ -53,7 +52,7 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 	return db.SQL.QueryRowContext(ctx, query, args...)
 }
 
-// Exec proxies to ExecContext, wrapping the result for pgx-like ergonomics.
+// Exec proxies to ExecContext and wraps the result in ExecResult.
 func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (ExecResult, error) {
 	res, err := db.SQL.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -62,12 +61,40 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (Exec
 	return ExecResult{inner: res}, nil
 }
 
-// NewConnection creates a new MySQL connection using the shared SUT
-// credentials (host 203.0.113.21:31006, database qa_automation by default).
+// NewConnection opens the MySQL pool described by cfg.GetDatabaseURL()
+// (by default the shared db-host MySQL at 10.8.0.4:5306, schema qa_automation).
+// NormalizeDSN pins every connection to UTC, whatever the host time zone or
+// the DSN supplied (DATABASE_URL / connection_string are used verbatim):
+//   - loc=UTC: Go time.Time values are written and read as UTC;
+//   - time_zone='+00:00': NOW()/CURRENT_TIMESTAMP in this session are UTC,
+//     matching UTC_TIMESTAMP();
+//   - parseTime=true: DATETIME scans into time.Time.
+//
+// Without this, a non-UTC host (loc=Local) stored Go timestamps in local
+// time while queries compared them against UTC_TIMESTAMP(), so e.g. sessions
+// on a UTC+7 host lived 7 hours longer than their TTL.
+func NormalizeDSN(dsn string) (string, error) {
+	c, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return "", fmt.Errorf("invalid MySQL DSN: %w", err)
+	}
+	c.Loc = time.UTC
+	c.ParseTime = true
+	if c.Params == nil {
+		c.Params = map[string]string{}
+	}
+	c.Params["time_zone"] = "'+00:00'"
+	return c.FormatDSN(), nil
+}
+
 func NewConnection(cfg *config.Config) (*DB, error) {
 	dsn := cfg.GetDatabaseURL()
 	if dsn == "" {
 		return nil, fmt.Errorf("database DSN is empty: check DB_HOST/DB_USER or DATABASE_URL")
+	}
+	dsn, err := NormalizeDSN(dsn)
+	if err != nil {
+		return nil, err
 	}
 
 	sqlDB, err := sql.Open("mysql", dsn)
