@@ -56,7 +56,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/skills` | `SkillsView` | QA skills, stats, and logs |
 | `/navigation` | `NavigationGraphView` | Learned page-navigation graph |
 | `/learning` | `LearningProgressView` | Learning cache progress |
-| `/products` | `ProductsView` | Master list with repos; product detail panel with repo badges (Main, Central), branch lists with default, the Allow non-automation work toggle (Admin/DevOps), per-repo Verify/Clone/Sync |
+| `/products` | `ProductsView` | Master list with repos; product detail panel with repo badges (Main, Automation, Central), Make main and Make automation actions, a Verify now prompt on an unverified automation repo, branch lists with default, the Allow non-automation work toggle (Admin/DevOps), per-repo Verify/Clone/Sync |
 | `/settings` | `SettingsView` | Read-only configuration (AI gateway pinned to claude-v3, services health) and architecture diagram |
 
 ### Auth module (`src/auth/`)
@@ -114,7 +114,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/cost/overview`, `/api/cost/trend`, `/api/cost/by-feature`, `/api/cost/efficiency` | GET | `views/CostAnalytics.tsx` |
 | `/api/settings` | GET | `views/SettingsView.tsx` |
 | `/api/products`, `/api/products/{id}` | GET, POST, PUT, DELETE | `views/ProductsView.tsx`, `views/products/ProductDetail.tsx` (PUT: name, staging URL, `allow_non_automation_work`) |
-| `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/central, remove repo) |
+| `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/automation/central, remove repo) |
 | `/api/products/{id}/repos/{rid}/branches` | PUT | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (save branch list and default) |
 | `/api/products/{id}/repos/{rid}/verify`, `/clone`, `/checkout` | POST | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (Verify, Clone, Sync branches) |
 

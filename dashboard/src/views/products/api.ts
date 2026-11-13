@@ -29,6 +29,7 @@ export interface Repo {
   repo_url: string;
   root_dir: string;
   is_main: boolean;
+  is_automation: boolean;
   is_central: boolean;
   default_branch: string;
   branches: string[];
@@ -44,7 +45,7 @@ export interface Product {
   name: string;
   staging_url: string;
   allow_non_automation_work: boolean;
-  // Legacy fields, mirrored from the main repo.
+  // Legacy fields, mirrored from the automation repo.
   repo_url: string;
   root_dir: string;
   branch: string;
@@ -166,4 +167,8 @@ export const CHECK_LABELS: Record<string, string> = {
 
 export function mainRepo(p: Product): Repo | undefined {
   return p.repos?.find((r) => r.is_main);
+}
+
+export function automationRepo(p: Product): Repo | undefined {
+  return p.repos?.find((r) => r.is_automation);
 }

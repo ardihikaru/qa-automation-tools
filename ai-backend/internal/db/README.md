@@ -30,7 +30,8 @@ referenced by any Go code.
 - `connection.go:DB.Ping(ctx)` - returns an error if the receiver or `SQL` is nil.
 - `connection.go:DB.Close()` - nil-safe close of the underlying pool.
 - `migrations.go:RunMigrations(sqlDB *sql.DB) error` - executes every entry of
-  the unexported `migrations` slice in order.
+  the unexported `migrations` slice in order (`RunMigrationList` runs an explicit list; used by tests).
+  An entry whose first line is `-- skip-if: <query>` is guarded (see Invariants).
 - Tables created by `migrations.go:migrations`: `roles`, `flows`, `steps`,
   `ai_cache`, `embedding_cache`, `learning_cache`, `skills`, `skill_logs`,
   `learned_skills`, `raw_issues`, `issue_suggestions`, `request_logs`,
@@ -49,20 +50,34 @@ referenced by any Go code.
   `PingContext` fails.
 - Pool limits are fixed in `connection.go:NewConnection`: `SetMaxOpenConns(25)`,
   `SetMaxIdleConns(5)`, `SetConnMaxLifetime(30m)`, `SetConnMaxIdleTime(5m)`.
-- Every statement in `migrations.go:migrations` must stay idempotent: all DDL
-  uses `CREATE TABLE IF NOT EXISTS`, and the three `UPDATE raw_issues ...`
-  back-fill statements only touch rows whose `page`/`action`/`severity` is
-  blank. Re-running `RunMigrations` against an existing database is therefore
-  safe. New migrations must be appended to the slice and must also be safe to
-  re-run, because no applied-version table is kept.
+- Every statement in `migrations.go:migrations` must stay idempotent, either by
+  construction (`CREATE TABLE IF NOT EXISTS`, `INSERT ... ON DUPLICATE KEY`,
+  DML guarded by `NOT EXISTS`/`IS NULL`/blank checks such as the three
+  `UPDATE raw_issues ...` back-fills and the automation back-fill) or by a
+  leading `-- skip-if: <query>` guard. Re-running `RunMigrations` against an
+  existing database is therefore safe. New migrations must be appended to the
+  slice and must also be safe to re-run, because no applied-version table is kept.
+- **`-- skip-if:` grammar** (`migrations.go:parseSkipIf`): after leading whitespace,
+  newlines and a UTF-8 BOM, the first line must start with `-- skip-if:`
+  (case-sensitive, one space after `--`); the rest of the line is the query.
+  The runner runs it outside any transaction; it must return exactly one row and
+  one non-NULL integer. `> 0` skips the entry, `0` runs it; NULL, no row, several
+  rows, an empty query or a query error abort with
+  `migration <i> skip-if guard failed`. The whole entry text (comment included)
+  is still sent to MySQL. A guarded entry runs on one pinned connection after
+  `SET SESSION lock_wait_timeout = 30`. The guard check and the statement are not
+  atomic across two concurrent runners (the runner is a manual command). No
+  other entry starts with `-- skip-if:`.
 - `migrations.go:RunMigrations` stops at the first failing statement and
-  returns `migration <index> failed` with the first non-empty SQL line
-  (`migrations.go:summarize`). Earlier statements are not rolled back.
+  returns `migration <index> failed` with the first non-empty SQL line that is not
+  a `-- skip-if:` directive (`migrations.go:summarize`). Earlier statements are not rolled back.
 - All tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`.
 
 ## Product repos tables (PRODUCT_REPOS.md)
 
-`product_settings` (flag `allow_non_automation_work`, missing row = false), `product_repos` (one row per repo; `main_flag`/`central_flag` are stored generated columns so `UNIQUE(product_id, flag)` allows at most one main and one central repo per product) and `product_repo_branches` (binary-collation `branch` and `slug`; at most one default per repo via `default_flag`). Migration entries 4 and 5 back-fill one main repo and its branch per legacy product; they skip products whose `root_dir` has a `.branches` segment or repeats a repo's `root_dir`, and every re-run is a no-op. The legacy `products` columns are kept (mirrored from the main repo) for rollback.
+`product_settings` (flag `allow_non_automation_work`, missing row = false), `product_repos` (one row per repo; `main_flag`/`central_flag`/`automation_flag` are stored generated columns so `UNIQUE(product_id, flag)` allows at most one main, one automation and one central repo per product) and `product_repo_branches` (binary-collation `branch` and `slug`; at most one default per repo via `default_flag`). Migration entries 4 and 5 back-fill one main repo and its branch per legacy product; they skip products whose `root_dir` has a `.branches` segment or repeats a repo's `root_dir`, and every re-run is a no-op. The legacy `products` columns are kept (mirrored from the **automation** repo) for rollback.
+
+**Automation role (PRODUCT_REPOS_AUTOMATION_ROLE.md).** Two entries are appended after `impersonation_audit`: `product_repos_add_automation_role` (guarded by `-- skip-if:` on `automation_flag` in `information_schema.columns`; one `ALTER TABLE product_repos ALGORITHM=COPY, LOCK=SHARED` adds `is_automation TINYINT(1) NOT NULL DEFAULT 0`, the stored generated `automation_flag` and `UNIQUE KEY uq_product_repos_automation (product_id, automation_flag)`; the column default keeps the previous binary's inserts working) and `product_repos_backfill_automation_role` (a self-join `UPDATE` that makes the main repo automation only for products with no automation repo yet; a no-op on re-run and where automation differs from main). Re-running the migration heals a product left without an automation repo (main becomes automation).
 
 **Pre-flight** (run before migrating; fix rows first):
 ```sql
@@ -73,8 +88,32 @@ SELECT a.id, b.id FROM products a JOIN products b ON a.id < b.id
 **Post-flight** (expected: zero rows):
 ```sql
 SELECT p.id, p.name FROM products p WHERE NOT EXISTS (SELECT 1 FROM product_repos r WHERE r.product_id = p.id);
+-- roles: every product with repos has exactly one main and exactly one automation repo
+SELECT p.id, SUM(r.is_main) AS mains, SUM(r.is_automation) AS automations
+FROM products p JOIN product_repos r ON r.product_id = p.id
+GROUP BY p.id HAVING mains <> 1 OR automations <> 1;
+-- legacy drift: all six legacy columns equal the automation repo's
+SELECT p.id FROM products p
+JOIN product_repos r ON r.product_id = p.id AND r.is_automation = 1
+LEFT JOIN product_repo_branches b ON b.repo_id = r.id AND b.is_default = 1
+WHERE NOT (p.repo_url <=> r.repo_url AND p.root_dir <=> r.root_dir
+  AND p.branch <=> COALESCE(b.branch, (SELECT MIN(x.branch) FROM product_repo_branches x WHERE x.repo_id = r.id), '')
+  AND p.playwright_accessible <=> r.playwright_accessible AND p.last_verified_at <=> r.last_verified_at
+  AND p.verify_report <=> r.verify_report);
 ```
-**Deploy order:** run `go run -mod=mod ./cmd/databasemigration` before starting the new binary (the old binary ignores the new tables), then once more after the new binary is live to pick up products the old binary created in the window.
+**Deploy order:** run `go run -mod=mod ./cmd/databasemigration` before starting the new binary (the new binary selects `is_automation`; without the column every repo read is a 500; the old binary ignores the new tables and column), then once more after the new binary is live (in a quiet window, no dashboard edits) to pick up products the old binary created in the window.
+
+**Rollback to the previous release** ignores the column and key, but its main promotion does not touch `is_automation`, and it can delete the repo that is automation (a sibling when main differs), after which the heal silently makes main the automation repo. Before rolling back save `SELECT product_id, id, name FROM product_repos WHERE is_automation = 1`; after rolling forward run the migration, compare that query, then re-point the legacy columns (quiet window, no product edits) and run the post-flight queries:
+```sql
+UPDATE products p
+JOIN product_repos r ON r.product_id = p.id AND r.is_automation = 1
+LEFT JOIN product_repo_branches b ON b.repo_id = r.id AND b.is_default = 1
+SET p.repo_url = r.repo_url, p.root_dir = r.root_dir,
+    p.branch = COALESCE(b.branch, (SELECT MIN(x.branch) FROM product_repo_branches x WHERE x.repo_id = r.id), ''),
+    p.playwright_accessible = r.playwright_accessible, p.last_verified_at = r.last_verified_at,
+    p.verify_report = r.verify_report;
+```
+Concurrent racing is covered by the unique key: the loser of a promotion race gets 1062 on `uq_product_repos_automation`, mapped to 409.
 
 **Tests:** `internal/testdb` gives DB-backed tests a scratch schema from `QA_TEST_MYSQL_DSN` (tests skip when empty; a DSN naming `qa_automation` is refused).
 
@@ -88,6 +127,7 @@ SELECT p.id, p.name FROM products p WHERE NOT EXISTS (SELECT 1 FROM product_repo
 
 ## Verification
 
-- Run: `cd ai-backend && go test -mod=mod ./internal/db/...` (the package has
-  no test files. Migrations are exercised by `internal/api/crud_integration_test.go`)
+- Run: `cd ai-backend && go test -mod=mod ./internal/db/...` (pure tests: `parseSkipIf`, `summarize`;
+  with `QA_TEST_MYSQL_DSN` set, the full slice twice, the automation back-fill/heal, the runner guard and the unique keys;
+  migrations are also exercised by `internal/api/crud_integration_test.go`)
 - Apply migrations: `cd ai-backend && go run ./cmd/databasemigration`
