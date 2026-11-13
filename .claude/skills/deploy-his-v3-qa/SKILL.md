@@ -1,6 +1,6 @@
 ---
 name: deploy-his-v3-qa
-description: Deploy, roll back, health-check or debug the production qa-automation stack at https://his-v3.qa.sismedika.com (Docker Compose on rnd-v3-vpn 10.10.0.9 behind the clino nginx TLS edge). Use when asked to deploy/redeploy/release, check prod status or logs, roll back, renew or inspect the certificate, or change the edge vhost.
+description: Deploy, roll back, health-check or debug the production qa-automation stack at https://qa-tool.sismedika.com (Docker Compose on rnd-v3-vpn 10.10.0.9 behind the clino nginx TLS edge). Use when asked to deploy/redeploy/release, check prod status or logs, roll back, renew or inspect the certificate, or change the edge vhost.
 ---
 
 # Deploy his-v3-qa
@@ -36,8 +36,8 @@ ssh rnd-v3-vpn 'systemctl --user status playwright-executor --no-pager | head -5
 
 ## Verify
 ```bash
-curl -s https://his-v3.qa.sismedika.com/health      # status ok, database connected, ai_provider ai-manager, ai ok
-curl -s -o /dev/null -w '%{http_code}\n' https://his-v3.qa.sismedika.com/api/auth/me   # 401 = auth is ON
+curl -s https://qa-tool.sismedika.com/health      # status ok, database connected, ai_provider ai-manager, ai ok
+curl -s -o /dev/null -w '%{http_code}\n' https://qa-tool.sismedika.com/api/auth/me   # 401 = auth is ON
 ```
 `database: disconnected` means **auth is off and the API is open**. Fix it immediately: check the `DB_*` values in `.env.prod`, and check that MySQL on rnd-v2 can be reached at `10.10.0.4:5306` from rnd-v3.
 
@@ -53,7 +53,7 @@ ssh rnd-v3-vpn 'cd ~/devel/projects/qa-automation-tools && docker compose -f dep
 - The live file is `/etc/nginx/conf.d/his-v3-qa.conf`. The repo mirror is `deploy/his-v3-qa/nginx-edge.conf`; keep them identical.
 - The repo mirror is the source of truth for *content*. The live file is what runs, so after any change confirm they match: `ssh clino 'cat /etc/nginx/conf.d/his-v3-qa.conf' | diff - deploy/his-v3-qa/nginx-edge.conf`.
 - Change procedure: (1) back up the live file with `sudo cp /etc/nginx/conf.d/his-v3-qa.conf /tmp/his-v3-qa.conf.bak`, (2) `scp` the new file to `/tmp`, then `sudo install -m 644` it into conf.d, (3) run `sudo nginx -t`. **Only when that succeeds**, run `sudo systemctl reload nginx`. If it fails, `sudo install` the `.bak` back and run `nginx -t` again.
-- Cert: lineage `his-v3-qa`, webroot `/var/www/acme`, renewed automatically by certbot. To check it: `ssh clino 'sudo certbot renew --dry-run --cert-name his-v3-qa'`.
+- Cert: lineage `qa-tool`, webroot `/var/www/acme`, renewed automatically by certbot. To check it: `ssh clino 'sudo certbot renew --dry-run --cert-name qa-tool'`.
 - Never add `default_server`. Every `map` variable must be prefixed with `$hisv3qa_`.
 
 ## Host facts (rnd-v3-vpn)

@@ -74,7 +74,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 
 ## Deployment
 
-- Production: [deploy/his-v3-qa](../deploy/his-v3-qa/README.md). Docker Compose on rnd-v3-vpn, behind the clino nginx edge, at https://his-v3.qa.sismedika.com.
+- Production: [deploy/his-v3-qa](../deploy/his-v3-qa/README.md). Docker Compose on rnd-v3-vpn, behind the clino nginx edge, at https://qa-tool.sismedika.com.
   The image is built from this directory's `Dockerfile`.
 - `cloudbuild.yaml` (Cloud Run) is **legacy** and is no longer the deploy path.
 

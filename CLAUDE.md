@@ -2,7 +2,7 @@
 
 This is an AI-assisted QA automation system for **HISv3**, the Sismedika hospital information system. Playwright explores and tests HISv3. A Go backend stores flows, issues and skills in MySQL and calls an LLM through **ai-manager**. A React dashboard shows the results.
 
-- Production: **https://his-v3.qa.sismedika.com**, running on rnd-v3-vpn. See [deploy/his-v3-qa/README.md](deploy/his-v3-qa/README.md).
+- Production: **https://qa-tool.sismedika.com**, running on rnd-v3-vpn. See [deploy/his-v3-qa/README.md](deploy/his-v3-qa/README.md).
 - System contract: [README.md](README.md). The per-directory README files are EGM (Elephant-Goldfish Model, see below) contracts: read the one for the directory you are about to change.
 - Goals: [OBJECTIVES.md](OBJECTIVES.md). Design specs: [docs/designs/SITEMAP.md](docs/designs/SITEMAP.md).
 
@@ -35,7 +35,7 @@ EGM artifact directory: .dev/docs
 
 | IP | ssh alias | Role for this repo |
 |---|---|---|
-| 10.10.0.1 / 103.127.134.25 | `clino` | Shared nginx TLS edge: `/etc/nginx/conf.d/his-v3-qa.conf`, cert lineage `his-v3-qa` |
+| 10.10.0.1 / 103.127.134.25 | `clino` | Shared nginx TLS edge: `/etc/nginx/conf.d/his-v3-qa.conf`, cert lineage `qa-tool` |
 | 10.10.0.4 | `rnd-v2-vpn` | MySQL `:5306` (container `master-compose-ai-mysqldb-master-1`, DB/user `qa_automation`); **ai-manager `:8099`** |
 | 10.10.0.7 | `taskmgr-vpn` | taskmgr Neo4j (optional one-shot user seed; port not reachable from rnd-v3) |
 | 10.10.0.9 | `rnd-v3-vpn` | This app (Docker Compose, `10.10.0.9:8140`); **playwright-executor `:8141`** (systemd `--user`, 2.5 GiB / 60 % CPU cap); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |

@@ -27,7 +27,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 ```
   Browser
-     │  https://his-v3.qa.sismedika.com   (TLS at the clino nginx edge, then WireGuard)
+     │  https://qa-tool.sismedika.com   (TLS at the clino nginx edge, then WireGuard)
      ▼
  ┌──────────────────────── rnd-v3-vpn 10.10.0.9 (4 vCPU / 3.8 GiB) ──────────────────────────┐
  │                                                                                           │
@@ -374,7 +374,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | Environment | URL |
 |-------------|-----|
 | Local | `http://localhost:8080` |
-| Production | `https://his-v3.qa.sismedika.com` (`/api`, `/health` proxied by the dashboard nginx) |
+| Production | `https://qa-tool.sismedika.com` (`/api`, `/health` proxied by the dashboard nginx) |
 
 ### Endpoints
 
@@ -425,7 +425,7 @@ curl -b cookies.txt "http://localhost:8080/api/search?q=login"
 
 ### Production: his-v3-qa (Docker Compose on rnd-v3-vpn)
 
-Production runs at **https://his-v3.qa.sismedika.com**. A Docker Compose stack on rnd-v3-vpn runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
+Production runs at **https://qa-tool.sismedika.com**. A Docker Compose stack on rnd-v3-vpn runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
 It sits behind the shared clino nginx edge and reaches MySQL and ai-manager over WireGuard.
 See [deploy/his-v3-qa/README.md](./deploy/his-v3-qa/README.md) for deploy, rollback and health checks.
 

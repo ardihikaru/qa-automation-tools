@@ -13,7 +13,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 - **Production**: `Dockerfile` builds `dist/` with `npm run build` and serves it from
   `nginx:alpine`. The current production deployment is the Docker Compose stack in
   [deploy/his-v3-qa](../deploy/his-v3-qa/README.md) on `rnd-v3-vpn`, behind the clino
-  nginx edge at https://his-v3.qa.sismedika.com. That stack builds with
+  nginx edge at https://qa-tool.sismedika.com. That stack builds with
   `NGINX_CONF=nginx.conf.example` and mounts `deploy/his-v3-qa/nginx.dashboard.conf`
   over it, which serves the SPA and proxies `/api` and `/health` to the `backend`
   service.
