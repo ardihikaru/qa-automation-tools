@@ -21,6 +21,8 @@ func gitT(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func docsOnly(p string) bool { return strings.HasPrefix(p, "docs/") }
+
 func TestReadTree(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -50,7 +52,7 @@ func TestReadTree(t *testing.T) {
 	poolDir := t.TempDir()
 	p := New(poolDir)
 	ctx := context.Background()
-	sha, files, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", "docs", 1<<20)
+	sha, files, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", docsOnly, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,35 +72,33 @@ func TestReadTree(t *testing.T) {
 	// Second commit: the mirror moves forward.
 	write("docs/a.md", "# A2\n")
 	gitT(t, src, "commit", "-q", "-am", "two")
-	sha2, files, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", "docs", 1<<20)
+	sha2, files, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", docsOnly, 1<<20)
 	if err != nil || sha2 == sha1 || string(files["docs/a.md"]) != "# A2\n" {
 		t.Fatalf("second read: %v %s %q", err, sha2, files["docs/a.md"])
 	}
 
 	// A broken mirror (HEAD removed) is re-initialised, never resolved upward.
 	_ = os.Remove(filepath.Join(poolDir, MirrorsDir, "7.git", "HEAD"))
-	if sha3, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", "docs", 1<<20); err != nil || sha3 != sha2 {
+	if sha3, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", docsOnly, 1<<20); err != nil || sha3 != sha2 {
 		t.Fatalf("re-init: %v %s", err, sha3)
 	}
 
 	// Size cap.
-	if _, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", "docs", 3); err == nil {
+	if _, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", docsOnly, 3); err == nil {
 		t.Error("want size cap error")
 	}
 
 	// Input validation.
-	for _, tc := range []struct{ url, branch, prefix string }{
-		{"https://evil.example/x/y", "main", "docs"},
-		{"https://github.com/acme/catalog", "-x", "docs"},
-		{"https://github.com/acme/catalog", "main", "../docs"},
-		{"https://github.com/acme/catalog", "main", "/docs"},
+	for _, tc := range []struct{ url, branch string }{
+		{"https://evil.example/x/y", "main"},
+		{"https://github.com/acme/catalog", "-x"},
 	} {
-		if _, _, err := p.ReadTree(ctx, 7, tc.url, tc.branch, tc.prefix, 1<<20); err == nil {
+		if _, _, err := p.ReadTree(ctx, 7, tc.url, tc.branch, docsOnly, 1<<20); err == nil {
 			t.Errorf("%+v: want error", tc)
 		}
 	}
 	p.AllowedOwners = []string{"other"}
-	if _, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", "docs", 1<<20); err == nil {
+	if _, _, err := p.ReadTree(ctx, 7, "https://github.com/acme/catalog", "main", docsOnly, 1<<20); err == nil {
 		t.Error("owner not allowed: want error")
 	}
 }

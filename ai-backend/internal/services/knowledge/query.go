@@ -32,7 +32,7 @@ func badInput(f string, a ...any) error { return &InputError{Msg: fmt.Sprintf(f,
 // Item is one JSON object returned by the API.
 type Item = map[string]any
 
-var jsonCols = map[string]bool{"spec_paths": true, "tags": true, "counts": true, "diff": true, "problems": true}
+var jsonCols = map[string]bool{"spec_paths": true, "tags": true, "counts": true, "diff": true, "problems": true, "frontmatter": true}
 
 // scanItems scans rows into maps keyed by column name. Text becomes string, JSON columns become
 // json.RawMessage, NULL becomes nil.
@@ -440,6 +440,9 @@ func likeArg(q string) string {
 func (f *Filter) norm() {
 	if f.Page < 1 {
 		f.Page = 1
+	}
+	if f.Page > 100000 {
+		f.Page = 100000
 	}
 	if f.PageSize < 1 {
 		f.PageSize = 50
@@ -1142,4 +1145,107 @@ func (s *Syncer) entityCoverage(ctx context.Context, pid int, et, code string, i
 		return child("features", "feature", Scope{})
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------- assistant files
+
+// AssistantFilter narrows assistant lists.
+type AssistantFilter struct {
+	ProductID      int // 0 = every product (cross-product list only)
+	Kind, Q        string
+	IncludeRemoved bool
+	Page, PageSize int
+}
+
+func (f *AssistantFilter) where(alias string) (string, []any, error) {
+	var parts []string
+	var args []any
+	if !f.IncludeRemoved {
+		parts = append(parts, alias+".removed_at IS NULL")
+	}
+	if f.ProductID > 0 {
+		parts = append(parts, alias+".product_id = ?")
+		args = append(args, f.ProductID)
+	}
+	if f.Kind != "" {
+		var ks []string
+		for _, k := range strings.Split(f.Kind, ",") {
+			if !contains(AssistantKinds, k) {
+				return "", nil, badInput("kind must be one of %s", strings.Join(AssistantKinds, ", "))
+			}
+			ks = append(ks, k)
+			args = append(args, k)
+		}
+		parts = append(parts, alias+".kind IN ("+inList(len(ks))+")")
+	}
+	if f.Q != "" {
+		parts = append(parts, "("+alias+".name LIKE ? OR "+alias+".description LIKE ? OR "+alias+".path LIKE ?)")
+		args = append(args, likeArg(f.Q), likeArg(f.Q), likeArg(f.Q))
+	}
+	if len(parts) == 0 {
+		return "1=1", args, nil
+	}
+	return strings.Join(parts, " AND "), args, nil
+}
+
+// Assistants lists the assistant files of every product (or one), without their bodies, with
+// counts per kind for the same filter minus the kind.
+func (s *Syncer) Assistants(ctx context.Context, f AssistantFilter) (Item, error) {
+	if f.Page < 1 || f.Page > 100000 {
+		f.Page = 1
+	}
+	if f.PageSize < 1 || f.PageSize > 200 {
+		f.PageSize = 50
+	}
+	where, args, err := f.where("a")
+	if err != nil {
+		return nil, err
+	}
+	var total int
+	if err := s.DB.QueryRow(ctx, "SELECT COUNT(*) FROM kb_assistants a WHERE "+where, args...).Scan(&total); err != nil {
+		return nil, err
+	}
+	q := `SELECT a.code, a.kind, a.name, a.description, a.path, a.frontmatter, a.origin, a.removed_at, a.removed_sync_id, a.changed_sync_id,
+  a.product_id, p.name AS product_name,
+  (SELECT CONCAT(k.repo_url, ' ', k.commit_sha) FROM kb_syncs k WHERE k.product_id = a.product_id AND k.status = 'succeeded' ORDER BY k.id DESC LIMIT 1) AS repo_at
+FROM kb_assistants a JOIN products p ON p.id = a.product_id WHERE ` + where + fmt.Sprintf(" ORDER BY FIELD(a.kind, 'instructions','agent','skill','rule','command'), a.name, a.path LIMIT %d OFFSET %d", f.PageSize, (f.Page-1)*f.PageSize)
+	rs, err := s.DB.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	items, err := scanItems(rs)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		it["type"] = TypeAssistant
+		it["source_url"] = nil
+		if ra, ok := it["repo_at"].(string); ok && it["removed_at"] == nil {
+			if url, sha, ok := strings.Cut(ra, " "); ok {
+				it["source_url"] = "https://github.com/" + repopool.NormalizeRepo(url) + "/blob/" + sha + "/" + it["path"].(string)
+			}
+		}
+		delete(it, "repo_at")
+	}
+	kf := f
+	kf.Kind = ""
+	kw, kargs, _ := kf.where("a")
+	krs, err := s.DB.Query(ctx, "SELECT a.kind, COUNT(*) FROM kb_assistants a WHERE "+kw+" GROUP BY a.kind", kargs...)
+	if err != nil {
+		return nil, err
+	}
+	defer krs.Close()
+	kinds := map[string]int{}
+	for _, k := range AssistantKinds {
+		kinds[k] = 0
+	}
+	for krs.Next() {
+		var k string
+		var n int
+		if err := krs.Scan(&k, &n); err != nil {
+			return nil, err
+		}
+		kinds[k] = n
+	}
+	return Item{"items": items, "total": total, "page": f.Page, "page_size": f.PageSize, "kinds": kinds}, krs.Err()
 }

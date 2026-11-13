@@ -23,7 +23,6 @@ import (
 const MirrorsDir = ".kb-mirrors"
 
 var (
-	treePrefixRe = regexp.MustCompile(`^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`)
 	shaRe        = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	// mirrorGitCfg disables everything in git that could run code or rewrite objects.
 	mirrorGitCfg = []string{"-c", "core.hooksPath=/dev/null", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "fetch.writeFetchHEAD=false"}
@@ -35,9 +34,10 @@ var mirrorRemote = func(repoURL string) string {
 }
 
 // ReadTree fetches branch of repoURL into the sync-owned bare mirror <pool>/.kb-mirrors/<repoID>.git
-// and returns the commit SHA and the raw bytes of every regular file under prefix (paths are
-// relative to the repo root). It never touches the product clone, its worktrees or its remote.
-func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch, prefix string, maxBytes int64) (string, map[string][]byte, error) {
+// and returns the commit SHA and the raw bytes of every regular file for which keep(path) is true
+// (paths are relative to the repo root; keep nil keeps everything). It never touches the product
+// clone, its worktrees or its remote.
+func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch string, keep func(path string) bool, maxBytes int64) (string, map[string][]byte, error) {
 	if repoID <= 0 {
 		return "", nil, inputErr("invalid repo id")
 	}
@@ -49,14 +49,6 @@ func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch, prefix
 	}
 	if err := ValidateBranch(branch); err != nil {
 		return "", nil, err
-	}
-	if !treePrefixRe.MatchString(prefix) {
-		return "", nil, inputErr("invalid tree prefix")
-	}
-	for _, seg := range strings.Split(prefix, "/") {
-		if seg == "." || seg == ".." {
-			return "", nil, inputErr("invalid tree prefix")
-		}
 	}
 	abs, err := p.resolveValidated(MirrorsDir + "/" + strconv.Itoa(repoID) + ".git")
 	if err != nil {
@@ -105,8 +97,8 @@ func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch, prefix
 	if !shaRe.MatchString(sha) {
 		return "", nil, fmt.Errorf("unexpected commit id from git")
 	}
-	// 6. List the blobs under prefix.
-	out, err = git(30*time.Second, nil, 64<<20, "ls-tree", "-r", "-z", "--full-tree", sha, "--", prefix)
+	// 6. List the blobs, keep the wanted ones.
+	out, err = git(30*time.Second, nil, 64<<20, "ls-tree", "-r", "-z", "--full-tree", sha)
 	if err != nil {
 		return "", nil, err
 	}
@@ -122,6 +114,9 @@ func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch, prefix
 		}
 		f := strings.Fields(string(meta)) // <mode> <type> <oid>
 		if len(f) != 3 || f[1] != "blob" || (f[0] != "100644" && f[0] != "100755") {
+			continue
+		}
+		if keep != nil && !keep(string(path)) {
 			continue
 		}
 		entries = append(entries, entry{oid: f[2], path: string(path)})
@@ -154,7 +149,7 @@ func (p *Pool) ReadTree(ctx context.Context, repoID int, repoURL, branch, prefix
 			}
 			total += size
 			if total > maxBytes {
-				return "", nil, fmt.Errorf("%s/ is larger than %d bytes", prefix, maxBytes)
+				return "", nil, fmt.Errorf("the selected files are larger than %d bytes", maxBytes)
 			}
 			buf := make([]byte, size)
 			if _, err := io.ReadFull(r, buf); err != nil {
