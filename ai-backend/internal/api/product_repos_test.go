@@ -1,16 +1,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/qa-automation/ai-backend/internal/auth"
 	"github.com/qa-automation/ai-backend/internal/models"
+	"github.com/qa-automation/ai-backend/internal/services/repopool"
 )
 
 func TestRootDirOverlap(t *testing.T) {
@@ -36,11 +40,12 @@ func TestWriteAllowedTruthTable(t *testing.T) {
 	ops := []RepoOp{RepoOpCreateBranch, RepoOpPush, RepoOpOpenPR}
 	for _, op := range ops {
 		for _, c := range []struct {
-			isMain, flag, allowed bool
+			isAutomation, flag, allowed bool
 		}{{true, false, true}, {true, true, true}, {false, true, true}, {false, false, false}} {
-			err := writeAllowed(c.isMain, c.flag, op)
+			// The first parameter is automation: a repo that is merely main is denied with the flag off.
+			err := writeAllowed(c.isAutomation, c.flag, op)
 			if c.allowed && err != nil || !c.allowed && err != ErrWriteNotAllowed {
-				t.Errorf("op=%s main=%v flag=%v: got %v", op, c.isMain, c.flag, err)
+				t.Errorf("op=%s automation=%v flag=%v: got %v", op, c.isAutomation, c.flag, err)
 			}
 		}
 	}
@@ -60,6 +65,7 @@ func TestConflictMessage(t *testing.T) {
 		"uq_product_repos_url":           "this repository is already listed for the product",
 		"uq_product_repos_main":          "the product already has a main repo",
 		"uq_product_repos_central":       "the product already has a central repo",
+		"uq_product_repos_automation":    "the product already has an automation repo",
 		"uq_product_repo_branches":       "duplicate or colliding branch name",
 		"uq_product_repo_branch_slug":    "duplicate or colliding branch name",
 		"uq_product_repo_branch_default": "only one default branch is allowed",
@@ -115,15 +121,22 @@ func TestRoleMatrix(t *testing.T) {
 func TestOrdering(t *testing.T) {
 	repos := []models.ProductRepo{
 		{ID: 1, Name: "zeta"}, {ID: 2, Name: "alpha"}, {ID: 3, Name: "central", IsCentral: true}, {ID: 4, Name: "main", IsMain: true},
-		{ID: 5, Name: "mid"},
+		{ID: 5, Name: "mid"}, {ID: 6, Name: "zz-auto", IsAutomation: true},
 	}
 	sortRepos(repos)
 	var names []string
 	for _, r := range repos {
 		names = append(names, r.Name)
 	}
-	if got := strings.Join(names, ","); got != "main,central,alpha,mid,zeta" {
+	if got := strings.Join(names, ","); got != "main,zz-auto,central,alpha,mid,zeta" {
 		t.Fatalf("repo order: %s", got)
+	}
+	// Automation ranks after main and before central even when its name sorts last; a main that is
+	// also automation is not duplicated.
+	mixed := []models.ProductRepo{{Name: "c", IsCentral: true}, {Name: "z", IsAutomation: true}, {Name: "m", IsMain: true, IsAutomation: true}}
+	sortRepos(mixed)
+	if mixed[0].Name != "m" || mixed[1].Name != "z" || mixed[2].Name != "c" {
+		t.Fatalf("main, automation, central order: %v", mixed)
 	}
 	// Main that is also central stays first and is not duplicated by the central rank.
 	both := []models.ProductRepo{{Name: "b"}, {Name: "a", IsMain: true, IsCentral: true}}
@@ -150,7 +163,7 @@ func TestProductJSONShape(t *testing.T) {
 		}
 	}
 	repo := m["repos"].([]any)[0].(map[string]any)
-	for _, k := range []string{"id", "product_id", "name", "repo_url", "root_dir", "is_main", "is_central", "default_branch", "branches",
+	for _, k := range []string{"id", "product_id", "name", "repo_url", "root_dir", "is_main", "is_automation", "is_central", "default_branch", "branches",
 		"playwright_accessible", "last_verified_at", "verify_report", "sync_report", "created_at", "updated_at"} {
 		if _, ok := repo[k]; !ok {
 			t.Errorf("repo JSON lacks %q", k)
@@ -216,8 +229,27 @@ func TestValidateRepoAndSet(t *testing.T) {
 
 	m := good()
 	s1 := repoBody{Name: "s1", RepoURL: "https://github.com/o/s1", RootDir: "o/s1", IsCentral: true}
-	if msg := validateRepoSet([]repoBody{m, s1}); msg != "" {
+	set, msg := validateRepoSet([]repoBody{m, s1})
+	if msg != "" {
 		t.Fatalf("valid set: %s", msg)
+	}
+	// Zero automation repos: the main row is defaulted to automation, in the returned copy only.
+	if !set[0].IsAutomation || set[1].IsAutomation {
+		t.Fatalf("main must default to automation: %+v", set)
+	}
+	if m.IsAutomation {
+		t.Fatal("the input must not be mutated")
+	}
+	// Automation != main is accepted and kept.
+	split, msg := validateRepoSet([]repoBody{m, {Name: "auto", RepoURL: "https://github.com/o/auto", RootDir: "o/auto", IsAutomation: true}})
+	if msg != "" || split[0].IsAutomation || !split[1].IsAutomation {
+		t.Fatalf("split roles: %q %+v", msg, split)
+	}
+	// Main that is also automation, explicitly.
+	both := m
+	both.IsAutomation = true
+	if got, msg := validateRepoSet([]repoBody{both}); msg != "" || !got[0].IsAutomation {
+		t.Fatalf("main+automation: %q %+v", msg, got)
 	}
 	bads := map[string][]repoBody{
 		"none":        {},
@@ -227,12 +259,18 @@ func TestValidateRepoAndSet(t *testing.T) {
 		"dup name":    {m, {Name: "main", RepoURL: "https://github.com/o/x", RootDir: "o/x"}},
 		"dup url":     {m, {Name: "x", RepoURL: "https://github.com/O/R.git", RootDir: "o/x"}},
 		"overlap":     {m, {Name: "x", RepoURL: "https://github.com/o/x", RootDir: "o/r/sub"}},
+		"two automation": {m, {Name: "a1", RepoURL: "https://github.com/o/a1", RootDir: "o/a1", IsAutomation: true},
+			{Name: "a2", RepoURL: "https://github.com/o/a2", RootDir: "o/a2", IsAutomation: true}},
 	}
 	for name, set := range bads {
 		cp := append([]repoBody{}, set...)
-		if msg := validateRepoSet(cp); msg == "" {
+		if _, msg := validateRepoSet(cp); msg == "" {
 			t.Errorf("%s must be rejected", name)
 		}
+	}
+	if _, msg := validateRepoSet([]repoBody{m, {Name: "a1", RepoURL: "https://github.com/o/a1", RootDir: "o/a1", IsAutomation: true},
+		{Name: "a2", RepoURL: "https://github.com/o/a2", RootDir: "o/a2", IsAutomation: true}}); msg != "at most one repo can be the automation repo" {
+		t.Fatalf("two automation message: %q", msg)
 	}
 }
 
@@ -271,5 +309,37 @@ func TestProductUpdateBodyAcceptsLegacyFields(t *testing.T) {
 	var b productUpdateBody
 	if !decodeStrictJSON(rec, req, 1<<10, &b) {
 		t.Fatalf("legacy fields rejected: %s", rec.Body.String())
+	}
+}
+
+func TestSetPushPolicyRetry(t *testing.T) {
+	ctx := context.Background()
+	var calls int
+	busyThen := func(n int) func(context.Context, string, bool) error {
+		calls = 0
+		return func(context.Context, string, bool) error {
+			calls++
+			if calls <= n {
+				return repopool.ErrBusy
+			}
+			return nil
+		}
+	}
+	if err := setPushPolicyRetry(ctx, busyThen(2), "o/r", true, 3, 0); err != nil || calls != 3 {
+		t.Fatalf("busy twice then ok: err=%v calls=%d", err, calls)
+	}
+	if err := setPushPolicyRetry(ctx, busyThen(5), "o/r", true, 3, 0); !errors.Is(err, repopool.ErrBusy) || calls != 3 {
+		t.Fatalf("always busy gives up after 3: err=%v calls=%d", err, calls)
+	}
+	boom := errors.New("boom")
+	calls = 0
+	if err := setPushPolicyRetry(ctx, func(context.Context, string, bool) error { calls++; return boom }, "o/r", true, 3, 0); err != boom || calls != 1 {
+		t.Fatalf("other errors are not retried: err=%v calls=%d", err, calls)
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	calls = 0
+	if err := setPushPolicyRetry(cctx, func(context.Context, string, bool) error { calls++; return repopool.ErrBusy }, "o/r", true, 3, time.Hour); !errors.Is(err, repopool.ErrBusy) || calls != 1 {
+		t.Fatalf("cancelled ctx stops the wait: err=%v calls=%d", err, calls)
 	}
 }

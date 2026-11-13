@@ -29,21 +29,22 @@ const (
 )
 
 var (
-	// ErrWriteNotAllowed is returned for a write-class op on a sibling repo while the product flag is off.
-	ErrWriteNotAllowed = errors.New("repo is read-only: enable allow_non_automation_work on the product")
+	// ErrWriteNotAllowed is returned for a write-class op on a repo that is not the automation repo
+	// while the product flag is off.
+	ErrWriteNotAllowed = errors.New("repo is read-only: it is not the automation repo and allow_non_automation_work is off")
 	// ErrRepoNotFound is returned when a repo id does not exist (deny).
 	ErrRepoNotFound = errors.New("repo not found")
 )
 
-// writeAllowed is the pure core of repoWriteAllowed: an unknown op is denied; the main repo is
-// allowed; a non-main repo is allowed only while the product flag is on.
-func writeAllowed(isMain, flag bool, op RepoOp) error {
+// writeAllowed is the pure core of repoWriteAllowed: an unknown op is denied; the automation repo
+// is allowed; any other repo (main included) is allowed only while the product flag is on.
+func writeAllowed(isAutomation, flag bool, op RepoOp) error {
 	switch op {
 	case RepoOpCreateBranch, RepoOpPush, RepoOpOpenPR:
 	default:
 		return ErrWriteNotAllowed
 	}
-	if isMain || flag {
+	if isAutomation || flag {
 		return nil
 	}
 	return ErrWriteNotAllowed
@@ -53,16 +54,16 @@ func writeAllowed(isMain, flag bool, op RepoOp) error {
 // callers cannot pass a stale or contradictory pair. Any future endpoint that pushes, creates
 // branches or opens PRs MUST call it first; no route does yet.
 func repoWriteAllowed(ctx context.Context, d *db.DB, repoID int, op RepoOp) error {
-	var isMain, flag bool
-	err := d.QueryRow(ctx, `SELECT r.is_main, COALESCE(s.allow_non_automation_work, 0)
-		FROM product_repos r LEFT JOIN product_settings s ON s.product_id = r.product_id WHERE r.id = ?`, repoID).Scan(&isMain, &flag)
+	var isAutomation, flag bool
+	err := d.QueryRow(ctx, `SELECT r.is_automation, COALESCE(s.allow_non_automation_work, 0)
+		FROM product_repos r LEFT JOIN product_settings s ON s.product_id = r.product_id WHERE r.id = ?`, repoID).Scan(&isAutomation, &flag)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrRepoNotFound
 	}
 	if err != nil {
 		return err
 	}
-	return writeAllowed(isMain, flag, op)
+	return writeAllowed(isAutomation, flag, op)
 }
 
 // ---- Input ----
@@ -75,17 +76,19 @@ type repoBody struct {
 	RepoURL       string   `json:"repo_url"`
 	RootDir       string   `json:"root_dir"`
 	IsMain        bool     `json:"is_main"`
+	IsAutomation  bool     `json:"is_automation"`
 	IsCentral     bool     `json:"is_central"`
 	Branches      []string `json:"branches"`
 	DefaultBranch string   `json:"default_branch"`
 }
 
 type repoPatch struct {
-	Name      *string `json:"name"`
-	RepoURL   *string `json:"repo_url"`
-	RootDir   *string `json:"root_dir"`
-	IsMain    *bool   `json:"is_main"`
-	IsCentral *bool   `json:"is_central"`
+	Name         *string `json:"name"`
+	RepoURL      *string `json:"repo_url"`
+	RootDir      *string `json:"root_dir"`
+	IsMain       *bool   `json:"is_main"`
+	IsAutomation *bool   `json:"is_automation"`
+	IsCentral    *bool   `json:"is_central"`
 }
 
 type branchesBody struct {
@@ -171,42 +174,57 @@ func validateRepo(in *repoBody) string {
 }
 
 // validateRepoSet validates the repos of a new product: at least one, exactly one main, at most
-// one central, unique names, unique normalised URLs and no overlapping footprints.
-func validateRepoSet(repos []repoBody) string {
+// one automation (none defaults to the main repo), at most one central, unique names, unique
+// normalised URLs and no overlapping footprints. It returns the defaulted copy of the set.
+func validateRepoSet(in []repoBody) ([]repoBody, string) {
+	repos := append([]repoBody(nil), in...)
 	if len(repos) == 0 {
-		return "at least one repo (the main repo) is required"
+		return nil, "at least one repo (the main repo) is required"
 	}
-	mains, centrals := 0, 0
+	mains, automations, centrals := 0, 0, 0
 	names, urls := map[string]bool{}, map[string]bool{}
 	for i := range repos {
 		if msg := validateRepo(&repos[i]); msg != "" {
-			return msg
+			return nil, msg
 		}
 		in := repos[i]
 		if in.IsMain {
 			mains++
+		}
+		if in.IsAutomation {
+			automations++
 		}
 		if in.IsCentral {
 			centrals++
 		}
 		n := repopool.NormalizeRepo(in.RepoURL)
 		if names[in.Name] || urls[n] {
-			return "repo names and repo_url values must be unique within a product"
+			return nil, "repo names and repo_url values must be unique within a product"
 		}
 		names[in.Name], urls[n] = true, true
 		for j := 0; j < i; j++ {
 			if rootDirOverlap(in.RootDir, []string{repos[j].RootDir}) {
-				return "repo root_dir values must not overlap"
+				return nil, "repo root_dir values must not overlap"
 			}
 		}
 	}
 	if mains != 1 {
-		return "exactly one repo must have is_main true"
+		return nil, "exactly one repo must have is_main true"
+	}
+	if automations > 1 {
+		return nil, "at most one repo can be the automation repo"
 	}
 	if centrals > 1 {
-		return "at most one repo can be the central repo"
+		return nil, "at most one repo can be the central repo"
 	}
-	return ""
+	if automations == 0 {
+		for i := range repos {
+			if repos[i].IsMain {
+				repos[i].IsAutomation = true
+			}
+		}
+	}
+	return repos, ""
 }
 
 // ---- DB helpers (all take a transaction or *sql.DB) ----
@@ -231,13 +249,15 @@ func otherRootDirs(ctx context.Context, q queryer, exceptRepoID int) ([]string, 
 	return out, rows.Err()
 }
 
-// mirrorMainToLegacy copies the main repo's url, dir, default branch and verify state into the
-// legacy products columns (kept for rollback). It is the only writer of those columns.
-func mirrorMainToLegacy(tx *sql.Tx, productID int) error {
+// mirrorAutomationToLegacy copies the automation repo's url, dir, branch and verify state into the
+// legacy products columns (kept for rollback). It is the only writer of those columns. The branch
+// is the repo's default, else its first branch alphabetically, else ”.
+func mirrorAutomationToLegacy(tx *sql.Tx, productID int) error {
 	_, err := tx.Exec(`UPDATE products p
-		JOIN product_repos r ON r.product_id = p.id AND r.is_main = 1
+		JOIN product_repos r ON r.product_id = p.id AND r.is_automation = 1
 		LEFT JOIN product_repo_branches b ON b.repo_id = r.id AND b.is_default = 1
-		SET p.repo_url = r.repo_url, p.root_dir = r.root_dir, p.branch = COALESCE(b.branch, ''),
+		SET p.repo_url = r.repo_url, p.root_dir = r.root_dir,
+		    p.branch = COALESCE(b.branch, (SELECT MIN(x.branch) FROM product_repo_branches x WHERE x.repo_id = r.id), ''),
 		    p.playwright_accessible = r.playwright_accessible, p.last_verified_at = r.last_verified_at,
 		    p.verify_report = r.verify_report
 		WHERE p.id = ?`, productID)
@@ -245,8 +265,8 @@ func mirrorMainToLegacy(tx *sql.Tx, productID int) error {
 }
 
 func insertRepo(ctx context.Context, q queryer, productID int, in repoBody) (int, error) {
-	res, err := q.ExecContext(ctx, `INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_central)
-		VALUES (?, ?, ?, ?, ?, ?)`, productID, in.Name, in.RepoURL, in.RootDir, in.IsMain, in.IsCentral)
+	res, err := q.ExecContext(ctx, `INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_automation, is_central)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, productID, in.Name, in.RepoURL, in.RootDir, in.IsMain, in.IsAutomation, in.IsCentral)
 	if err != nil {
 		return 0, err
 	}
@@ -316,6 +336,26 @@ func hasMain(repos []models.ProductRepo) bool {
 		}
 	}
 	return false
+}
+
+func hasAutomation(repos []models.ProductRepo) bool {
+	for _, rp := range repos {
+		if rp.IsAutomation {
+			return true
+		}
+	}
+	return false
+}
+
+// checkRoleState applies the precedence table: no main repo first, then no automation repo.
+func checkRoleState(repos []models.ProductRepo) error {
+	if !hasMain(repos) {
+		return errNoMain
+	}
+	if !hasAutomation(repos) {
+		return errNoAutomation
+	}
+	return nil
 }
 
 // ---- Routing ----
@@ -443,14 +483,14 @@ func detachedCtx(req *http.Request) (context.Context, context.CancelFunc) {
 }
 
 // loadRepoForRoute returns the product and repo {rid} of {pid}: 404 for a missing product or a repo
-// that is not this product's, 409 when the product has no main repo.
+// that is not this product's, 409 when the product has no main repo (checked first) or no automation repo.
 func loadRepoForRoute(ctx context.Context, d *db.DB, pid, rid int) (models.Product, models.ProductRepo, error) {
 	p, err := fetchProduct(ctx, d, pid)
 	if err != nil {
 		return p, models.ProductRepo{}, err
 	}
-	if !hasMain(p.Repos) {
-		return p, models.ProductRepo{}, errNoMain
+	if err := checkRoleState(p.Repos); err != nil {
+		return p, models.ProductRepo{}, err
 	}
 	repo, ok := findRepo(p.Repos, rid)
 	if !ok {
@@ -484,7 +524,9 @@ func (r *Router) addRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid
 		return
 	}
 	ctx := req.Context()
+	automationChanged := false
 	err := productTx(ctx, d, pid, func(tx *sql.Tx) error {
+		automationChanged = false
 		repos, err := loadRepos(ctx, tx, `r.product_id = ?`, pid)
 		if err != nil {
 			return err
@@ -492,11 +534,36 @@ func (r *Router) addRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid
 		if !hasMain(repos) && !in.IsMain {
 			return errNoMain
 		}
+		// Automation rule (after the main check): an explicit true promotes; a repo-less product
+		// makes the new (main) repo automation; otherwise it is automation only when none exists.
+		isAutomation := in.IsAutomation
+		switch {
+		case isAutomation:
+		case len(repos) == 0:
+			isAutomation = true
+		case hasAutomation(repos):
+		default:
+			return errNoAutomation
+		}
+		in.IsAutomation = isAutomation
+		automationChanged = isAutomation
 		if err := checkRepoConflicts(ctx, tx, repos, 0, in.Name, in.RepoURL, in.RootDir); err != nil {
 			return err
 		}
 		if in.IsMain { // promotion: the old main becomes a sibling first
 			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET is_main=0 WHERE product_id=? AND is_main=1`, pid); err != nil {
+				return err
+			}
+		}
+		if in.IsAutomation { // promotion: the old automation repo becomes a sibling and starts unverified
+			for _, rp := range repos {
+				if rp.IsAutomation {
+					if err := clearVerify(ctx, tx, rp.ID); err != nil {
+						return err
+					}
+				}
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET is_automation=0 WHERE product_id=? AND is_automation=1`, pid); err != nil {
 				return err
 			}
 		}
@@ -508,13 +575,13 @@ func (r *Router) addRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid
 		if _, err := insertRepo(ctx, tx, pid, in); err != nil {
 			return err
 		}
-		return mirrorMainToLegacy(tx, pid)
+		return mirrorAutomationToLegacy(tx, pid)
 	})
 	if err != nil {
 		writeOpError(w, "add repo", err)
 		return
 	}
-	if in.IsMain {
+	if automationChanged {
 		r.applyPushPolicies(ctx, d, pid)
 	}
 	r.respondProduct(w, req, pid, http.StatusCreated)
@@ -526,15 +593,20 @@ func (r *Router) updateRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 		return
 	}
 	ctx := req.Context()
-	mainChanged := false
+	automationChanged := false
 	err := productTx(ctx, d, pid, func(tx *sql.Tx) error {
-		mainChanged = false
+		automationChanged = false
 		repos, err := loadRepos(ctx, tx, `r.product_id = ?`, pid)
 		if err != nil {
 			return err
 		}
 		if !hasMain(repos) {
 			return errNoMain
+		}
+		// Degraded S2 (main, no automation): only a request that sets is_automation:true may repair it.
+		wantAutomation := patch.IsAutomation != nil && *patch.IsAutomation
+		if !hasAutomation(repos) && !wantAutomation {
+			return errNoAutomation
 		}
 		cur, ok := findRepo(repos, rid)
 		if !ok {
@@ -556,6 +628,9 @@ func (r *Router) updateRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 		if patch.IsMain != nil && !*patch.IsMain && cur.IsMain {
 			return conflict("this is the main repo: promote another repo first")
 		}
+		if patch.IsAutomation != nil && !*patch.IsAutomation && cur.IsAutomation {
+			return conflict("this is the automation repo: promote another repo first")
+		}
 		if err := checkRepoConflicts(ctx, tx, repos, rid, name, repoURL, rootDir); err != nil {
 			return err
 		}
@@ -565,34 +640,48 @@ func (r *Router) updateRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 				return err
 			}
 		}
+		promoteAutomation := wantAutomation && !cur.IsAutomation
+		if promoteAutomation {
+			// Both the demoted and the promoted repo start unverified (their report shapes change).
+			for _, rp := range repos {
+				if rp.IsAutomation {
+					if err := clearVerify(ctx, tx, rp.ID); err != nil {
+						return err
+					}
+				}
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET is_automation=0 WHERE product_id=? AND is_automation=1`, pid); err != nil {
+				return err
+			}
+		}
 		if patch.IsCentral != nil && *patch.IsCentral && !cur.IsCentral {
 			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET is_central=0 WHERE product_id=? AND is_central=1`, pid); err != nil {
 				return err
 			}
 		}
-		isMain, isCentral := cur.IsMain || promote, cur.IsCentral
+		isMain, isAutomation, isCentral := cur.IsMain || promote, cur.IsAutomation || promoteAutomation, cur.IsCentral
 		if patch.IsCentral != nil {
 			isCentral = *patch.IsCentral
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET name=?, repo_url=?, root_dir=?, is_main=?, is_central=? WHERE id=?`,
-			name, repoURL, rootDir, isMain, isCentral, rid); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET name=?, repo_url=?, root_dir=?, is_main=?, is_automation=?, is_central=? WHERE id=?`,
+			name, repoURL, rootDir, isMain, isAutomation, isCentral, rid); err != nil {
 			return err
 		}
-		// Verification depends on the URL and directory; a sibling's report also lacks the main-only
-		// checks, so a newly promoted repo starts unverified as well.
-		if repoURL != cur.RepoURL || rootDir != cur.RootDir || promote {
+		// Verification depends on the URL and directory, and a repo's report shape depends on its
+		// automation role, so a newly promoted automation repo starts unverified as well.
+		if repoURL != cur.RepoURL || rootDir != cur.RootDir || promoteAutomation {
 			if err := clearVerify(ctx, tx, rid); err != nil {
 				return err
 			}
 		}
-		mainChanged = promote
-		return mirrorMainToLegacy(tx, pid)
+		automationChanged = promoteAutomation
+		return mirrorAutomationToLegacy(tx, pid)
 	})
 	if err != nil {
 		writeOpError(w, "update repo", err)
 		return
 	}
-	if mainChanged {
+	if automationChanged {
 		r.applyPushPolicies(ctx, d, pid)
 	}
 	r.respondProduct(w, req, pid, http.StatusOK)
@@ -605,8 +694,8 @@ func (r *Router) deleteRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 		if err != nil {
 			return err
 		}
-		if !hasMain(repos) {
-			return errNoMain
+		if err := checkRoleState(repos); err != nil {
+			return err
 		}
 		cur, ok := findRepo(repos, rid)
 		if !ok {
@@ -614,6 +703,9 @@ func (r *Router) deleteRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 		}
 		if cur.IsMain {
 			return conflict("the main repo cannot be deleted: promote another repo first, or delete the product")
+		}
+		if cur.IsAutomation {
+			return conflict("the automation repo cannot be deleted: promote another repo first, or delete the product")
 		}
 		// Registry row only; the checkout stays on disk.
 		_, err = tx.ExecContext(ctx, `DELETE FROM product_repos WHERE id=? AND product_id=?`, rid, pid)
@@ -637,8 +729,8 @@ func (r *Router) putBranches(w http.ResponseWriter, req *http.Request, d *db.DB,
 		if err != nil {
 			return err
 		}
-		if !hasMain(repos) {
-			return errNoMain
+		if err := checkRoleState(repos); err != nil {
+			return err
 		}
 		cur, ok := findRepo(repos, rid)
 		if !ok {
@@ -655,8 +747,8 @@ func (r *Router) putBranches(w http.ResponseWriter, req *http.Request, d *db.DB,
 		if err := replaceBranches(ctx, tx, rid, list, def); err != nil {
 			return err
 		}
-		if cur.IsMain {
-			return mirrorMainToLegacy(tx, pid)
+		if cur.IsAutomation {
+			return mirrorAutomationToLegacy(tx, pid)
 		}
 		return nil
 	})
@@ -682,7 +774,7 @@ func (r *Router) runSync(ctx context.Context, d *db.DB, p models.Product, repo m
 	for _, b := range repo.Branches {
 		specs = append(specs, repopool.BranchSpec{Name: b, Default: b == repo.DefaultBranch})
 	}
-	results, err := r.repoPool.SyncBranches(ctx, repo.RepoURL, repo.RootDir, specs, repo.IsMain || p.AllowNonAutomationWork)
+	results, err := r.repoPool.SyncBranches(ctx, repo.RepoURL, repo.RootDir, specs, repo.IsAutomation || p.AllowNonAutomationWork)
 	if err != nil {
 		log.Printf("products sync %q repo %q failed: %v", p.Name, repo.Name, err)
 		pe := poolError(err)
@@ -711,7 +803,7 @@ func (r *Router) runSync(ctx context.Context, d *db.DB, p models.Product, repo m
 	return results, nil
 }
 
-// legacyRepoAction serves the old /{id}/verify|clone|checkout routes against the main repo.
+// legacyRepoAction serves the old /{id}/verify|clone|checkout routes against the automation repo.
 func (r *Router) legacyRepoAction(w http.ResponseWriter, req *http.Request, d *db.DB, pid int, action string, canManage, canVerify bool) {
 	if action == "verify" {
 		if !canVerify {
@@ -730,15 +822,15 @@ func (r *Router) legacyRepoAction(w http.ResponseWriter, req *http.Request, d *d
 		writeOpError(w, action, err)
 		return
 	}
-	var main models.ProductRepo
+	if err := checkRoleState(p.Repos); err != nil {
+		writeOpError(w, action, err)
+		return
+	}
+	var main models.ProductRepo // the automation repo
 	for _, rp := range p.Repos {
-		if rp.IsMain {
+		if rp.IsAutomation {
 			main = rp
 		}
-	}
-	if main.ID == 0 {
-		writeOpError(w, action, errNoMain)
-		return
 	}
 	if action == "verify" {
 		r.doVerify(w, req, p, main)
@@ -763,14 +855,14 @@ func (r *Router) legacyRepoAction(w http.ResponseWriter, req *http.Request, d *d
 	ctx, cancel := detachedCtx(req)
 	defer cancel()
 	if action == "checkout" && branch != main.DefaultBranch {
-		// Make it the main repo's default branch (added to the list when absent), mirrored to products.branch.
+		// Make it the automation repo's default branch (added to the list when absent), mirrored to products.branch.
 		err := productTx(ctx, d, pid, func(tx *sql.Tx) error {
-			repos, err := loadRepos(ctx, tx, `r.id = ? AND r.product_id = ? AND r.is_main = 1`, main.ID, pid)
+			repos, err := loadRepos(ctx, tx, `r.id = ? AND r.product_id = ? AND r.is_automation = 1`, main.ID, pid)
 			if err != nil {
 				return err
 			}
 			if len(repos) == 0 {
-				return errNoMain
+				return errNoAutomation
 			}
 			list := repos[0].Branches
 			found := false
@@ -787,7 +879,7 @@ func (r *Router) legacyRepoAction(w http.ResponseWriter, req *http.Request, d *d
 			if err := replaceBranches(ctx, tx, main.ID, list, def); err != nil {
 				return err
 			}
-			return mirrorMainToLegacy(tx, pid)
+			return mirrorAutomationToLegacy(tx, pid)
 		})
 		if err != nil {
 			writeOpError(w, action, err)
