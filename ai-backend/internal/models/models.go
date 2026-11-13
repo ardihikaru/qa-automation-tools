@@ -216,13 +216,13 @@ type Product struct {
 	VerifyReport         json.RawMessage `json:"verify_report"`
 	// AllowNonAutomationWork comes from product_settings (a missing row is false).
 	AllowNonAutomationWork bool `json:"allow_non_automation_work"`
-	// Repos lists the product's repos (main first). The legacy fields above mirror the main repo.
+	// Repos lists the product's repos (main first). The legacy fields above mirror the automation repo.
 	Repos     []ProductRepo `json:"repos"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
-// ProductRepo is one repository of a product (main, central or sibling; see PRODUCT_REPOS.md).
+// ProductRepo is one repository of a product (main, automation, central or sibling; see PRODUCT_REPOS.md and PRODUCT_REPOS_AUTOMATION_ROLE.md).
 type ProductRepo struct {
 	ID                   int             `json:"id"`
 	ProductID            int             `json:"product_id"`
@@ -230,6 +230,7 @@ type ProductRepo struct {
 	RepoURL              string          `json:"repo_url"`
 	RootDir              string          `json:"root_dir"`
 	IsMain               bool            `json:"is_main"`
+	IsAutomation         bool            `json:"is_automation"`
 	IsCentral            bool            `json:"is_central"`
 	DefaultBranch        string          `json:"default_branch"`
 	Branches             []string        `json:"branches"`

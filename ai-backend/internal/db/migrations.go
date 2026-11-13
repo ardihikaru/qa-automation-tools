@@ -390,30 +390,128 @@ ON DUPLICATE KEY UPDATE product_repo_branches.branch = product_repo_branches.bra
 		KEY idx_ia_impersonator (impersonator_id),
 		KEY idx_ia_target (target_user_id)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// product_repos_add_automation_role (PRODUCT_REPOS_AUTOMATION_ROLE.md): the automation repo role.
+	// A STORED generated column cannot be added in place, so ALGORITHM=COPY, LOCK=SHARED is explicit.
+	// One ALTER is all-or-nothing, so the presence of automation_flag proves the whole change; the
+	// leading skip-if guard (see parseSkipIf) makes the entry idempotent.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_repos' AND column_name = 'automation_flag'
+ALTER TABLE product_repos ALGORITHM=COPY, LOCK=SHARED,
+  ADD COLUMN is_automation TINYINT(1) NOT NULL DEFAULT 0 AFTER is_central,
+  ADD COLUMN automation_flag TINYINT GENERATED ALWAYS AS (IF(is_automation = 1, 1, NULL)) STORED AFTER central_flag,
+  ADD UNIQUE KEY uq_product_repos_automation (product_id, automation_flag);`,
+
+	// product_repos_backfill_automation_role: products that have no automation repo yet get
+	// automation = main. Set-based and a no-op on re-run and where automation != main.
+	`UPDATE product_repos m
+LEFT JOIN product_repos a ON a.product_id = m.product_id AND a.is_automation = 1
+SET m.is_automation = 1
+WHERE m.is_main = 1 AND a.id IS NULL;`,
 }
 
-// RunMigrations executes all MySQL migrations sequentially.
-func RunMigrations(sqlDB *sql.DB) error {
-	log.Println("📦 Running MySQL migrations...")
+const skipIfPrefix = "-- skip-if:"
 
-	for i, migration := range migrations {
-		if _, err := sqlDB.ExecContext(context.Background(), migration); err != nil {
+// parseSkipIf reads the optional guard of a migration entry. Leading whitespace, newlines and a
+// UTF-8 BOM are ignored; ok is true iff the first line starts with "-- skip-if:" (case-sensitive,
+// one space after the dashes). query is the rest of that line, trimmed (it may be empty).
+func parseSkipIf(sqlStr string) (query string, ok bool) {
+	t := strings.TrimLeft(sqlStr, " \t\r\n\ufeff")
+	line := t
+	if i := strings.IndexByte(t, '\n'); i >= 0 {
+		line = t[:i]
+	}
+	if !strings.HasPrefix(line, skipIfPrefix) {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, skipIfPrefix)), true
+}
+
+// RunMigrations executes all MySQL migrations sequentially. An entry whose first line is a
+// "-- skip-if: <query>" directive runs <query> first (outside any transaction); a value > 0 skips
+// the entry, 0 runs it, anything else (error, no row, several rows, NULL) aborts the run. The whole
+// entry text, comment included, is still what MySQL receives.
+func RunMigrations(sqlDB *sql.DB) error {
+	return RunMigrationList(sqlDB, migrations)
+}
+
+// RunMigrationList is RunMigrations over an explicit list (used by the runner tests).
+func RunMigrationList(sqlDB *sql.DB, list []string) error {
+	log.Println("📦 Running MySQL migrations...")
+	ctx := context.Background()
+
+	for i, migration := range list {
+		if query, ok := parseSkipIf(migration); ok {
+			if query == "" {
+				return fmt.Errorf("migration %d skip-if guard failed: empty skip-if guard", i)
+			}
+			n, err := runGuard(ctx, sqlDB, query)
+			if err != nil {
+				return fmt.Errorf("migration %d skip-if guard failed: %w", i, err)
+			}
+			if n > 0 {
+				log.Printf("  ⏭️  Migration %d/%d skipped (guard > 0)", i+1, len(list))
+				continue
+			}
+			conn, err := sqlDB.Conn(ctx)
+			if err != nil {
+				return fmt.Errorf("migration %d failed: %w", i, err)
+			}
+			_, err = conn.ExecContext(ctx, "SET SESSION lock_wait_timeout = 30")
+			if err == nil {
+				_, err = conn.ExecContext(ctx, migration)
+			}
+			_ = conn.Close()
+			if err != nil {
+				return fmt.Errorf("migration %d failed: %w\nSQL: %s", i, err, summarize(migration))
+			}
+		} else if _, err := sqlDB.ExecContext(ctx, migration); err != nil {
 			return fmt.Errorf("migration %d failed: %w\nSQL: %s", i, err, summarize(migration))
 		}
-		log.Printf("  ✅ Migration %d/%d completed", i+1, len(migrations))
+		log.Printf("  ✅ Migration %d/%d completed", i+1, len(list))
 	}
 
 	log.Println("✅ All MySQL migrations completed successfully")
 	return nil
 }
 
-// summarize returns the first non-empty line of a SQL statement for log brevity.
+// runGuard runs a skip-if query that must return exactly one row and one non-NULL integer column.
+func runGuard(ctx context.Context, sqlDB *sql.DB, query string) (int64, error) {
+	rows, err := sqlDB.QueryContext(ctx, query)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		return 0, fmt.Errorf("guard returned no row")
+	}
+	var v sql.NullInt64
+	if err := rows.Scan(&v); err != nil {
+		return 0, err
+	}
+	if rows.Next() {
+		return 0, fmt.Errorf("guard returned more than one row")
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if !v.Valid {
+		return 0, fmt.Errorf("guard returned NULL")
+	}
+	return v.Int64, nil
+}
+
+// summarize returns the first non-empty line of a SQL statement for log brevity, skipping a
+// leading "-- skip-if:" directive.
 func summarize(sqlStr string) string {
 	for _, line := range strings.Split(sqlStr, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			return trimmed
+		trimmed := strings.TrimSpace(strings.TrimLeft(line, "\ufeff"))
+		if trimmed == "" || strings.HasPrefix(trimmed, skipIfPrefix) {
+			continue
 		}
+		return trimmed
 	}
 	return sqlStr
 }
