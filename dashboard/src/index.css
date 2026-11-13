@@ -224,3 +224,82 @@ button:not(:disabled) {
     transition: none;
   }
 }
+
+/* ---- Knowledge detail pages: case grid and segmented status bars ----
+   One square per test case, coloured by status. The same fills paint the bar segments and the
+   legend, so the three read as one vocabulary. Planned is hollow (work not done), won't is
+   hatched (deliberately out of scope). */
+.kb-st {
+  background-color: #e5e7eb;
+}
+.kb-st[data-s='automated'] {
+  background-color: #0f766e;
+}
+.kb-st[data-s='planned'] {
+  background-color: #fff;
+  box-shadow: inset 0 0 0 1.5px #94a3b8;
+}
+.kb-st[data-s='blocked'] {
+  background-color: #b45309;
+}
+.kb-st[data-s='manual-only'] {
+  background-color: #4f46e5;
+}
+.kb-st[data-s='wont'] {
+  background-color: #cbd5e1;
+  background-image: repeating-linear-gradient(135deg, transparent 0 2px, rgb(71 85 105 / 0.45) 2px 3px);
+}
+
+.kb-cell {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.kb-cell:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  transform: scale(1.25);
+}
+@media (hover: hover) and (pointer: fine) {
+  .kb-cell:hover {
+    transform: scale(1.3);
+  }
+}
+
+/* Single shared tooltip per grid: positioned instantly (moving between cells is high-frequency),
+   only its appearance fades. */
+.kb-tip {
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.kb-tip[data-show='true'] {
+  opacity: 1;
+}
+
+.kb-bar {
+  display: flex;
+  gap: 1px;
+  height: 8px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.kb-bar > span {
+  min-width: 2px;
+}
+.kb-bar-empty {
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px #d1d5db;
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(209 213 219 / 0.6) 3px 4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-cell,
+  .kb-cell:hover,
+  .kb-cell:focus-visible {
+    transform: none;
+    transition: none;
+  }
+}

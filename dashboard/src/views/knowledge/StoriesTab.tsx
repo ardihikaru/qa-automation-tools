@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Search, StickyNote } from 'lucide-react';
-import { Epic, Page, Story, listStories } from './api';
+import { Epic, Page, StoryItem, entityHref, listStories } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CodeLabel, Empty, ErrorNote, Loading, Pagination, RemovedBadge } from './ui';
+import { CodeLabel, Empty, ErrorNote, Loading, Pagination, PeekButton, RemovedBadge } from './ui';
+import { CoverageCount, StatusBar } from './pages/kit';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 
@@ -23,17 +25,18 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
   const [feature, setFeature] = useState('');
   const [tag, setTag] = useState('');
   const [origin, setOrigin] = useState('');
+  const [coverage, setCoverage] = useState('');
   const [includeRemoved, setIncludeRemoved] = useState(false);
   const [page, setPage] = useState(1);
   const q = useDebounced(query.trim(), 300);
   const f = useDebounced(feature.trim(), 300);
   const t = useDebounced(tag.trim(), 300);
 
-  useEffect(() => setPage(1), [q, epic, f, t, origin, includeRemoved]);
+  useEffect(() => setPage(1), [q, epic, f, t, origin, coverage, includeRemoved]);
 
-  const filter = { q, epic, feature: f, tag: t, origin, include_removed: includeRemoved, page, page_size: PAGE_SIZE };
-  const { data, loading, error, reload } = useLoad<Page<Story>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listStories(pid, filter, s));
-  const filtered = !!(q || epic || f || t || origin);
+  const filter = { q, epic, feature: f, tag: t, origin, coverage, include_removed: includeRemoved, page, page_size: PAGE_SIZE };
+  const { data, loading, error, reload } = useLoad<Page<StoryItem>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listStories(pid, filter, s));
+  const filtered = !!(q || epic || f || t || origin || coverage);
 
   return (
     <div className="space-y-3">
@@ -65,6 +68,12 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
           <option value="sync">Synced</option>
           <option value="local">Local drafts</option>
         </select>
+        <select value={coverage} onChange={(e) => setCoverage(e.target.value)} aria-label="Coverage" className={selectCls}>
+          <option value="">Any coverage</option>
+          <option value="untested">No test cases yet</option>
+          <option value="none,partial">Not automated yet</option>
+          <option value="full">Fully automated</option>
+        </select>
         <label className="inline-flex items-center gap-2 text-sm text-gray-700 min-h-8">
           <input type="checkbox" checked={includeRemoved} onChange={(e) => setIncludeRemoved(e.target.checked)} />
           Include removed
@@ -81,11 +90,10 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
             {data.items.map((s) => {
               const removed = !!s.removed_at;
               return (
-                <li key={s.code}>
-                  <button
-                    type="button"
-                    onClick={() => onOpen({ type: 'story', code: s.code })}
-                    className={`kb-row w-full text-left grid grid-cols-[minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)_9rem] gap-x-4 gap-y-1 px-4 py-2.5 min-h-8 ${selected === s.code ? 'bg-primary-50' : ''}`}
+                <li key={s.code} className={`flex items-center gap-1 pr-2 ${selected === s.code ? 'bg-primary-50' : ''}`}>
+                  <Link
+                    to={entityHref(pid, 'story', s.code)}
+                    className="kb-row flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)_9rem] xl:grid-cols-[12rem_minmax(0,1fr)_9rem_8rem_8.5rem] items-center gap-x-4 gap-y-1 px-4 py-2.5 min-h-8"
                   >
                     <span className="flex items-center gap-2 min-w-0">
                       <CodeLabel code={s.code} origin={s.origin} removed={removed} />
@@ -105,7 +113,12 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
                       )}
                       {removed && <RemovedBadge syncId={s.removed_sync_id} />}
                     </span>
-                  </button>
+                    <StatusBar coverage={s.coverage} className="hidden xl:flex w-full" />
+                    <span className="hidden xl:block text-right">
+                      <CoverageCount coverage={s.coverage} />
+                    </span>
+                  </Link>
+                  <PeekButton label={`Quick peek at story ${s.code}`} active={selected === s.code} onClick={() => onOpen({ type: 'story', code: s.code })} />
                 </li>
               );
             })}

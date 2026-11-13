@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, Info, Search, StickyNote } from 'lucide-react';
-import { Tree, TreeFeature, TreeModule, getTree } from './api';
+import { Link } from 'react-router-dom';
+import { ChevronRight, Search, StickyNote } from 'lucide-react';
+import { Coverage, Tree, TreeFeature, TreeModule, entityHref, getCoverage, getTree, listModules } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CodeLabel, CoverageBar, Empty, ErrorNote, Loading, ReleaseChip, RemovedBadge } from './ui';
+import { CodeLabel, Empty, ErrorNote, Loading, PeekButton, ReleaseChip, RemovedBadge } from './ui';
 import { inputCls } from './styles';
 import { Target } from './EntityPanel';
+import { CoverageCount, StatusBar } from './pages/kit';
 
 interface Props {
   pid: number;
@@ -12,6 +14,8 @@ interface Props {
   selected: string | null;
   onOpen: (t: Target) => void;
 }
+
+type CovMap = Record<string, Coverage>;
 
 function matches(f: TreeFeature, q: string) {
   return f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q);
@@ -25,17 +29,33 @@ function Caret({ open }: { open: boolean }) {
   return <ChevronRight className={`w-4 h-4 text-gray-500 shrink-0 kb-caret ${open ? 'rotate-90' : ''}`} aria-hidden="true" />;
 }
 
-function FeatureRow({ f, selected, onOpen }: { f: TreeFeature; selected: boolean; onOpen: (t: Target) => void }) {
+function Toggle({ open, label, onClick }: { open: boolean; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="p-1.5 min-h-8 min-w-8 inline-flex items-center justify-center rounded shrink-0" aria-expanded={open} aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`} onClick={onClick}>
+      <Caret open={open} />
+    </button>
+  );
+}
+
+/** Bar + count, hidden on narrow screens where the row has no room. */
+function Cov({ c }: { c: Coverage | undefined }) {
+  return (
+    <span className="hidden sm:flex items-center gap-3 shrink-0">
+      <StatusBar coverage={c} className="w-28" />
+      <span className="w-32 text-right">
+        <CoverageCount coverage={c} />
+      </span>
+    </span>
+  );
+}
+
+function FeatureRow({ pid, f, cov, selected, onOpen }: { pid: number; f: TreeFeature; cov: Coverage | undefined; selected: boolean; onOpen: (t: Target) => void }) {
   const removed = !!f.removed_at;
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onOpen({ type: 'feature', code: f.code })}
-        className={`kb-row w-full text-left grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_4.5rem_8.5rem] items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 min-h-8 ${
-          selected ? 'bg-primary-50' : ''
-        }`}
-        aria-current={selected || undefined}
+    <li className={`flex items-center gap-1 rounded-md ${selected ? 'bg-primary-50' : ''}`}>
+      <Link
+        to={entityHref(pid, 'feature', f.code)}
+        className="kb-row flex-1 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_7.5rem_4.5rem_auto] items-center gap-x-3 gap-y-1 rounded-md px-2 py-1.5 min-h-8"
       >
         <span className="flex items-center gap-2 min-w-0">
           <CodeLabel code={f.code} origin={f.origin} removed={removed} />
@@ -51,13 +71,9 @@ function FeatureRow({ f, selected, onOpen }: { f: TreeFeature; selected: boolean
         <span className="hidden md:block text-xs tabular-nums text-gray-600" title="User stories">
           {f.stories} {f.stories === 1 ? 'story' : 'stories'}
         </span>
-        <span className="hidden md:block text-xs tabular-nums text-gray-600" title="Test cases">
-          {f.test_cases} TC
-        </span>
-        <span className="hidden md:block">
-          {f.test_cases > 0 ? <CoverageBar value={f.coverage_pct} /> : <span className="text-xs text-gray-400">no test cases</span>}
-        </span>
-      </button>
+        <Cov c={cov} />
+      </Link>
+      <PeekButton label={`Quick peek at feature ${f.code}`} active={selected} onClick={() => onOpen({ type: 'feature', code: f.code })} />
     </li>
   );
 }
@@ -67,6 +83,15 @@ export default function ModulesTab({ pid, refreshKey, selected, onOpen }: Props)
   const [query, setQuery] = useState('');
   const q = useDebounced(query.trim().toLowerCase(), 200);
   const { data, loading, error, reload } = useLoad<Tree>(`${pid}:${includeRemoved}:${refreshKey}`, (s) => getTree(pid, includeRemoved, s));
+  // Coverage is decoration: a failure leaves the bars empty rather than blocking the tree.
+  const cov = useLoad<{ parts: CovMap; modules: CovMap; features: CovMap }>(`${pid}:cov:${refreshKey}`, async (s) => {
+    const [parts, modules, features] = await Promise.all([
+      getCoverage(pid, 'part', {}, s),
+      listModules(pid, false, s).then((l) => Object.fromEntries(l.map((m) => [m.code, m.coverage]))),
+      getCoverage(pid, 'feature', {}, s),
+    ]);
+    return { parts, modules, features };
+  });
   // Parts start open, modules closed. A search opens everything that matches.
   const [closedParts, setClosedParts] = useState<Set<string>>(new Set());
   const [openModules, setOpenModules] = useState<Set<string>>(new Set());
@@ -103,6 +128,7 @@ export default function ModulesTab({ pid, refreshKey, selected, onOpen }: Props)
   }, [data, q]);
 
   const allModules = data?.parts.flatMap((p) => p.modules.map((m) => m.code)) ?? [];
+  const c = cov.data;
 
   return (
     <div className="space-y-3">
@@ -145,49 +171,43 @@ export default function ModulesTab({ pid, refreshKey, selected, onOpen }: Props)
             return (
               <section key={p.code} className="card p-2 min-w-0">
                 <div className="flex items-center gap-1">
-                  <button type="button" className="flex-1 min-w-0 flex items-center gap-2 px-2 py-2 min-h-8 text-left" aria-expanded={partOpen} onClick={() => toggle(closedParts, setClosedParts, p.code)}>
-                    <Caret open={partOpen} />
+                  <Toggle open={partOpen} label={`part ${p.code}`} onClick={() => toggle(closedParts, setClosedParts, p.code)} />
+                  <Link to={entityHref(pid, 'part', p.code)} className="kb-row flex-1 min-w-0 flex items-center gap-2 px-2 py-2 min-h-8 rounded-md">
                     <span className={`font-mono text-sm font-semibold ${p.removed_at ? 'line-through text-gray-400' : ''}`}>{p.code}</span>
                     <span className="font-semibold text-gray-900 truncate" title={p.name}>
                       {p.name}
                     </span>
-                    <span className="ml-auto text-xs text-gray-500 shrink-0">{p.modules.length} modules</span>
-                  </button>
-                  <button type="button" className="p-1.5 min-h-8 text-gray-400 hover:text-primary-600 rounded" aria-label={`Details of part ${p.code}`} onClick={() => onOpen({ type: 'part', code: p.code })}>
-                    <Info className="w-4 h-4" aria-hidden="true" />
-                  </button>
+                    <span className="ml-auto text-xs text-gray-500 shrink-0 tabular-nums">{p.modules.length} modules</span>
+                  </Link>
+                  <Cov c={c?.parts[p.code]} />
+                  <PeekButton label={`Quick peek at part ${p.code}`} onClick={() => onOpen({ type: 'part', code: p.code })} />
                 </div>
                 {partOpen && (
                   <ul className="pl-3">
                     {p.modules.map((m) => {
                       const feats = moduleFeatures(m);
                       const modOpen = !!q || openModules.has(m.code);
-                      const tc = feats.reduce((n, f) => n + f.test_cases, 0);
-                      const auto = feats.reduce((n, f) => n + f.automated, 0);
                       return (
                         <li key={m.code} className="border-t border-gray-100 first:border-t-0">
                           <div className="flex items-center gap-1">
-                            <button type="button" className="kb-row flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 min-h-8 rounded-md text-left" aria-expanded={modOpen} onClick={() => toggle(openModules, setOpenModules, m.code)}>
-                              <Caret open={modOpen} />
+                            <Toggle open={modOpen} label={`module ${m.code}`} onClick={() => toggle(openModules, setOpenModules, m.code)} />
+                            <Link to={entityHref(pid, 'module', m.code)} className="kb-row flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 min-h-8 rounded-md">
                               <CodeLabel code={m.code} origin={m.origin} removed={!!m.removed_at} />
                               <span className={`truncate text-sm font-medium ${m.removed_at ? 'line-through text-gray-400' : 'text-gray-800'}`} title={m.name}>
                                 {m.name}
                               </span>
                               {m.has_annotation && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-label="has a note" />}
-                              <span className="ml-auto shrink-0 text-xs text-gray-500 tabular-nums">
-                                {feats.length} features{tc > 0 ? ` · ${Math.round((auto * 100) / tc)}% automated` : ''}
-                              </span>
-                            </button>
-                            <button type="button" className="p-1.5 min-h-8 text-gray-400 hover:text-primary-600 rounded" aria-label={`Details of module ${m.code}`} onClick={() => onOpen({ type: 'module', code: m.code })}>
-                              <Info className="w-4 h-4" aria-hidden="true" />
-                            </button>
+                              <span className="ml-auto shrink-0 text-xs text-gray-500 tabular-nums">{feats.length} features</span>
+                            </Link>
+                            <Cov c={c?.modules[m.code]} />
+                            <PeekButton label={`Quick peek at module ${m.code}`} onClick={() => onOpen({ type: 'module', code: m.code })} />
                           </div>
                           {modOpen && (
                             <div className="pl-6 pb-2">
                               {m.features_without_submodule.length > 0 && (
                                 <ul>
                                   {m.features_without_submodule.map((f) => (
-                                    <FeatureRow key={f.code} f={f} selected={selected === f.code} onOpen={onOpen} />
+                                    <FeatureRow key={f.code} pid={pid} f={f} cov={c?.features[f.code]} selected={selected === f.code} onOpen={onOpen} />
                                   ))}
                                 </ul>
                               )}
@@ -195,17 +215,19 @@ export default function ModulesTab({ pid, refreshKey, selected, onOpen }: Props)
                                 const subOpen = !!q || !openSubs.has(`x:${s.code}`);
                                 return (
                                   <div key={s.code}>
-                                    <button type="button" className="w-full flex items-center gap-2 px-2 py-1 min-h-8 text-left" aria-expanded={subOpen} onClick={() => toggle(openSubs, setOpenSubs, `x:${s.code}`)}>
-                                      <Caret open={subOpen} />
-                                      <span className={`text-sm text-gray-600 truncate ${s.removed_at ? 'line-through text-gray-400' : ''}`} title={s.name}>
-                                        {s.name}
-                                      </span>
-                                      <span className="text-xs text-gray-400 shrink-0">({s.features.length})</span>
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      <Toggle open={subOpen} label={`sub-module ${s.name}`} onClick={() => toggle(openSubs, setOpenSubs, `x:${s.code}`)} />
+                                      <Link to={entityHref(pid, 'submodule', s.code)} className="kb-row min-w-0 flex items-center gap-2 px-2 py-1 min-h-8 rounded-md">
+                                        <span className={`text-sm text-gray-600 truncate ${s.removed_at ? 'line-through text-gray-400' : ''}`} title={s.name}>
+                                          {s.name}
+                                        </span>
+                                        <span className="text-xs text-gray-400 shrink-0 tabular-nums">({s.features.length})</span>
+                                      </Link>
+                                    </div>
                                     {subOpen && (
                                       <ul className="pl-5">
                                         {s.features.map((f) => (
-                                          <FeatureRow key={f.code} f={f} selected={selected === f.code} onOpen={onOpen} />
+                                          <FeatureRow key={f.code} pid={pid} f={f} cov={c?.features[f.code]} selected={selected === f.code} onOpen={onOpen} />
                                         ))}
                                       </ul>
                                     )}

@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
-import { Bot, ExternalLink, Lock, Pencil, Trash2, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bot, ExternalLink, Lock, Maximize2, Pencil, Trash2, X } from 'lucide-react';
 import SubmitButton from '../../components/SubmitButton';
 import {
   Annotation,
@@ -17,6 +18,7 @@ import {
   TestCaseDetail,
   deleteAnnotation,
   deleteDraft,
+  entityHref,
   errorText,
   getEntity,
   isAbort,
@@ -101,6 +103,28 @@ function RefList({ type, refs, onOpen, empty }: { type: EntityType; refs: Ref[];
 
 const KEYWORD = /^(Given|When|Then|And|But)\b/;
 
+/** Text with markdown `backticks` rendered as inline code and **double stars** as bold. */
+export function InlineCode({ text }: { text: string }) {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.length > 4 && p.startsWith('**') && p.endsWith('**') ? (
+          <strong key={i} className="font-semibold">
+            {p.slice(2, -2)}
+          </strong>
+        ) : p.length > 2 && p.startsWith('`') && p.endsWith('`') ? (
+          <code key={i} className="rounded bg-gray-100 px-1 py-px font-mono text-[0.85em] text-gray-800 break-all">
+            {p.slice(1, -1)}
+          </code>
+        ) : (
+          p
+        ),
+      )}
+    </>
+  );
+}
+
 /** Given/When/Then text: `<br>` and newlines become lines, the leading keyword is bold. */
 export function Scenario({ text }: { text: string }) {
   const lines = text
@@ -117,10 +141,10 @@ export function Scenario({ text }: { text: string }) {
             {m ? (
               <>
                 <strong className="font-semibold text-gray-900">{m[1]}</strong>
-                {l.slice(m[1].length)}
+                <InlineCode text={l.slice(m[1].length)} />
               </>
             ) : (
-              l
+              <InlineCode text={l} />
             )}
           </p>
         );
@@ -214,7 +238,7 @@ function TagInput({ tags, onChange, disabled }: { tags: string[]; onChange: (t: 
   );
 }
 
-function AnnotationEditor({ pid, type, code, annotation, canWrite, onSaved }: { pid: number; type: EntityType; code: string; annotation: Annotation | null; canWrite: boolean; onSaved: (a: Annotation | null) => void }) {
+export function AnnotationEditor({ pid, type, code, annotation, canWrite, onSaved }: { pid: number; type: EntityType; code: string; annotation: Annotation | null; canWrite: boolean; onSaved: (a: Annotation | null) => void }) {
   const [note, setNote] = useState(annotation?.note ?? '');
   const [tags, setTags] = useState<string[]>(annotation?.tags ?? []);
   const [busy, setBusy] = useState<'save' | 'clear' | null>(null);
@@ -552,6 +576,9 @@ export default function EntityPanel({ pid, target, canWrite, reloadKey, onOpen, 
         <h2 className={`font-mono text-lg font-semibold break-all ${e.removed_at ? 'line-through text-gray-400' : 'text-gray-900'}`}>{e.code}</h2>
         {title && <p className="text-base text-gray-800 break-words">{title}</p>}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <Link to={entityHref(pid, e.type, e.code)} className="inline-flex items-center gap-1 text-primary-600 hover:underline min-h-8">
+            <Maximize2 className="w-4 h-4" aria-hidden="true" /> Open page
+          </Link>
           {e.source_url && (
             <a href={e.source_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary-600 hover:underline min-h-8">
               <ExternalLink className="w-4 h-4" aria-hidden="true" /> View in repo

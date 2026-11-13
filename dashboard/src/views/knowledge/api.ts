@@ -37,6 +37,16 @@ export const TYPE_LABEL: Record<EntityType, string> = {
 
 export const isEntityType = (v: string): v is EntityType => v in TYPE_PATH;
 
+/** URL segment back to type (route `/products/:id/knowledge/:type/:code`). */
+export function typeFromPath(seg: string | undefined): EntityType | null {
+  const hit = (Object.entries(TYPE_PATH) as [EntityType, string][]).find(([, p]) => p === seg);
+  return hit ? hit[0] : null;
+}
+
+/** Dashboard route of an entity's detail page. */
+export const entityHref = (pid: number, type: EntityType, code: string) => `/products/${pid}/knowledge/${TYPE_PATH[type]}/${encodeURIComponent(code)}`;
+export const knowledgeHref = (pid: number, tab?: string) => `/products/${pid}/knowledge${tab ? `?tab=${tab}` : ''}`;
+
 /** Local draft codes (mirrors knowledge.LocalCodeRe). */
 export const LOCAL_CODE_RE = /^L-[A-Z0-9-]{1,30}$/;
 /** Any code accepted in an API path (mirrors knowledge.CodeRe). */
@@ -128,19 +138,51 @@ export interface FeatureStats {
   coverage_pct: number;
 }
 
+// ---- coverage (mirrors knowledge.Coverage in coverage.go) ----
+
+/** untested: no test cases; none: none automated; partial; full: every case automated. */
+export type CoverageState = 'untested' | 'none' | 'partial' | 'full';
+export const COVERAGE_STATES: CoverageState[] = ['untested', 'none', 'partial', 'full'];
+
+/** Distinct active test cases under an entity, by status. */
+export interface Coverage {
+  test_cases: number;
+  automated: number;
+  planned: number;
+  blocked: number;
+  manual_only: number;
+  wont: number;
+  pct: number;
+  state: CoverageState;
+}
+
+export const EMPTY_COVERAGE: Coverage = { test_cases: 0, automated: 0, planned: 0, blocked: 0, manual_only: 0, wont: 0, pct: 0, state: 'untested' };
+
+export type CoverageBy = 'part' | 'module' | 'submodule' | 'feature' | 'epic' | 'story';
+
+type WithCov<T> = T & { coverage?: Coverage };
+
 // Detail shapes (GET {type}/{code}). Single parents come back as 0- or 1-item arrays.
-export type PartDetail = Part & { modules: Ref[] };
-export type ModuleDetail = Module & { part: Ref[]; submodules: Ref[]; features: Feature[] };
-export type SubmoduleDetail = Submodule & { module: Ref[]; features: Feature[] };
-export type FeatureDetail = Feature & {
+// `coverage` is the entity's own; listed children carry theirs (query.go entityCoverage).
+export type PartDetail = WithCov<Part> & { modules: WithCov<Ref>[] };
+export type ModuleDetail = WithCov<Module> & { part: Ref[]; submodules: WithCov<Ref>[]; features: WithCov<Feature>[] };
+export type SubmoduleDetail = WithCov<Submodule> & { module: Ref[]; features: WithCov<Feature>[] };
+export type FeatureDetail = WithCov<Feature> & {
   module: Ref[];
   submodule: Ref[];
-  stories: (Story & { test_cases: TestCase[] })[];
+  stories: (WithCov<Story> & { test_cases: TestCase[] })[];
   stats: FeatureStats;
 };
-export type EpicDetail = Epic & { stories: Story[]; test_cases: Ref[] };
-export type StoryDetail = Story & { epic: Ref[]; features: Ref[]; test_cases: TestCase[]; feature_codes: string[] };
-export type TestCaseDetail = TestCase & { epic: Ref[]; story: Ref[]; features: Ref[] };
+export type EpicDetail = WithCov<Epic> & { stories: WithCov<Story>[]; test_cases: Ref[] };
+export type StoryDetail = WithCov<Story> & { epic: Ref[]; features: WithCov<Ref>[]; test_cases: TestCase[]; feature_codes: string[] };
+export type TestCaseDetail = TestCase & { epic: Ref[]; story: Ref[]; features: WithCov<Ref>[] };
+
+/** GET knowledge/modules item. */
+export type ModuleItem = Module & { coverage: Coverage; features: number; submodules: number };
+/** GET knowledge/features item. */
+export type FeatureItem = Feature & { coverage: Coverage };
+/** GET knowledge/stories item. */
+export type StoryItem = Story & { coverage?: Coverage };
 
 export type EntityDetail = PartDetail | ModuleDetail | SubmoduleDetail | FeatureDetail | EpicDetail | StoryDetail | TestCaseDetail;
 
@@ -331,9 +373,17 @@ export async function startSync(pid: number): Promise<{ sync_id: number; attache
 export const listEpics = (pid: number, includeRemoved = false, signal?: AbortSignal) =>
   api<{ epics: Epic[] }>(`${kb(pid)}/epics${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.epics ?? []);
 
-export interface StoryFilter {
+export interface ScopeFilter {
+  part?: string;
+  module?: string;
+  submodule?: string;
+}
+
+export interface StoryFilter extends ScopeFilter {
   epic?: string;
   feature?: string;
+  /** Comma-separated coverage states. */
+  coverage?: string;
   origin?: string;
   tag?: string;
   q?: string;
@@ -342,7 +392,7 @@ export interface StoryFilter {
   page_size?: number;
 }
 export const listStories = (pid: number, f: StoryFilter, signal?: AbortSignal) =>
-  api<Page<Story>>(`${kb(pid)}/stories${qs({ ...f })}`, { signal });
+  api<Page<StoryItem>>(`${kb(pid)}/stories${qs({ ...f })}`, { signal });
 
 export interface TestCaseFilter extends StoryFilter {
   story?: string;
@@ -354,6 +404,38 @@ export interface TestCaseFilter extends StoryFilter {
 }
 export const listTestCases = (pid: number, f: TestCaseFilter, signal?: AbortSignal) =>
   api<Page<TestCase>>(`${kb(pid)}/test-cases${qs({ ...f })}`, { signal });
+
+export interface FeatureFilter extends ScopeFilter {
+  release?: string;
+  /** Comma-separated coverage states. */
+  coverage?: string;
+  q?: string;
+  origin?: string;
+  tag?: string;
+  include_removed?: boolean;
+  page?: number;
+  page_size?: number;
+}
+export const listFeatures = (pid: number, f: FeatureFilter, signal?: AbortSignal) =>
+  api<Page<FeatureItem>>(`${kb(pid)}/features${qs({ ...f })}`, { signal });
+
+export const listModules = (pid: number, includeRemoved = false, signal?: AbortSignal) =>
+  api<{ modules: ModuleItem[] }>(`${kb(pid)}/modules${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.modules ?? []);
+
+export const getCoverage = (pid: number, by: CoverageBy, scope: ScopeFilter & { epic?: string } = {}, signal?: AbortSignal) =>
+  api<{ by: string; coverage: Record<string, Coverage> | null }>(`${kb(pid)}/coverage${qs({ by, ...scope })}`, { signal }).then((r) => r.coverage ?? {});
+
+/** The server caps page_size at 200 (query.go Filter.norm). */
+export const MAX_PAGE_SIZE = 200;
+
+/** Every active test case matching `f`, fetched page by page (first page, then the rest in parallel). */
+export async function listAllTestCases(pid: number, f: TestCaseFilter, signal?: AbortSignal): Promise<TestCase[]> {
+  const first = await listTestCases(pid, { ...f, page: 1, page_size: MAX_PAGE_SIZE }, signal);
+  const pages = Math.ceil(first.total / MAX_PAGE_SIZE);
+  if (pages <= 1) return first.items ?? [];
+  const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => listTestCases(pid, { ...f, page: i + 2, page_size: MAX_PAGE_SIZE }, signal)));
+  return [...(first.items ?? []), ...rest.flatMap((p) => p.items ?? [])];
+}
 
 export const getEntity = <T extends EntityDetail = EntityDetail>(pid: number, type: EntityType, code: string, signal?: AbortSignal) =>
   api<T>(`${kb(pid)}/${TYPE_PATH[type]}/${enc(code)}`, { signal });

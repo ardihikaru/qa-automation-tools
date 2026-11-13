@@ -21,6 +21,7 @@ import Drawer from './Drawer';
 import EntityPanel, { Target } from './EntityPanel';
 import DraftModal, { DraftKind } from './DraftModal';
 import ModulesTab from './ModulesTab';
+import FeaturesTab from './FeaturesTab';
 import StoriesTab from './StoriesTab';
 import TestCasesTab from './TestCasesTab';
 import SyncsTab from './SyncsTab';
@@ -28,6 +29,7 @@ import { ErrorNote, Loading, RelTime, ShaLink, SyncStatusChip } from './ui';
 
 const TABS = [
   { id: 'modules', label: 'Modules' },
+  { id: 'features', label: 'Features' },
   { id: 'stories', label: 'Stories' },
   { id: 'test-cases', label: 'Test cases' },
   { id: 'syncs', label: 'Syncs' },
@@ -273,6 +275,9 @@ export default function KnowledgeView() {
               visited.has(t.id) ? (
                 <div key={t.id} role="tabpanel" id={`kb-panel-${t.id}`} aria-labelledby={`kb-tab-${t.id}`} hidden={t.id !== tab} className="kb-tab-enter">
                   {t.id === 'modules' && <ModulesTab pid={pid} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />}
+                  {t.id === 'features' && (
+                    <FeaturesTab pid={pid} releases={summary.enums.release ?? []} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />
+                  )}
                   {t.id === 'stories' && (
                     <StoriesTab pid={pid} epics={epics} features={featureOptions} refreshKey={refreshKey} selected={target?.type === 'story' ? selectedCode : null} onOpen={open} />
                   )}
