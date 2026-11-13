@@ -1,23 +1,21 @@
-# Tutorial: Running `ai-backend` Locally (Neon + MiniMax)
+# Tutorial: Running `ai-backend` Locally (MySQL + ai-manager)
 
 This guide explains how to run the backend service locally with:
-- Neon PostgreSQL connected
-- MiniMax AI configured
+- MySQL 8 connected (schema `qa_automation` on the shared rnd-v2 MySQL, `10.10.0.4:5306`, over WireGuard)
+- LLM calls going through ai-manager, pinned to upstream `claude-v3`
 - Database migrations executed explicitly via `cmd/databasemigration`
 
-This project uses **Neon PostgreSQL only** for backend database operations.
+MySQL is the only supported database.
 
 ---
 
 ## 1. Scope and Expected Result
 
 After following this tutorial, you should be able to:
-1. Run migrations against Neon from local machine.
-2. Start backend server (`ai-backend/cmd/server`).
-3. Verify runtime health via `GET /health`:
-   - `"database":"connected"`
-   - `"minimax":"configured"`
-4. Validate MiniMax connectivity deeper using `cmd/verifyminimax`.
+1. Run migrations against the MySQL database from your machine.
+2. Start the backend server (`ai-backend/cmd/server`).
+3. Verify runtime health via `GET /health` (`"database":"connected"`, `ai_provider`, `ai_upstream`).
+4. Smoke-test the AI path with `cmd/verifyai`.
 
 ---
 
@@ -26,66 +24,44 @@ After following this tutorial, you should be able to:
 Required software:
 - Go (matching `ai-backend/go.mod` toolchain)
 - `curl`
-- `psql` (optional but recommended for Neon connectivity checks)
+- `mysql` client (optional, for connectivity checks)
 
-Required credentials:
-- Neon connection string (`DATABASE_URL`) or Neon host/user/password/db fields
-- MiniMax API key (`MINIMAX_API_KEY`)
+Required access:
+- A WireGuard peer on `10.10.0.0/24` (for the DB and ai-manager)
+- MySQL credentials for the `qa_automation` user
+- ai-manager credentials (`AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`)
 
 ---
 
-## 3. Configuration Strategy (Recommended)
+## 3. Configuration
 
-`ai-backend` loads config from `.env` automatically, then applies optional YAML config values.
+`ai-backend` loads `.env` automatically. Environment variables always beat `config.yaml`, and the YAML `backend.database.*` block is ignored, so configure the DB through env only.
 
-Configuration precedence for database:
-1. `DATABASE_URL` (recommended for local run)
-2. `backend.database.connection_string` in `config.yaml`
-3. `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+Database settings (one of):
+1. `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (recommended; defaults are `10.10.0.4`, `5306`, `qa_automation`)
+2. `DATABASE_URL` as a go-sql-driver/mysql DSN, e.g. `user:pass@tcp(10.10.0.4:5306)/qa_automation?parseTime=true`
 
-Configuration for MiniMax:
-- `MINIMAX_API_KEY`
-- Optional: `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT`
+Legacy `MYSQL_*` variables in some local `.env` files are ignored by the code and point at the HISv3 production schema. Never use them for this app.
 
-If you need reference values that already exist in this repository, check:
-- `_docs/markdown-results/by-roles/.env`
-- `config.yaml`
-
-Copy only required values into your local `ai-backend/.env` and avoid committing secrets.
-
-Recommended local setup:
+Setup:
 
 ```bash
 cd ai-backend
 cp .env.example .env
-```
-
-Then edit `.env` with your real values:
-
-```env
-DATABASE_URL=postgresql://<user>:<password>@<neon-host>/<db>?sslmode=require
-MINIMAX_API_KEY=<your-minimax-api-key>
-AI_MODEL=MiniMax-M2.5
-AI_BASE_URL=https://api.minimax.io/v1
-AI_CHAT_ENDPOINT=/chat/completions
-PORT=8080
-BACKEND_HOST=0.0.0.0
+# edit .env: DB_PASSWORD, AI_MANAGER_LOGIN_ID, AI_MANAGER_SECRET_KEY
 ```
 
 Do not commit real secrets to git.
 
 ---
 
-## 4. Optional: Pre-check Neon Connection
-
-Before running migration/server, validate DB access:
+## 4. Optional: Pre-check the MySQL Connection
 
 ```bash
-cd ai-backend
-psql "$DATABASE_URL" -c "SELECT 1;"
+MYSQL_PWD="$DB_PASSWORD" mysql -h 10.10.0.4 -P 5306 -u qa_automation qa_automation -e 'SELECT 1;'
 ```
 
-If this fails, fix network/credentials first.
+If this fails, fix WireGuard access or credentials first.
 
 ---
 
@@ -95,147 +71,73 @@ If this fails, fix network/credentials first.
 
 ```bash
 cd ai-backend
-go run ./cmd/databasemigration
+go run -mod=mod ./cmd/databasemigration
 ```
 
 Expected successful logs include:
-- `Neon database connected`
-- `Running database migrations...`
-- `All migrations completed successfully`
+- `MySQL database connected`
+- `Running MySQL migrations...`
+- `All MySQL migrations completed successfully`
 - `Database migration completed`
-
-If migration fails, fix the SQL/config issue and rerun migration before starting backend.
 
 ---
 
 ## 6. Run Backend Server
 
-Start backend locally:
-
 ```bash
 cd ai-backend
-go run ./cmd/server/main.go
+go run -mod=mod ./cmd/server
 ```
 
-Expected startup indicators:
-- server starts on `0.0.0.0:8080` (or your configured port)
-- DB status logs indicate connected when Neon credentials are valid
+The server starts on `0.0.0.0:8080` (or your configured `PORT`).
 
 ---
 
-## 7. Verify Runtime Health (DB + MiniMax Readiness)
-
-Run:
+## 7. Verify Runtime Health
 
 ```bash
 curl -s http://localhost:8080/health
 ```
 
-Expected healthy output shape:
-
-```json
-{"status":"ok","database":"connected","minimax":"configured"}
-```
-
 Interpretation:
-- `database=connected`: backend currently has live DB connection.
-- `database=disconnected`: backend runs in limited mode; DB-backed endpoints can return `503`.
-- `minimax=configured`: API key is loaded in backend process.
-- `minimax=not_configured`: API key missing/empty in runtime config.
+- `database=connected`: the backend connected to MySQL at startup (a snapshot, not a live ping).
+- `database=disconnected`: the backend runs in limited mode **and auth is disabled**. Treat it as an incident.
+- `ai_provider` / `ai_upstream`: should be `ai-manager` / `claude-v3`.
 
 ---
 
-## 8. Verify DB-backed Endpoint
-
-After `/health` is good, verify at least one DB-backed endpoint:
+## 8. Verify a DB-backed Endpoint
 
 ```bash
 curl -s http://localhost:8080/api/skills
 ```
 
-If DB is connected and schema exists, endpoint should return successful JSON response.
+With auth enabled you must log in first (`POST /api/auth/login`) and send the session cookie.
 
 ---
 
-## 9. Verify MiniMax Connectivity (Active Check)
-
-`/health` only confirms key presence. For active endpoint/model verification:
+## 9. Verify AI Connectivity
 
 ```bash
-cd ai-backend/cmd/verifyminimax
-go run .
+cd ai-backend
+go run -mod=mod ./cmd/verifyai "say hello"
 ```
-
-What this does:
-- tests multiple MiniMax models and base URLs
-- writes detailed result to:
-  - `ai-backend/cmd/verifyminimax/result.json`
-
-Success criteria:
-- at least one endpoint/model combo returns success in result summary.
 
 ---
 
 ## 10. Routine When Schema Changes
 
-When backend schema is updated (`internal/db/migrations.go`):
-1. Append new migration SQL at the end of migration list.
-2. Keep migration idempotent where possible (`IF NOT EXISTS`, additive changes first).
-3. Run migration locally:
-
-```bash
-cd ai-backend
-go run ./cmd/databasemigration
-```
-
-4. Restart backend:
-
-```bash
-go run ./cmd/server/main.go
-```
-
-5. Re-check:
-- `GET /health` returns `database=connected`
-- DB-backed endpoint(s) still pass
+1. Append new idempotent migration SQL at the end of the list in `internal/db/migrations.go`.
+2. Run `go run -mod=mod ./cmd/databasemigration`.
+3. Restart the backend and re-check `/health` and a DB-backed endpoint.
 
 ---
 
-## 11. Common Failure Modes and Fixes
+## 11. Common Failure Modes
 
 1. `/health` shows `database=disconnected`
-- Ensure `DATABASE_URL` is set and valid.
-- Ensure Neon host is reachable from your machine.
-- Re-run `psql "$DATABASE_URL" -c "SELECT 1;"`.
-
+   - Check `DB_*` (or `DATABASE_URL`) and that `10.10.0.4:5306` is reachable over WireGuard.
 2. Migration command fails
-- Read failing migration index from output.
-- Fix SQL/permissions problem in Neon.
-- Re-run `go run ./cmd/databasemigration`.
-
-3. `/health` shows `minimax=not_configured`
-- Set `MINIMAX_API_KEY` in runtime environment or `.env`.
-- Restart backend process after updating environment.
-
-4. MiniMax verify tool fails all combinations
-- Validate `MINIMAX_API_KEY`.
-- Check outbound network/firewall.
-- Try alternate base URL support from verify output (`api.minimax.io` vs `api.minimax.chat`).
-
----
-
-## 12. Quick Run Checklist
-
-```bash
-cd ai-backend
-cp .env.example .env
-# edit .env -> DATABASE_URL + MINIMAX_API_KEY
-
-go run ./cmd/databasemigration
-go run ./cmd/server/main.go
-
-curl -s http://localhost:8080/health
-curl -s http://localhost:8080/api/skills
-
-cd cmd/verifyminimax
-go run .
-```
+   - Read the failing migration index from the output, fix the SQL or permissions, and re-run.
+3. AI errors (401/502/503)
+   - Check `AI_MANAGER_*` and that `AI_MANAGER_PROVIDER=claude-v3`.

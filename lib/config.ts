@@ -376,14 +376,16 @@ export function getMonitoring(): MonitoringConfig {
 }
 
 /**
- * Get database connection string
+ * Get the MySQL connection URL (`mysql://user:pass@host:port/name`).
  */
 export function getDatabaseURL(): string {
   const db = getDatabase();
   if (db.connection_string) {
     return db.connection_string;
   }
-  return `postgres://${db.username}:${db.password}@${db.host}:${db.port}/${db.name}?sslmode=require`;
+  const user = encodeURIComponent(db.username);
+  const pass = encodeURIComponent(db.password);
+  return `mysql://${user}:${pass}@${db.host}:${db.port}/${db.name}`;
 }
 
 /**

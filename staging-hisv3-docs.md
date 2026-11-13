@@ -172,4 +172,4 @@ Individual markdown documentation files created in `product-documentations/hisv3
 1. Test additional roles (Pharmacy, Laboratory, Cashier, etc.)
 2. Implement video recording functionality
 3. Integrate Minimax AI for automated documentation generation
-4. Submit testing results to Neon database via backend API
+4. Submit testing results to the MySQL database via backend API

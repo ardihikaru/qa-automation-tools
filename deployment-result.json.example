@@ -12,7 +12,7 @@
       "cpu": "1",
       "port": 8080,
       "environment_variables": {
-        "DATABASE_URL": "postgresql://neondb_owner:***@ep-long-flower-a1asu9tt-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require",
+        "DATABASE_URL": "qa_automation:***@tcp(10.10.0.4:5306)/qa_automation?parseTime=true",
         "MINIMAX_API_KEY": "sk-api-***",
         "NODE_ENV": "production"
       },
@@ -55,5 +55,5 @@
     }
   },
   "overall_status": "SUCCESS",
-  "notes": "Both services deployed successfully. The ai-backend connects to Neon database and uses Minimax AI. The dashboard proxies API calls to the backend."
+  "notes": "Both services deployed successfully. The ai-backend connects to the MySQL database and uses Minimax AI. The dashboard proxies API calls to the backend."
 }

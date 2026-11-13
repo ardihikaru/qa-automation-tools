@@ -4,8 +4,8 @@
 
 Package `db` owns the MySQL connection for ai-backend and the full schema DDL.
 It wraps `database/sql` (driver `github.com/go-sql-driver/mysql`) in a small
-`DB` struct whose method signatures mimic pgx, so call sites written for the
-earlier PostgreSQL (Neon) backend keep working after the move to MySQL.
+`DB` struct with context-first `Query`/`QueryRow`/`Exec` helpers. All SQL is
+MySQL 8 syntax (`?` placeholders, no `RETURNING`; use `ExecResult.LastInsertId`).
 
 Schema migrations are an in-code ordered list of SQL statements. The only
 production caller of `RunMigrations` is the dedicated command
@@ -53,8 +53,6 @@ referenced by any Go code.
   returns `migration <index> failed` with the first non-empty SQL line
   (`migrations.go:summarize`). Earlier statements are not rolled back.
 - All tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`.
-- The header comment in `migrations.go` mentions `ensureCheckConstraint`, but no
-  such function exists in the codebase. Do not rely on it.
 
 ## Side Effects
 

@@ -8,7 +8,7 @@ Scope: `ai-backend` refactor reassessment based on `ai-backend/resources/*.http`
 ### Health check contract
 - Endpoint: `GET /health`
 - Expected indicators:
-  - `database: "connected"` means backend can reach Neon PostgreSQL.
+  - `database: "connected"` means backend can reach the MySQL database (`qa_automation`).
   - `database: "disconnected"` means DB is not connected.
   - `minimax: "configured"` means MiniMax API key is loaded in runtime config.
   - `minimax: "not_configured"` means MiniMax API key is not loaded.
@@ -18,7 +18,7 @@ Scope: `ai-backend` refactor reassessment based on `ai-backend/resources/*.http`
 - Result:
   - `{"status":"ok","database":"connected","minimax":"configured"}`
 - Interpretation:
-  - Neon DB connectivity is active on the running backend process.
+  - MySQL connectivity is active on the running backend process.
   - MiniMax integration is configured in runtime.
 
 ### MiniMax outbound verification
@@ -62,7 +62,7 @@ Scope: `ai-backend` refactor reassessment based on `ai-backend/resources/*.http`
 - `GET/POST/DELETE /api/embedding-cache`
 - `GET/POST/DELETE /api/goal-events`
 
-### Endpoints covered by DB CRUD integration tests (Neon-backed)
+### Endpoints covered by DB CRUD integration tests (MySQL-backed)
 - `POST/GET/DELETE /api/roles`
 - `POST/GET /api/flows` (with seeded role)
 - `POST/GET /api/issues` + `POST /api/issues/status` + `POST /api/issues/notes`
@@ -77,7 +77,7 @@ Scope: `ai-backend` refactor reassessment based on `ai-backend/resources/*.http`
 - CORS preflight (`OPTIONS`) remains functional.
 - `/health` remains available regardless of DB connection state.
 - `POST /api/issues` no longer attempts AI classification when AI service is nil.
-- Integration tests now load env from multiple paths and map `NEON_DB_CONN` -> `DATABASE_URL` automatically.
+- Integration tests load `DB_*`/`DATABASE_URL` from multiple `.env` paths automatically.
 
 ## Test Execution Results
 

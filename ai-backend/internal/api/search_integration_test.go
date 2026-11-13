@@ -18,8 +18,8 @@ import (
 
 // TestSearchIntegration tests the /api/search endpoint with real database and AI service
 // This test requires:
-// - config.yaml with Neon database credentials
-// - .env file with MINIMAX_API_KEY set
+// - a reachable MySQL database via DB_* or DATABASE_URL (use a disposable one)
+// - a configured AI provider (ai-manager)
 func TestSearchIntegration(t *testing.T) {
 	loadIntegrationEnvFiles()
 	config.ClearCache()
@@ -29,6 +29,9 @@ func TestSearchIntegration(t *testing.T) {
 	cfg := config.LoadConfig()
 
 	// Verify database configuration exists
+	if reason := integrationOptOut(); reason != "" {
+		t.Skip(reason)
+	}
 	if cfg.Backend.Database.Host == "" && cfg.GetDatabaseURL() == "" {
 		t.Skip("Skipping integration test: No database configured in config.yaml")
 	}
@@ -128,7 +131,7 @@ func TestSearchIntegration(t *testing.T) {
 	}
 }
 
-// TestSearchWithDatabase tests the search endpoint with the Neon database
+// TestSearchWithDatabase tests the search endpoint against the MySQL database
 func TestSearchWithDatabase(t *testing.T) {
 	loadIntegrationEnvFiles()
 	config.ClearCache()

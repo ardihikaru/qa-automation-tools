@@ -80,15 +80,15 @@ The result is cached in a package-level singleton. Consumers include
   CORS on.
 - `config.go:Config.GetDatabaseURL` priority: (1) `Backend.Database.ConnectionString`
   verbatim (set from `DATABASE_URL` by `LoadConfig`); (2) `DATABASE_URL`
-  verbatim unless it starts with `postgres` (legacy Neon URLs are ignored);
+  verbatim;
   (3) DSN built from `DB_*` as
   `user:pass@tcp(host:port)/dbname?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true`.
   It returns `""` when host, user, or name is empty.
 - Caveat: `LoadConfig` copies any non-empty `DATABASE_URL` into
-  `ConnectionString` without the `postgres` check, so with a config from
-  `LoadConfig` step (1) wins and the legacy-URL filter in step (2) does not
-  apply. `loadYAMLConfig` never copies `connection_string` from YAML, despite
-  the doc comment on `GetDatabaseURL`.
+  `ConnectionString`, so with a config from `LoadConfig` step (1) already
+  holds it. `loadYAMLConfig` never copies `connection_string` from YAML,
+  despite the doc comment on `GetDatabaseURL`. `DATABASE_URL` must be a
+  go-sql-driver/mysql DSN; any other format fails at connect time.
 - `getEnvInt` falls back to the default on unparsable input. `getEnvBool`
   treats only `true`/`1`/`yes` (case-insensitive) as true.
 - `Backend.AI.Provider` values other than `minimax` fall through to the

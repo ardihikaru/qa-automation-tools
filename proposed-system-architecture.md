@@ -1,5 +1,7 @@
 # Proposed System Architecture
 
+> **Historical proposal.** Parts of this document are superseded: the database is MySQL (not Neon/PostgreSQL), the app runs on self-hosted Docker Compose (not Cloud Run), and LLM calls go through ai-manager (not MiniMax directly). See [README.md](README.md) and [docs/designs/AI_MANAGER_AND_SELF_HOSTED_DEPLOY.md](docs/designs/AI_MANAGER_AND_SELF_HOSTED_DEPLOY.md).
+
 ## Executive Summary
 
 This document proposes the technical architecture for the AI-Powered QA and System Documentation Platform. The system is designed to automatically explore web applications, generate documentation, detect QA issues, and improve over time using learning mechanisms.
@@ -122,7 +124,7 @@ playwright-qa/
 **Technology Stack**:
 - Language: Go
 - Framework: Standard library / Gorilla Mux
-- Database: pgx (PostgreSQL driver)
+- Database: pgx (PostgreSQL driver) *(superseded: `database/sql` + `go-sql-driver/mysql`, MySQL 8)*
 - AI: Minimax API client
 
 **Core Modules**:
@@ -184,6 +186,8 @@ dashboard/src/views/
 ---
 
 ## 3. Database Architecture
+
+> **Superseded (database).** The Neon/PostgreSQL design below is historical. The database is now MySQL 8, a single schema `qa_automation` on the shared rnd-v2 MySQL (`10.10.0.4:5306`), accessed through `database/sql` with `go-sql-driver/mysql`. The current DDL lives in [ai-backend/internal/db/migrations.go](ai-backend/internal/db/migrations.go) and is described in [ai-backend/internal/db/README.md](ai-backend/internal/db/README.md).
 
 ### 3.1 Schema Overview
 
@@ -442,6 +446,8 @@ Dashboard displays:
 ## 8. Deployment Architecture
 
 ### 8.1 Current Deployment (Staging)
+
+> **Superseded.** This describes the original Cloud Run + Neon setup. See [deploy/his-v3-qa/README.md](deploy/his-v3-qa/README.md) for the current deployment.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
