@@ -51,7 +51,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/docs` | `DocsView` | Browse generated docs/videos |
 | `/qa` | `QAInsights` | Skills failures summary, job audit, trigger QA run / docs generation |
 | `/issues` | `IssueDebugger` | Issues with suggestions + patches |
-| `/cost` | `CostAnalytics` | AI usage costs |
+| `/cost` | `CostAnalytics` | AI usage, spend, errors, latency, recent calls and the ai-manager gateway view |
 | `/fixes` | `FixTracking` | is_fixed checkboxes + notes |
 | `/skills` | `SkillsView` | QA skills, stats, and logs |
 | `/navigation` | `NavigationGraphView` | Learned page-navigation graph |
@@ -112,7 +112,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/issues?limit=50&target&search` | GET | `views/IssueDebugger.tsx` |
 | `/api/issues?...` | GET | `views/FixTracking.tsx` |
 | `/api/issues/status`, `/api/issues/notes` | POST | `views/FixTracking.tsx` |
-| `/api/cost/overview`, `/api/cost/trend`, `/api/cost/by-feature`, `/api/cost/efficiency` | GET | `views/CostAnalytics.tsx` |
+| `/api/cost/{overview,trend,by-feature,by-model,efficiency,filters}?from&to&feature&provider&model&status`, `/api/cost/recent?...&limit&offset`, `/api/cost/gateway?month=YYYY-MM|all` | GET | `views/CostAnalytics.tsx` (types in `utils/costTypes.ts`) |
 | `/api/settings` | GET | `views/SettingsView.tsx` |
 | `/api/products`, `/api/products/{id}` | GET, POST, PUT, DELETE | `views/ProductsView.tsx`, `views/products/ProductDetail.tsx` (PUT: name, staging URL, `allow_non_automation_work`) |
 | `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/automation/central, remove repo) |
