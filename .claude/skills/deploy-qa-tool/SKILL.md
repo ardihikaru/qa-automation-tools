@@ -11,7 +11,7 @@ Topology and invariants: [deploy/qa-tool/README.md](../../../deploy/qa-tool/READ
 1. `cd ai-backend && go build -mod=mod ./... && go test -mod=mod ./...`
 2. `cd dashboard && npm run build`
 3. If the change includes a schema change, apply the migration **first**. See the `qa-db-ops` skill.
-4. Check which branch app-host is on: `ssh app-host 'git -C ~/devel/projects/qa-automation-tools status -sb | head -1'`. `deploy.sh` runs `git pull --ff-only` on that branch and **fails** if the pull fails. Pushing and merging to `main` each need explicit approval; a deploy request does not cover them. If the commit isn't pushed, ship it with `git bundle` (see "Unpushed code").
+4. Check which branch app-host is on: `ssh app-host 'git -C ~/devel/projects/qa-automation-tools status -sb | head -1'`. `deploy.sh` runs `git pull --ff-only` on that branch and **fails** if the pull fails. Merging to `main` is pre-authorised (CLAUDE.md, Git workflow), but deploying still needs the user to ask. If the commit isn't pushed, ship it with `git bundle` (see "Unpushed code").
 
 ## Deploy
 ```bash
