@@ -29,6 +29,12 @@ export function ProtectedRoute({ children }: Props) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  // The backend refuses password changes while impersonating (403), and the
+  // impersonated identity always has mustChangePassword=false.
+  if (user.impersonator && location.pathname === '/change-password') {
+    return <Navigate to="/" replace />;
+  }
+
   if (mustChangePassword && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }

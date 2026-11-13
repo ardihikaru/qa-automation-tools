@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as authApi from './api';
 import type { AuthUser } from './api';
 
@@ -13,6 +14,11 @@ interface AuthContextValue extends AuthState {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   markPasswordChanged: () => void;
+  // Both resolve only after starting a full reload to '/' (no page state from
+  // the previous identity survives). They reject with AuthError on failure so
+  // the caller can show it inline; a 401 signs out and goes to /login instead.
+  impersonate: (username: string) => Promise<void>;
+  stopImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -23,6 +29,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: true,
     mustChangePassword: false,
   });
+
+  const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
     try {
@@ -37,7 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         mustChangePassword: data.mustChangePassword,
       });
     } catch {
-      setState({ user: null, loading: false, mustChangePassword: false });
+      // Network/5xx: keep whatever identity we had (null on first load) rather
+      // than signing the user out; only a 401 from me() means "no session".
+      setState((s) => ({ ...s, loading: false }));
     }
   }, []);
 
@@ -59,6 +69,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ user: null, loading: false, mustChangePassword: false });
   }, []);
 
+  const signedOut = useCallback(() => {
+    setState({ user: null, loading: false, mustChangePassword: false });
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  const impersonate = useCallback(
+    async (username: string) => {
+      try {
+        await authApi.impersonate(username);
+      } catch (err) {
+        if (err instanceof authApi.AuthError && err.status === 401) {
+          signedOut();
+          return;
+        }
+        throw err;
+      }
+      window.location.assign('/');
+    },
+    [signedOut],
+  );
+
+  const stopImpersonation = useCallback(async () => {
+    try {
+      await authApi.stopImpersonation();
+    } catch (err) {
+      if (err instanceof authApi.AuthError && err.status === 401) {
+        signedOut();
+        return;
+      }
+      throw err;
+    }
+    window.location.assign('/');
+  }, [signedOut]);
+
   const markPasswordChanged = useCallback(() => {
     setState((s) => ({
       ...s,
@@ -68,7 +112,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refresh, markPasswordChanged }}>
+    <AuthContext.Provider value={{
+        ...state,
+        login,
+        logout,
+        refresh,
+        markPasswordChanged,
+        impersonate,
+        stopImpersonation,
+      }}>
       {children}
     </AuthContext.Provider>
   );

@@ -3,6 +3,7 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -31,10 +32,43 @@ func Require(c Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := SetUser(r.Context(), u)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			serveAs(w, r, u, next)
 		})
 	}
+}
+
+// serveAs runs next with u on the context. While impersonating, every
+// non-GET/HEAD request gets one audit log line with the final status.
+func serveAs(w http.ResponseWriter, r *http.Request, u *User, next http.Handler) {
+	r = r.WithContext(SetUser(r.Context(), u))
+	if u.Impersonator == nil || r.Method == http.MethodGet || r.Method == http.MethodHead {
+		next.ServeHTTP(w, r)
+		return
+	}
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	next.ServeHTTP(sw, r)
+	logImpersonatedWrite(u, r.Method, r.URL.Path, sw.status)
+}
+
+// logImpersonatedWrite is a variable so tests can capture the line.
+var logImpersonatedWrite = func(u *User, method, path string, status int) {
+	log.Printf("impersonated-write actor=%s target=%s method=%s path=%s status=%d",
+		u.Impersonator.Username, u.Username, method, path, status)
+}
+
+// statusWriter records the response status; 200 when WriteHeader is never called.
+type statusWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	if !s.wroteHeader {
+		s.status = code
+		s.wroteHeader = true
+	}
+	s.ResponseWriter.WriteHeader(code)
 }
 
 // IsAuthAllowList returns true when path can be served without a session.

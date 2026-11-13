@@ -33,7 +33,8 @@ referenced by any Go code.
   `ai_cache`, `embedding_cache`, `learning_cache`, `skills`, `skill_logs`,
   `learned_skills`, `raw_issues`, `issue_suggestions`, `request_logs`,
   `flow_outcomes`, `job_runs`, `goal_events`, `navigation_edges`,
-  `action_sequences`, `context_cache`, `users`, `sessions`.
+  `action_sequences`, `context_cache`, `users`, `sessions`, `products`,
+  `active_impersonations`, `impersonation_audit` (append-only; never purge).
 
 ## Invariants
 
