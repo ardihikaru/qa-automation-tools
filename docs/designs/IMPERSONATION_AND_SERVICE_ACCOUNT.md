@@ -1,7 +1,7 @@
 # Impersonation and the AI service account
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Revised after Goldfish review (2026-11-13: design, codebase-details and implementation-readiness reviewers). Awaiting owner approval of the spec PR.
+*   **Status:** Revised after Goldfish review (2026-11-13: design, codebase-details and implementation-readiness reviewers; re-review verdict "Ready with fixes", and those fixes are applied). Awaiting owner approval of the spec PR.
 *   **Date:** 2026-11-13
 
 ## Overview
@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS impersonation_audit (
 `User` gains two fields:
 *   `Impersonator *Actor` with the JSON tag `impersonator,omitempty`. `Actor` is `{ID, Username, FullName, Role}`.
 *   `SessionToken string` with the tag `json:"-"`. It is the cookie token, which the handlers need.
+*   `SessionExpires time.Time` with the tag `json:"-"`, filled from `s.expires_at` for both the real and the target identity.
 
 `ValidateSession(token)` runs one query:
 ```sql
@@ -118,15 +119,27 @@ WHERE s.token = ? AND s.expires_at > UTC_TIMESTAMP()
 | active row, but the real user is no longer Admin/Service, or the target is missing or inactive | the **real** user, `Impersonator=nil` (the impersonation is ignored) |
 | SQL error | wrapped error, logged with `log.Printf` so that, for example, a missing table shows up in journalctl; the middleware still returns 401 |
 
+*   Target columns are scanned into `sql.NullString`, `sql.NullBool` and `sql.NullTime`.
+*   "Target missing" means `t.id IS NULL`.
+*   The two expiry columns are aliased `s_expires_at` and `ai_expires_at`.
+*   Keep `LIMIT 1`.
+
 Every failure falls back to the real, authenticated identity. No state ever yields a target identity without the impersonator marker. Because the row is keyed by the real session, revoking or expiring that session ends the impersonation as well.
 
 New file `ai-backend/internal/auth/impersonate.go`. Token generation stays in `CreateSession`; nothing new is needed.
-*   **`StartImpersonation(ctx, db, parentToken, parentExpires, impersonatorID, targetID, ip, ua)`** runs in one transaction:
-    1.  `SELECT … FOR UPDATE` any existing `active_impersonations` row for `parentToken`. If one exists, set its audit row's `ended_at` and `ended_reason='superseded'`, then delete it.
+*   **`StartImpersonation(ctx context.Context, db *sql.DB, parentToken string, parentExpires time.Time, impersonatorID, targetID, ip, ua string) (auditID int64, exp time.Time, err error)`** runs in one transaction:
+    1.  `SELECT … FOR UPDATE` any existing `active_impersonations` row for `parentToken`.
+        *   If its `expires_at > now`, set its audit row's `ended_at=now` and `ended_reason='superseded'`.
+        *   If it has expired, leave its audit row untouched, so it reads as expired.
+        *   In both cases, delete the active row.
+        *   Over HTTP this only happens for an expired row or when two starts race, because a session that is impersonating gets 403.
     2.  Compute `exp = min(parentExpires, now+1h)` in UTC.
     3.  Insert the audit row, then the active row.
-    4.  Return `exp`.
-*   **`EndImpersonation(ctx, db, parentToken, reason)`** runs in one transaction. It deletes the active row and sets the audit row's `ended_at` and `ended_reason`. It is a no-op if there is no row.
+    4.  Return `auditID` and `exp`.
+*   **`EndImpersonation(ctx context.Context, db *sql.DB, parentToken, reason string) error`** runs in one transaction.
+    *   It deletes the active row.
+    *   It sets the audit row's `ended_at` and `ended_reason` only when the row's `expires_at > now`. An expired row is deleted without touching its audit row.
+    *   It is a no-op if there is no row.
 
 ### 4. API
 All handlers are methods on `*AuthHandlers` in a new `ai-backend/internal/api/impersonation.go`. The routes are added to the `if r.authHandlers != nil` switch in `dispatchAuthenticated`. With no DB they do not exist and fail closed. The allow-list does not change.
@@ -147,12 +160,20 @@ All handlers are methods on `*AuthHandlers` in a new `ai-backend/internal/api/im
 | `POST /api/auth/impersonate` `{"username":"…"}` | 405 → 415 → 403 `forbidden` unless `CanImpersonate` → 400 `invalid request body` / empty → lowercase+trim → 404 `user not found` (lookup without `active` filter) → 400 `cannot impersonate yourself` → 409 `user is inactive` | Calls `StartImpersonation` with the client IP (`X-Real-IP`, falling back to `RemoteAddr`) and the user agent. The cookie is unchanged. Returns 200 with the shared shape for the target. Logs `impersonate start actor=<u> target=<u> audit=<id>`. |
 | `POST /api/auth/impersonate/stop` | 405 → 415 → 400 `not impersonating` if `Impersonator == nil` | `EndImpersonation(token, "stop")`, then 200 with the shared shape for the real user, re-read with `ValidateSession`. Logs `impersonate stop … reason=stop`. |
 
+*   The impersonate 200 body is built by re-reading `auth.ValidateSession(ctx, db, token)`, the same as stop, so `user.impersonator` comes from the same code path as `/me`.
+*   Error statuses:
+    *   A `StartImpersonation` error returns 500 `could not start impersonation`.
+    *   An `EndImpersonation` error in stop returns 500 `could not stop impersonation`.
+    *   A second impersonate while already impersonating returns 403 `forbidden`.
+
 Existing handlers:
 *   **`Me`:** the same shape; it now just carries `impersonator`.
 *   **`ChangePassword`:** returns 403 `not allowed while impersonating` when `!RequireRealUser`.
-*   **`Logout`:** calls `EndImpersonation(token, "logout")` and then revokes the session as today. The real user is signed out completely.
+*   **`Logout`:** calls `EndImpersonation(token, "logout")` best-effort (an error is logged and ignored), then revokes the session and returns 204 as today. The real user is signed out completely.
 
 **Write log.** `auth.Require` logs one line per non-GET request while `Impersonator != nil`, after the handler runs: `impersonated-write actor=<u> target=<u> method=<m> path=<p> status=<code>`. It uses a small status-capturing `ResponseWriter` wrapper.
+*   The wrapper records 200 if the handler never calls `WriteHeader`.
+*   Stop and logout requests made while impersonating are logged too, which is expected.
 
 ### 5. Seeding
 *   `seed.Options` gains `ServiceUsername` and `ServicePassword`. `cmd/server/main.go` fills them from `AI_SERVICE_USERNAME` and `AI_SERVICE_PASSWORD`, the same way as `ADMIN_*`.
@@ -241,7 +262,9 @@ Existing handlers:
     *   Backend:
         *   `ai-backend/internal/auth/impersonate.go` + `impersonate_test.go`
         *   `ai-backend/internal/api/impersonation.go`
+        *   `ai-backend/internal/api/impersonation_test.go`: handler 405/415/403/400/404/409 and `ChangePassword` 403, using a stubbed context user
         *   `ai-backend/internal/api/impersonation_integration_test.go`
+        *   `ai-backend/internal/auth/middleware_test.go`: the status wrapper defaults to 200, and exactly one `impersonated-write` line is logged per non-GET request while impersonating, none otherwise
         *   `ai-backend/internal/seed/seed_users_test.go`
     *   Dashboard: `dashboard/src/components/{ImpersonationBanner,ImpersonateDialog,Modal}.tsx`
     *   E2E: `this-qa-automation-system-playwright/tests/api/impersonation.spec.ts`
@@ -275,7 +298,9 @@ Existing handlers:
     *   Asserts:
         *   start makes `/me` the target with the impersonator set
         *   stop makes it the real user again
-        *   a second start supersedes the first (its audit row reads `superseded`)
+        *   a second `auth.StartImpersonation` call on the same parent token, made directly rather than over HTTP, supersedes the first, and its audit row reads `superseded`
+        *   a start over an expired row leaves the old audit row's `ended_reason` NULL
+        *   `POST /api/auth/impersonate` while impersonating returns 403 `forbidden`
         *   logout while impersonating invalidates the token
         *   an expired row falls back to the real user
         *   a target deactivated mid-session falls back to the real user
