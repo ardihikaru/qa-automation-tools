@@ -4,6 +4,7 @@ import Field from '../../components/Field';
 import Modal from '../../components/Modal';
 import SubmitButton from '../../components/SubmitButton';
 import RepoCard, { BranchesField, RepoAction } from './RepoCard';
+import KnowledgeCard from '../knowledge/KnowledgeCard';
 import {
   ApiError,
   BranchDraft,
@@ -407,6 +408,8 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
           </form>
         )}
       </div>
+
+      <KnowledgeCard product={product} canWrite={canVerify} canSetFormat={canToggle} onProductChange={onChange} />
 
       {editRepo && (
         <Modal title={`Edit repo: ${editRepo.repo.name}`} onClose={() => busyKey === null && setEditRepo(null)}>

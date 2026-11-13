@@ -9,6 +9,7 @@ import SkillsView from './views/SkillsView';
 import NavigationGraphView from './views/NavigationGraphView';
 import LearningProgressView from './views/LearningProgressView';
 import ProductsView from './views/ProductsView';
+import KnowledgeView from './views/knowledge/KnowledgeView';
 import SettingsView from './views/SettingsView';
 import LoginView from './views/LoginView';
 import ChangePasswordView from './views/ChangePasswordView';
@@ -42,6 +43,7 @@ function App() {
                 <Route path="/navigation" element={<NavigationGraphView />} />
                 <Route path="/learning" element={<LearningProgressView />} />
                 <Route path="/products" element={<ProductsView />} />
+                <Route path="/products/:id/knowledge" element={<KnowledgeView />} />
                 <Route path="/settings" element={<SettingsView />} />
               </Routes>
             </Layout>

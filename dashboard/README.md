@@ -56,7 +56,8 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/skills` | `SkillsView` | QA skills, stats, and logs |
 | `/navigation` | `NavigationGraphView` | Learned page-navigation graph |
 | `/learning` | `LearningProgressView` | Learning cache progress |
-| `/products` | `ProductsView` | Master list with repos; product detail panel with repo badges (Main, Automation, Central), Make main and Make automation actions, a Verify now prompt on an unverified automation repo, branch lists with default, the Allow non-automation work toggle (Admin/DevOps), per-repo Verify/Clone/Sync |
+| `/products` | `ProductsView` | Master list with repos; product detail panel with repo badges (Main, Automation, Central), Make main and Make automation actions, a Verify now prompt on an unverified automation repo, branch lists with default, the Allow non-automation work toggle (Admin/DevOps), per-repo Verify/Clone/Sync, and the Knowledge base card (`views/knowledge/KnowledgeCard.tsx`: format select for Admin/DevOps, Sync now, latest sync, counts, What changed). `?product=<id>` opens that product's detail |
+| `/products/:id/knowledge` | `knowledge/KnowledgeView` | Product knowledge base ([spec](../docs/designs/PRODUCT_KNOWLEDGE_SYNC.md)); no nav item, reached from the card. Tabs in `?tab=` (`modules`, `stories`, `test-cases`, `syncs`); the open entity drawer in `?e=<type>:<code>`. Local story/test case drafts for Admin, DevOps, Developer, QA, QC |
 | `/settings` | `SettingsView` | Read-only configuration (AI gateway pinned to claude-v3, services health) and architecture diagram |
 
 ### Auth module (`src/auth/`)
@@ -117,6 +118,11 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/automation/central, remove repo) |
 | `/api/products/{id}/repos/{rid}/branches` | PUT | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (save branch list and default) |
 | `/api/products/{id}/repos/{rid}/verify`, `/clone`, `/checkout` | POST | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (Verify, Clone, Sync branches) |
+| `/api/products/{id}` | PUT `{knowledge_format}` | `views/knowledge/KnowledgeCard.tsx` (Admin/DevOps set the catalog format) |
+| `/api/products/{id}/knowledge/summary`, `/tree`, `/syncs`, `/syncs/{sid}`, `/epics`, `/stories`, `/test-cases`, `/{parts\|modules\|submodules\|features\|epics\|stories\|test-cases}/{code}` | GET | `views/knowledge/api.ts` (all knowledge views) |
+| `/api/products/{id}/knowledge/sync` | POST (202 `{sync_id}`; 409 with `sync_id` is followed, not shown as an error) | `views/knowledge/KnowledgeCard.tsx` |
+| `/api/products/{id}/knowledge/annotations/{type}/{code}` | PUT, DELETE | `views/knowledge/EntityPanel.tsx` (notes and tags) |
+| `/api/products/{id}/knowledge/stories`, `/test-cases` (and `/{code}`) | POST; PUT, DELETE | `views/knowledge/DraftModal.tsx`, `EntityPanel.tsx` (local drafts, `^L-[A-Z0-9-]{1,30}$`) |
 
 The product views share `views/products/api.ts` (fetch helper, types, form validation); `components/Modal.tsx` and `components/Field.tsx` were moved out of `ProductsView.tsx`. The legacy `/api/products/{id}/verify|clone|checkout` routes remain on the server for old clients but are no longer called, and the Switch-branch modal is gone.
 | `/api/skills?...`, `/api/skills/stats?...`, `/api/skills/logs?...` | GET | `views/SkillsView.tsx` |
@@ -124,6 +130,15 @@ The product views share `views/products/api.ts` (fetch helper, types, form valid
 | `/api/learning?limit=500` | GET | `views/LearningProgressView.tsx` |
 
 ## Invariants
+
+- **Knowledge base** (`src/views/knowledge/`): the sync card polls `GET syncs/{sid}` every
+  1.5 s while `status='running'` or `ai_status='pending'`, stops after 10 minutes or on
+  unmount, and resumes when the page opens on a running sync (`useSyncFollower.ts`). Synced
+  rows are read-only (lock note); only `origin='local'` drafts get Edit and Delete. Lists use
+  `useLoad` (aborts stale requests). `Drawer.tsx` is always mounted (interruptible CSS
+  transitions in `index.css` `.kb-drawer*`), traps focus, closes on Escape, and must be
+  rendered outside `space-y-*` containers (their child margins offset fixed elements).
+  Role checks (`canWriteKnowledge`, `canSetFormat`) are UI hints; the server enforces them.
 
 - **Login gating**: `ProtectedRoute` renders a "Loading session" panel while `loading`,
   redirects to `/login` (with `state.from`) when `user` is null, and redirects to
