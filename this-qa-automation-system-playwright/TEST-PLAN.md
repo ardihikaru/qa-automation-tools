@@ -110,7 +110,7 @@ This document outlines the test plan for verifying the QA Automation System itse
 ### Prerequisites
 - Backend running on port 8080
 - Dashboard running on port 3000
-- Neon database connected
+- MySQL database connected (`qa_automation`)
 - MiniMax AI configured
 
 ### Verification Commands

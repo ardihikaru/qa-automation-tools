@@ -110,7 +110,7 @@ func NewRouter(
 }
 
 // getDB returns the database wrapper, or nil if not available.
-// The wrapper exposes pgx-compatible Query/QueryRow/Exec methods backed by
+// The wrapper exposes context-first Query/QueryRow/Exec methods backed by
 // *sql.DB (MySQL).
 func (r *Router) getDB() *db.DB {
 	if r.db == nil || r.db.SQL == nil {
@@ -645,6 +645,15 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 			return
 		case "/api/auth/change-password":
 			r.authHandlers.ChangePassword(w, req)
+			return
+		case "/api/auth/impersonate":
+			r.authHandlers.Impersonate(w, req)
+			return
+		case "/api/auth/impersonate/stop":
+			r.authHandlers.StopImpersonation(w, req)
+			return
+		case "/api/users":
+			r.authHandlers.ListUsers(w, req)
 			return
 		}
 	}

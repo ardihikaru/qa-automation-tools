@@ -500,23 +500,20 @@ func applyOverrides(cfg *Config, overrides *EnvOverrides) {
 //
 // Priority:
 //  1. Backend.Database.ConnectionString (yaml `connection_string`) — used verbatim.
-//  2. DATABASE_URL env var — used verbatim if it does NOT start with "postgres".
-//     (A legacy Neon URL from older .env files is ignored so the migration
-//     to the shared HISv3 MySQL host can't silently regress.)
+//  2. DATABASE_URL env var — used verbatim (must be a go-sql-driver/mysql DSN).
 //  3. Constructed from DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME.
 //
-// The constructed DSN format is:
+// db.NewConnection pins every DSN (including verbatim ones) to UTC via
+// db.NormalizeDSN. The constructed DSN format is:
 //
-//	user:pass@tcp(host:port)/dbname?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true
+//	user:pass@tcp(host:port)/dbname?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true
 func (c *Config) GetDatabaseURL() string {
 	if c.Backend.Database.ConnectionString != "" {
 		return c.Backend.Database.ConnectionString
 	}
 
 	if envURL := strings.TrimSpace(os.Getenv("DATABASE_URL")); envURL != "" {
-		if !strings.HasPrefix(strings.ToLower(envURL), "postgres") {
-			return envURL
-		}
+		return envURL
 	}
 
 	host := c.Backend.Database.Host
@@ -530,7 +527,7 @@ func (c *Config) GetDatabaseURL() string {
 	}
 
 	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=Local&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true",
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=UTC&charset=utf8mb4&collation=utf8mb4_general_ci&multiStatements=true",
 		user, pass, host, port, dbname,
 	)
 }

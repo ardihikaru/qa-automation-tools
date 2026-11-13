@@ -69,7 +69,7 @@ Who imports it (checked by grep across `dashboard`, `playwright-qa`, `playwright
 
   This matches the backend's provider choice: ai-manager by default, MiniMax as the fallback.
 - **Validation:** `config.ts:validateConfig` requires `staging.url`, at least one entry in `credentials`, and `backend.database.host`. It also requires `api_key` when `provider = minimax`; otherwise it requires both ai-manager credentials.
-- **Database URL:** if `connection_string` is unset, `config.ts:getDatabaseURL` builds a `postgres://...?sslmode=require` URL. That is the legacy Postgres format, not MySQL. Prefer `connection_string`.
+- **Database URL:** if `connection_string` is unset, `config.ts:getDatabaseURL` builds a MySQL URL, `mysql://user:pass@host:port/name`, with the user and password URI-encoded. No TS code calls it today; the Go backend reads `DB_*` itself.
 - **Backend URL:** `config.ts:getBackendURL` always uses `http://`.
 
 ## Side Effects
