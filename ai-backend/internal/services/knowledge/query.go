@@ -423,9 +423,9 @@ func orEmpty(l []Item) []Item {
 // Filter holds list query parameters.
 type Filter struct {
 	Epic, Story, Feature, Status, Level, Priority, Origin, Tag, Q string
-	Automated                                                    string // "", "1", "0"
-	IncludeRemoved                                               bool
-	Page, PageSize                                               int
+	Automated                                                     string // "", "1", "0"
+	IncludeRemoved                                                bool
+	Page, PageSize                                                int
 }
 
 func likeArg(q string) string {

@@ -675,7 +675,7 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			if !curFormat.Valid || curFormat.String != *body.KnowledgeFormat {
+			if curFormat.String != *body.KnowledgeFormat {
 				if !toggle {
 					return &apiError{http.StatusForbidden, "only Admin and DevOps can change knowledge_format"}
 				}

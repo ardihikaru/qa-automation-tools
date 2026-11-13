@@ -118,6 +118,9 @@ LEFT JOIN product_settings s ON s.product_id = p.id WHERE p.id = ?`, productID).
 	return t, nil
 }
 
+const insertSync = `INSERT INTO kb_syncs (product_id, repo_id, repo_name, repo_url, branch, format, parser_version, status, trigger_kind, triggered_by, started_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, UTC_TIMESTAMP())`
+
 // Start begins a sync in the background and returns its id.
 func (s *Syncer) Start(ctx context.Context, productID int, trigger, userID string) (int64, error) {
 	id, _, err := s.start(ctx, productID, trigger, userID)
@@ -132,17 +135,28 @@ func (s *Syncer) start(ctx context.Context, productID int, trigger, userID strin
 	if err != nil {
 		return 0, nil, err
 	}
-	res, err := s.DB.Exec(ctx, `INSERT INTO kb_syncs (product_id, repo_id, repo_name, repo_url, branch, format, parser_version, status, trigger_kind, triggered_by, started_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, UTC_TIMESTAMP())`,
-		productID, t.repoID, t.repoName, t.repoURL, t.branch, t.format.Name(), t.format.Version(), trigger, nullIfEmpty(userID))
+	args := []any{productID, t.repoID, t.repoName, t.repoURL, t.branch, t.format.Name(), t.format.Version(), trigger, nullIfEmpty(userID)}
+	res, err := s.DB.Exec(ctx, insertSync, args...)
 	if err != nil {
 		var me *mysql.MySQLError
-		if errors.As(err, &me) && me.Number == 1062 {
-			var running int64
-			_ = s.DB.QueryRow(ctx, `SELECT id FROM kb_syncs WHERE product_id = ? AND status = 'running'`, productID).Scan(&running)
+		if !errors.As(err, &me) || me.Number != 1062 {
+			return 0, nil, err
+		}
+		var running int64
+		serr := s.DB.QueryRow(ctx, `SELECT id FROM kb_syncs WHERE product_id = ? AND status = 'running'`, productID).Scan(&running)
+		if serr == nil {
 			return 0, nil, ErrRunning{SyncID: running}
 		}
-		return 0, nil, err
+		if !errors.Is(serr, sql.ErrNoRows) {
+			return 0, nil, serr
+		}
+		// The running sync finished in between: try once more.
+		if res, err = s.DB.Exec(ctx, insertSync, args...); err != nil {
+			if errors.As(err, &me) && me.Number == 1062 {
+				return 0, nil, ErrRunning{}
+			}
+			return 0, nil, err
+		}
 	}
 	id := res.LastInsertId()
 	done := make(chan struct{})
@@ -170,6 +184,7 @@ type lastSuccess struct {
 	format  string
 	version int
 	sha     sql.NullString
+	counts  []byte
 }
 
 func (s *Syncer) run(id int64, t *target, trigger string) {
@@ -203,15 +218,16 @@ func (s *Syncer) run(id int64, t *target, trigger string) {
 	}
 
 	var prev lastSuccess
-	err = s.DB.QueryRow(ctx, `SELECT repo_id, branch, format, parser_version, commit_sha FROM kb_syncs
-WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.productID).Scan(&prev.repoID, &prev.branch, &prev.format, &prev.version, &prev.sha)
+	err = s.DB.QueryRow(ctx, `SELECT repo_id, branch, format, parser_version, commit_sha, counts FROM kb_syncs
+WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.productID).Scan(&prev.repoID, &prev.branch, &prev.format, &prev.version, &prev.sha, &prev.counts)
 	hasPrev := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		fail("read previous sync: " + err.Error())
 		return
 	}
-	sameCommit := hasPrev && prev.sha.String == sha && prev.version == t.format.Version()
-	if trigger == TriggerSchedule && sameCommit && prev.repoID.Int64 == int64(t.repoID) && prev.branch == t.branch && prev.format == t.format.Name() {
+	sameCommit := hasPrev && prev.sha.String == sha && prev.version == t.format.Version() &&
+		prev.repoID.Int64 == int64(t.repoID) && prev.branch == t.branch && prev.format == t.format.Name()
+	if trigger == TriggerSchedule && sameCommit {
 		terminal = true
 		s.finish(id, "skipped", "", sha)
 		return
@@ -221,6 +237,21 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 	if err != nil {
 		fail(err.Error())
 		return
+	}
+	// A half of the catalog that vanished at once (folder renamed, wrong path) fails the sync
+	// instead of soft-deleting everything in it.
+	if hasPrev && len(prev.counts) > 0 {
+		var pc Counts
+		if json.Unmarshal(prev.counts, &pc) == nil {
+			if len(snap.Features) == 0 && pc.Features > 0 {
+				fail("the catalog has no features any more (was " + fmt.Sprint(pc.Features) + "); refusing to remove them all")
+				return
+			}
+			if len(snap.TestCases) == 0 && pc.TestCases > 0 {
+				fail("the catalog has no test cases any more (was " + fmt.Sprint(pc.TestCases) + "); refusing to remove them all")
+				return
+			}
+		}
 	}
 
 	var diff *Diff
@@ -276,6 +307,20 @@ const summarySystem = "You summarise changes to a product test catalog for QA en
 func (s *Syncer) summarize(id int64, t *target, prevSHA, sha string, snap *Snapshot, d *Diff, problemCount int) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.aiTimeout)
 	defer cancel()
+	written := false
+	defer func() {
+		r := recover()
+		if r != nil {
+			log.Printf("knowledge: sync %d summary panicked: %v", id, r)
+		}
+		if !written {
+			wctx, wcancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer wcancel()
+			if _, err := s.DB.Exec(wctx, `UPDATE kb_syncs SET ai_status = 'failed', ai_error = 'summary did not complete' WHERE id = ? AND ai_status = 'pending'`, id); err != nil {
+				log.Printf("knowledge: sync %d: mark summary failed: %v", id, err)
+			}
+		}
+	}()
 	labels := labelsOf(snap)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Product: %s\nCatalog commit: %.7s → %.7s\n", t.productName, prevSHA, sha)
@@ -299,10 +344,18 @@ func (s *Syncer) summarize(id int64, t *target, prevSHA, sha string, snap *Snaps
 	defer wcancel()
 	if err != nil {
 		log.Printf("knowledge: sync %d summary failed: %v", id, err)
-		_, _ = s.DB.Exec(wctx, `UPDATE kb_syncs SET ai_status = 'failed', ai_error = ? WHERE id = ?`, clipRunes(err.Error(), 400), id)
+		if _, werr := s.DB.Exec(wctx, `UPDATE kb_syncs SET ai_status = 'failed', ai_error = ? WHERE id = ?`, clipRunes(err.Error(), 400), id); werr == nil {
+			written = true
+		} else {
+			log.Printf("knowledge: sync %d: write summary error: %v", id, werr)
+		}
 		return
 	}
-	_, _ = s.DB.Exec(wctx, `UPDATE kb_syncs SET ai_status = 'done', ai_summary = ? WHERE id = ?`, clipBytes(strings.TrimSpace(text), 1<<20), id)
+	if _, werr := s.DB.Exec(wctx, `UPDATE kb_syncs SET ai_status = 'done', ai_summary = ? WHERE id = ?`, clipBytes(strings.TrimSpace(text), 1<<20), id); werr == nil {
+		written = true
+	} else {
+		log.Printf("knowledge: sync %d: write summary: %v", id, werr)
+	}
 }
 
 func labelsOf(s *Snapshot) map[string]string {

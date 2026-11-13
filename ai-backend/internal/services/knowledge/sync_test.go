@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -198,6 +199,13 @@ func TestSyncLifecycle(t *testing.T) {
 	id, _ = s.Start(ctx, pid, TriggerManual, "")
 	if r = waitSync(t, d, id); r.status != "succeeded" || r.aiStatus != "failed" {
 		t.Fatalf("ai fail: %+v", r)
+	}
+
+	// A vanished half (test catalog renamed) fails instead of removing all test cases.
+	repo.set("4545454545454545454545454545454545454545", map[string]string{"docs/modules/A-core.md": modA})
+	id, _ = s.Start(ctx, pid, TriggerManual, "")
+	if r = waitSync(t, d, id); r.status != "failed" || !strings.Contains(r.errText, "no test cases any more") {
+		t.Fatalf("vanished half: %+v", r)
 	}
 
 	// Empty catalog fails instead of removing everything.
