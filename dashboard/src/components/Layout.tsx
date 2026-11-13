@@ -83,7 +83,7 @@ export default function Layout({ children }: LayoutProps) {
         </nav>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen">
         <header className="flex items-center justify-between gap-3 p-4 bg-white border-b">
           <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />
@@ -93,7 +93,7 @@ export default function Layout({ children }: LayoutProps) {
           <UserChip />
         </header>
 
-        <main className="flex-1 p-6">
+        <main className="flex-1 w-full min-w-0 p-6">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>

@@ -6,3 +6,4 @@ These are the E2E tests for this system, covering `tests/api` and `tests/dashboa
 - Tests that create data must clean it up. Production uses the shared `qa_automation` DB.
 - Run: `npx playwright test`. Use `--project` or `--grep` to narrow the run.
 - Keep the tests in step with the backend routes in `ai-backend/internal/api/router.go` and with the `/health` shape (`status`, `database`, `ai_provider`, `ai`).
+- `tests/dashboard/layout-width.spec.ts` logs in (set `QA_USERNAME`/`QA_PASSWORD`; it skips without them) and asserts every page root fills the content area at 1920px. Never commit credentials. Video recording in `playwright.config.ts` needs `ffmpeg` (`npx playwright install ffmpeg`).
