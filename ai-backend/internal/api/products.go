@@ -510,10 +510,26 @@ type productCreateBody struct {
 	Branch  string `json:"branch"`
 }
 
+// decodeStrictJSON decodes a size-capped request body into v and rejects unknown
+// fields and trailing data, so a misspelt key (e.g. "default_branches") fails with
+// 400 instead of being silently ignored.
+func decodeStrictJSON(w http.ResponseWriter, req *http.Request, limit int64, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, req.Body, limit))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body: "+firstLine(err))
+		return false
+	}
+	if dec.More() {
+		writeJSONError(w, http.StatusBadRequest, "invalid JSON body: unexpected trailing data")
+		return false
+	}
+	return true
+}
+
 func (r *Router) createProduct(w http.ResponseWriter, req *http.Request, d *db.DB) {
 	var body productCreateBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+	if !decodeStrictJSON(w, req, 1<<16, &body) {
 		return
 	}
 	p := models.Product{Name: body.Name, StagingURL: body.StagingURL}
@@ -591,13 +607,16 @@ type productUpdateBody struct {
 	Name       *string `json:"name"`
 	StagingURL *string `json:"staging_url"`
 	Allow      *bool   `json:"allow_non_automation_work"`
+	// Legacy flat repo fields are accepted for old clients and ignored (see updateProduct).
+	LegacyRepoURL string `json:"repo_url"`
+	LegacyRootDir string `json:"root_dir"`
+	LegacyBranch  string `json:"branch"`
 }
 
 // updateProduct applies name, staging_url and the flag. Legacy repo fields in the body are ignored.
 func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.DB, id int) {
 	var body productUpdateBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+	if !decodeStrictJSON(w, req, 1<<16, &body) {
 		return
 	}
 	toggle := canToggleWork(req)
