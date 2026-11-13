@@ -500,9 +500,7 @@ func applyOverrides(cfg *Config, overrides *EnvOverrides) {
 //
 // Priority:
 //  1. Backend.Database.ConnectionString (yaml `connection_string`) — used verbatim.
-//  2. DATABASE_URL env var — used verbatim if it does NOT start with "postgres".
-//     (A legacy Neon URL from older .env files is ignored so the migration
-//     to the shared SUT MySQL host can't silently regress.)
+//  2. DATABASE_URL env var — used verbatim (must be a go-sql-driver/mysql DSN).
 //  3. Constructed from DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME.
 //
 // The constructed DSN format is:
@@ -514,9 +512,7 @@ func (c *Config) GetDatabaseURL() string {
 	}
 
 	if envURL := strings.TrimSpace(os.Getenv("DATABASE_URL")); envURL != "" {
-		if !strings.HasPrefix(strings.ToLower(envURL), "postgres") {
-			return envURL
-		}
+		return envURL
 	}
 
 	host := c.Backend.Database.Host

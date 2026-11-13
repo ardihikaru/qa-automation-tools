@@ -185,11 +185,12 @@ func TestFlowsCRUDIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	roleName := fmt.Sprintf("integration-flow-role-%d", time.Now().UnixNano())
-	var roleID int
-	if err := database.QueryRow(ctx, `INSERT INTO roles (name, description) VALUES ($1, $2) RETURNING id`, roleName, "flow integration").Scan(&roleID); err != nil {
+	roleRes, err := database.Exec(ctx, `INSERT INTO roles (name, description) VALUES (?, ?)`, roleName, "flow integration")
+	if err != nil {
 		t.Fatalf("Failed to create seed role: %v", err)
 	}
-	defer database.Exec(ctx, `DELETE FROM roles WHERE id = $1`, roleID)
+	roleID := int(roleRes.LastInsertId())
+	defer database.Exec(ctx, `DELETE FROM roles WHERE id = ?`, roleID)
 
 	flowName := fmt.Sprintf("integration-flow-%d", time.Now().UnixNano())
 	create := doJSONRequest(t, router, http.MethodPost, "/api/flows", map[string]interface{}{
@@ -206,7 +207,7 @@ func TestFlowsCRUDIntegration(t *testing.T) {
 		t.Fatalf("Failed parsing create flow response: %v", err)
 	}
 	flowID := int(created["id"].(float64))
-	defer database.Exec(ctx, `DELETE FROM flows WHERE id = $1`, flowID)
+	defer database.Exec(ctx, `DELETE FROM flows WHERE id = ?`, flowID)
 
 	list := doJSONRequest(t, router, http.MethodGet, "/api/flows", nil)
 	if list.Code != http.StatusOK {
@@ -252,7 +253,7 @@ func TestIssuesCRUDIntegration(t *testing.T) {
 		t.Fatalf("Failed parsing create issue response: %v", err)
 	}
 	issueID := int(created["id"].(float64))
-	defer database.Exec(ctx, `DELETE FROM raw_issues WHERE id = $1`, issueID)
+	defer database.Exec(ctx, `DELETE FROM raw_issues WHERE id = ?`, issueID)
 
 	status := doJSONRequest(t, router, http.MethodPost, "/api/issues/status", map[string]interface{}{
 		"id":       issueID,
@@ -353,15 +354,14 @@ func TestSkillsQueryContractIntegration(t *testing.T) {
 	seedNameA := fmt.Sprintf("integration-skill-a-%d", time.Now().UnixNano())
 	seedNameB := fmt.Sprintf("integration-skill-b-%d", time.Now().UnixNano())
 	_, err := database.Exec(ctx, `
-		INSERT INTO skills (name, description, check_type, check_query, severity, is_builtin, is_active)
-		VALUES ($1, $2, 'validation', '.a', 'high', false, true),
-		       ($3, $4, 'validation', '.b', 'low', false, true)
-		ON CONFLICT (name) DO NOTHING
+		INSERT IGNORE INTO skills (name, description, check_type, check_query, severity, is_builtin, is_active)
+		VALUES (?, ?, 'validation', '.a', 'high', false, true),
+		       (?, ?, 'validation', '.b', 'low', false, true)
 	`, seedNameA, "integration seed A", seedNameB, "integration seed B")
 	if err != nil {
 		t.Fatalf("Failed seeding skills: %v", err)
 	}
-	defer database.Exec(ctx, `DELETE FROM skills WHERE name IN ($1, $2)`, seedNameA, seedNameB)
+	defer database.Exec(ctx, `DELETE FROM skills WHERE name IN (?, ?)`, seedNameA, seedNameB)
 
 	limited := doJSONRequest(t, router, http.MethodGet, "/api/skills?limit=1&page=1&sort_by=name_desc", nil)
 	if limited.Code != http.StatusOK {
@@ -413,22 +413,21 @@ func TestSkillStatsAndLogsQueryContractIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	skillName := fmt.Sprintf("integration-stats-skill-%d", time.Now().UnixNano())
-	var skillID int
-	err := database.QueryRow(ctx, `
+	skillRes, err := database.Exec(ctx, `
 		INSERT INTO skills (name, description, check_type, check_query, severity, is_builtin, is_active)
-		VALUES ($1, 'integration stats/logs seed', 'validation', '.integration', 'medium', false, true)
-		RETURNING id
-	`, skillName).Scan(&skillID)
+		VALUES (?, 'integration stats/logs seed', 'validation', '.integration', 'medium', false, true)
+	`, skillName)
 	if err != nil {
 		t.Fatalf("Failed creating skill seed: %v", err)
 	}
-	defer database.Exec(ctx, `DELETE FROM skills WHERE id = $1`, skillID)
+	skillID := int(skillRes.LastInsertId())
+	defer database.Exec(ctx, `DELETE FROM skills WHERE id = ?`, skillID)
 
 	_, err = database.Exec(ctx, `
 		INSERT INTO skill_logs (skill_id, page, action, result, is_passed, error_message)
-		VALUES ($1, '/integration/seed-a', 'click', 'ok', true, NULL),
-		       ($1, '/integration/seed-b', 'type', 'error', false, 'failed seed log')
-	`, skillID)
+		VALUES (?, '/integration/seed-a', 'click', 'ok', true, NULL),
+		       (?, '/integration/seed-b', 'type', 'error', false, 'failed seed log')
+	`, skillID, skillID)
 	if err != nil {
 		t.Fatalf("Failed inserting skill logs seed: %v", err)
 	}
@@ -574,16 +573,15 @@ func TestIssuesListHandlesNullFixedAndNullableFieldsIntegration(t *testing.T) {
 	ctx := context.Background()
 
 	pageName := fmt.Sprintf("integration-null-issue-%d", time.Now().UnixNano())
-	var issueID int
-	err := database.QueryRow(ctx, `
+	issueRes, err := database.Exec(ctx, `
 		INSERT INTO raw_issues (page, action, error_type, error_text, category, severity, is_fixed, notes)
-		VALUES ($1, $2, NULL, $3, $4, NULL, NULL, NULL)
-		RETURNING id
-	`, pageName, "click_save", "nullable fields regression", "backend").Scan(&issueID)
+		VALUES (?, ?, NULL, ?, ?, NULL, NULL, NULL)
+	`, pageName, "click_save", "nullable fields regression", "backend")
 	if err != nil {
 		t.Fatalf("Failed to seed nullable issue row: %v", err)
 	}
-	defer database.Exec(ctx, `DELETE FROM raw_issues WHERE id = $1`, issueID)
+	issueID := int(issueRes.LastInsertId())
+	defer database.Exec(ctx, `DELETE FROM raw_issues WHERE id = ?`, issueID)
 
 	unfixed := doJSONRequest(t, router, http.MethodGet, "/api/issues?is_fixed=false&search="+url.QueryEscape(pageName)+"&limit=50", nil)
 	if unfixed.Code != http.StatusOK {

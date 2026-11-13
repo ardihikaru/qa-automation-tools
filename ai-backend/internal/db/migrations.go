@@ -8,14 +8,8 @@ import (
 	"strings"
 )
 
-// migrations contains all MySQL DDL statements. Translated from the original
-// Neon PostgreSQL schema:
-//   - SERIAL                  → INT AUTO_INCREMENT PRIMARY KEY
-//   - TIMESTAMP DEFAULT NOW() → DATETIME DEFAULT CURRENT_TIMESTAMP
-//   - BOOLEAN/JSONB           → TINYINT(1)/JSON
-//   - Schemas (qa/ai/logging) → dropped; MySQL uses a single database
-//   - DECIMAL(p,s)            → DECIMAL(p,s) (same syntax)
-//   - DO $$ ... pg_constraint → handled in Go (see ensureCheckConstraint)
+// migrations contains all MySQL 8 DDL statements for the qa_automation
+// schema (InnoDB, utf8mb4, a single database with no sub-schemas).
 //
 // Each migration is executed in order. Idempotent guards (IF NOT EXISTS,
 // INSERT IGNORE, ON DUPLICATE KEY) make repeated runs safe.
