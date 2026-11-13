@@ -441,6 +441,9 @@ func (f *Filter) norm() {
 	if f.Page < 1 {
 		f.Page = 1
 	}
+	if f.Page > 100000 {
+		f.Page = 100000
+	}
 	if f.PageSize < 1 {
 		f.PageSize = 50
 	}
@@ -1188,7 +1191,7 @@ func (f *AssistantFilter) where(alias string) (string, []any, error) {
 // Assistants lists the assistant files of every product (or one), without their bodies, with
 // counts per kind for the same filter minus the kind.
 func (s *Syncer) Assistants(ctx context.Context, f AssistantFilter) (Item, error) {
-	if f.Page < 1 {
+	if f.Page < 1 || f.Page > 100000 {
 		f.Page = 1
 	}
 	if f.PageSize < 1 || f.PageSize > 200 {

@@ -45,7 +45,7 @@ var skipDirs = map[string]bool{"node_modules": true, "vendor": true, ".git": tru
 
 // assistantKind returns the kind of a repo path, or "" when the path is not an assistant file.
 func assistantKind(p string) string {
-	if !strings.HasSuffix(p, ".md") {
+	if !strings.HasSuffix(p, ".md") || !utf8.ValidString(p) {
 		return ""
 	}
 	for _, seg := range strings.Split(path.Dir(p), "/") {
