@@ -26,7 +26,7 @@ ssh rnd-v2-vpn 'cd ~/devel/projects/infra-prod && R=$(grep -E "^MYSQL_ROOT_PASSW
 1. Append an idempotent statement to `ai-backend/internal/db/migrations.go`.
 2. After running the load-credentials block above (`MYSQL_PWD` is the mysql client's own variable, not one of the forbidden `.env` `MYSQL_*` keys). `DATABASE_URL=` is blanked so a local `.env` value can't override `DB_*`:
    `cd ai-backend && DB_HOST=10.10.0.4 DB_PORT=5306 DB_USER=qa_automation DB_PASSWORD="$MYSQL_PWD" DB_NAME=qa_automation DATABASE_URL= go run -mod=mod ./cmd/databasemigration`
-3. Deploy the backend afterwards (`deploy-his-v3-qa`).
+3. Deploy the backend afterwards (`deploy-qa-tool`).
 
 ## Backup and restore
 ```bash

@@ -1,9 +1,9 @@
 ---
-name: deploy-his-v3-qa
+name: deploy-qa-tool
 description: Deploy, roll back, health-check or debug the production qa-automation stack at https://qa-tool.sismedika.com (Docker Compose on rnd-v3-vpn 10.10.0.9 behind the clino nginx TLS edge). Use when asked to deploy/redeploy/release, check prod status or logs, roll back, renew or inspect the certificate, or change the edge vhost.
 ---
 
-# Deploy his-v3-qa
+# Deploy qa-tool
 
 Topology and invariants: [deploy/his-v3-qa/README.md](../../../deploy/his-v3-qa/README.md). Deploying is outward-facing, so **only do it when the user asks**.
 
@@ -11,7 +11,7 @@ Topology and invariants: [deploy/his-v3-qa/README.md](../../../deploy/his-v3-qa/
 1. `cd ai-backend && go build -mod=mod ./... && go test -mod=mod ./...`
 2. `cd dashboard && npm run build`
 3. If the change includes a schema change, apply the migration **first**. See the `qa-db-ops` skill.
-4. Check which branch rnd-v3 is on: `ssh rnd-v3-vpn 'git -C ~/devel/projects/qa-automation-tools status -sb | head -1'`. `deploy.sh` runs `git pull --ff-only` on that branch and **fails** if the pull fails. Pushing and merging to `main` each need explicit approval; a deploy request does not cover them. If the commit isn't pushed, ship it with `git bundle` (see "Unpushed code").
+4. Check which branch rnd-v3 is on: `ssh rnd-v3-vpn 'git -C ~/devel/projects/qa-automation-tools status -sb | head -1'`. `deploy.sh` runs `git pull --ff-only` on that branch and **fails** if the pull fails. Merging to `main` is pre-authorised (CLAUDE.md, Git workflow), but deploying still needs the user to ask. If the commit isn't pushed, ship it with `git bundle` (see "Unpushed code").
 
 ## Deploy
 ```bash
