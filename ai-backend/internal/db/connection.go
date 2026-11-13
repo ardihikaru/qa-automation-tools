@@ -10,16 +10,15 @@ import (
 	"github.com/qa-automation/ai-backend/internal/config"
 )
 
-// DB wraps *sql.DB and exposes pgx-compatible method signatures so the rest of
-// the codebase keeps reading naturally after the Neon (PostgreSQL) → MySQL
-// migration. Connection lifecycle (Ping, Close) lives here; query execution
+// DB wraps the MySQL *sql.DB and exposes context-first Query/QueryRow/Exec
+// helpers. Connection lifecycle (Ping, Close) lives here; query execution
 // lives on this struct.
 type DB struct {
 	SQL *sql.DB
 }
 
 // ExecResult wraps sql.Result to expose RowsAffected/LastInsertId without
-// requiring callers to handle a second error return — matches pgx semantics.
+// requiring callers to handle a second error return.
 type ExecResult struct {
 	inner sql.Result
 }
@@ -52,7 +51,7 @@ func (db *DB) QueryRow(ctx context.Context, query string, args ...interface{}) *
 	return db.SQL.QueryRowContext(ctx, query, args...)
 }
 
-// Exec proxies to ExecContext, wrapping the result for pgx-like ergonomics.
+// Exec proxies to ExecContext and wraps the result in ExecResult.
 func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (ExecResult, error) {
 	res, err := db.SQL.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -61,8 +60,8 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (Exec
 	return ExecResult{inner: res}, nil
 }
 
-// NewConnection creates a new MySQL connection using the shared HISv3
-// credentials (host 202.10.39.46:31006, database qa_automation by default).
+// NewConnection opens the MySQL pool described by cfg.GetDatabaseURL()
+// (by default the shared rnd-v2 MySQL at 10.10.0.4:5306, schema qa_automation).
 func NewConnection(cfg *config.Config) (*DB, error) {
 	dsn := cfg.GetDatabaseURL()
 	if dsn == "" {

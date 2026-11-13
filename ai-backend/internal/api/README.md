@@ -106,6 +106,6 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 ## Verification
 
 - Run: `cd ai-backend && go test -mod=mod ./internal/api/...`
-- The tests use no build tags. `router_test.go` runs without a DB. The integration tests (`crud_integration_test.go`, `search_integration_test.go`) call `t.Skip` when no database URL is configured or the DB is unreachable. `testenv_integration_test.go:loadIntegrationEnvFiles` loads `DATABASE_URL` (or `NEON_DB_CONN`) from nearby `.env` files.
+- The tests use no build tags. `router_test.go` runs without a DB. The integration tests (`crud_integration_test.go`, `search_integration_test.go`) call `t.Skip` when no database URL is configured or the DB is unreachable. `testenv_integration_test.go:loadIntegrationEnvFiles` loads `DB_*`/`DATABASE_URL` from nearby `.env` files.
 - When a DB is reachable, `setupCRUDIntegrationRouter` runs `db.RunMigrations` and the CRUD tests write rows to that database. Point the tests at a disposable MySQL instance.
 - Some search tests also skip when the MiniMax API key is not configured.

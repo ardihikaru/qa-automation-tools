@@ -147,29 +147,39 @@ async function readIssuesPostPath() {
   return match?.[1] || '/api/issues';
 }
 
-function getDatabaseUrl() {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
-    return process.env.DATABASE_URL.trim();
-  }
-
+async function getDbSettings() {
+  // Reads DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME from the environment,
+  // falling back to ai-backend/.env. Values are never printed.
+  const keys = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+  const fromFile = {};
   try {
-    const envPath = resolve('ai-backend/.env');
-    const envRaw = spawnSync('bash', ['-lc', `grep -E '^DATABASE_URL=' ${envPath} | cut -d= -f2-`], {
-      encoding: 'utf8',
-    });
-
-    if (envRaw.status === 0 && envRaw.stdout.trim()) {
-      return envRaw.stdout.trim();
+    const raw = await readFile(resolve('ai-backend/.env'), 'utf8');
+    for (const line of raw.split('\n')) {
+      const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/);
+      if (m && keys.includes(m[1])) {
+        fromFile[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+      }
     }
   } catch {
-    // fallback handled below
+    // no .env file; rely on process.env
   }
-
-  return '';
+  const pick = (key, fallback = '') => (process.env[key] || fromFile[key] || fallback).trim();
+  return {
+    host: pick('DB_HOST', '10.10.0.4'),
+    port: pick('DB_PORT', '5306'),
+    user: pick('DB_USER'),
+    password: pick('DB_PASSWORD'),
+    name: pick('DB_NAME', 'qa_automation'),
+  };
 }
 
 function escapeSqlText(value) {
-  return String(value).replace(/'/g, "''");
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "''");
+}
+
+function toMysqlDatetime(iso) {
+  // 2026-01-02T03:04:05.678Z -> 2026-01-02 03:04:05 (UTC)
+  return new Date(iso).toISOString().slice(0, 19).replace('T', ' ');
 }
 
 async function seedByApi(records, baseUrl, dryRun) {
@@ -254,14 +264,14 @@ async function seedByApi(records, baseUrl, dryRun) {
 }
 
 async function seedBySql(records, dryRun) {
-  const databaseUrl = getDatabaseUrl();
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL is missing. Set env var or add it to ai-backend/.env');
+  const db = await getDbSettings();
+  if (!dryRun && (!db.user || !db.name)) {
+    throw new Error('DB_USER/DB_NAME missing. Set DB_* env vars or add them to ai-backend/.env');
   }
 
   const rowsSql = records
     .map((item) => {
-      return `('${escapeSqlText(item.page)}','${escapeSqlText(item.action)}','${escapeSqlText(item.error_type)}','${escapeSqlText(item.error_text)}','${escapeSqlText(item.category)}','${escapeSqlText(item.severity)}',${item.is_fixed ? 'TRUE' : 'FALSE'},'${escapeSqlText(item.notes)}','${escapeSqlText(item.created_at)}'::timestamptz)`;
+      return `('${escapeSqlText(item.page)}','${escapeSqlText(item.action)}','${escapeSqlText(item.error_type)}','${escapeSqlText(item.error_text)}','${escapeSqlText(item.category)}','${escapeSqlText(item.severity)}',${item.is_fixed ? 'TRUE' : 'FALSE'},'${escapeSqlText(item.notes)}','${toMysqlDatetime(item.created_at)}')`;
     })
     .join(',\n');
 
@@ -274,17 +284,25 @@ async function seedBySql(records, dryRun) {
     return;
   }
 
-  const checkPsql = spawnSync('bash', ['-lc', 'command -v psql'], { encoding: 'utf8' });
-  if (checkPsql.status !== 0) {
-    throw new Error('psql not found. Install PostgreSQL client first for --mode sql');
+  const checkMysql = spawnSync('bash', ['-lc', 'command -v mysql'], { encoding: 'utf8' });
+  if (checkMysql.status !== 0) {
+    throw new Error('mysql client not found. Install a MySQL client first for --mode sql');
   }
 
-  const result = spawnSync('psql', [databaseUrl, '-v', 'ON_ERROR_STOP=1', '-c', sql], {
-    encoding: 'utf8',
-  });
+  // Password goes through MYSQL_PWD and the SQL through stdin, so neither
+  // shows up in the process list.
+  const result = spawnSync(
+    'mysql',
+    ['-h', db.host, '-P', String(db.port), '-u', db.user, db.name],
+    {
+      input: sql,
+      encoding: 'utf8',
+      env: { ...process.env, MYSQL_PWD: db.password },
+    }
+  );
 
   if (result.status !== 0) {
-    throw new Error(`psql insert failed: ${result.stderr || result.stdout}`);
+    throw new Error(`mysql insert failed: ${result.stderr || result.stdout}`);
   }
 
   console.log(`SQL seeding completed. Inserted ${records.length} rows into raw_issues.`);

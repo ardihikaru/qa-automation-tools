@@ -11,7 +11,7 @@ This is a Go 1.23 REST API. The contract is in [README.md](README.md). The paren
 
 ## Conventions
 - **Routing:** one `switch` in `internal/api/router.go` (`dispatchAuthenticated`). Add a `case`, then a handler method on `*Router`. Auth bypass is hard-coded in `Router.ServeHTTP` (`OPTIONS`, `/api/auth/login`, `/health`). `auth.IsAuthAllowList` mirrors that list but is not called, so keep the two in sync.
-- **DB access** goes through `internal/db.DB` (pgx-style `Query`/`QueryRow`/`Exec` over `database/sql`, MySQL syntax). Use `?` placeholders and `UTC_TIMESTAMP()`.
+- **DB access** goes through `internal/db.DB` (context-first `Query`/`QueryRow`/`Exec` over `database/sql`, MySQL syntax). Use `?` placeholders and `UTC_TIMESTAMP()`.
 - **Schema changes:** append to the ordered list in `internal/db/migrations.go`, using `CREATE TABLE IF NOT EXISTS` with InnoDB and utf8mb4. Never edit a migration that has already been applied.
 - **AI:** callers use `*ai.Service` (`Chat`, `ChatMessages`, `ClassifyIssue`, `GenerateSuggestion`, `GenerateSkill`). To add a provider, implement `ChatProvider` (`internal/services/ai/provider.go`) and add it to `NewFromConfig`. Get usage and cost from `LastUsage()` and prefer that over `EstimateCost`.
 - **Config:** env always beats `config.yaml`. The YAML loader ignores `backend.database.*` and the AI secrets, so the DB is configured through `DB_*` env only. Defaults are `10.10.0.4:5306`, `qa_automation`. Secrets come only from env. Add new keys to `internal/config/config.go`, `.env.example` and `deploy/his-v3-qa/.env.prod.example`.

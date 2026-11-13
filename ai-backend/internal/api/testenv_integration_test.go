@@ -28,8 +28,4 @@ func loadIntegrationEnvFiles() {
 			}
 		}
 	}
-
-	if os.Getenv("DATABASE_URL") == "" && os.Getenv("NEON_DB_CONN") != "" {
-		_ = os.Setenv("DATABASE_URL", os.Getenv("NEON_DB_CONN"))
-	}
 }
