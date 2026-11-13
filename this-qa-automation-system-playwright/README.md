@@ -143,7 +143,7 @@ Never point these tests at a shared or production database.
 | `flows.spec.ts` | `GET/POST/PUT /api/flows` | 5 |
 | `issues.spec.ts` | `GET /api/issues` (+ `is_fixed`, `category`, `search` filters), `POST /api/issues`, `POST /api/issues/status`, `POST /api/issues/notes` | 9 |
 | `skills.spec.ts` | `GET/POST /api/skills`, `GET /api/skills/stats`, `GET /api/skills/logs` (+ `passed`, `skill_id`) | 9 |
-| `cost.spec.ts` | `GET/POST /api/cost/overview`, `GET /api/cost/trend`, `GET /api/cost/efficiency`, `GET /api/cost/by-feature` | 9 |
+| `cost.spec.ts` | `/api/cost/*` (overview, trend, efficiency, by-feature, by-model, recent, filters, gateway). Needs `E2E_IMPERSONATOR_*`; read-only | 7 |
 | `learning.spec.ts` | `GET/POST/DELETE /api/learning`, `GET /api/learning/navigation`, `GET /api/learning/stats`, `GET /api/search` | 11 |
 
 Not covered by any spec: `/api/roles`, `/api/ai-cache`, `/api/embedding-cache`, `/api/docs`, `/api/videos`, `/api/goal-events`, `/api/auth/*`.
@@ -156,7 +156,7 @@ Not covered by any spec: `/api/roles`, `/api/ai-cache`, `/api/embedding-cache`, 
 | `/docs` | `docs.spec.ts` | 3 |
 | `/qa` | `qa-insights.spec.ts` | 4 |
 | `/issues` | `issues.spec.ts` | 4 |
-| `/cost` | `cost.spec.ts` | 6 |
+| `/cost` | `cost.spec.ts` (needs `QA_USERNAME`/`QA_PASSWORD`) | 3 |
 | `/fixes` | `fix-tracking.spec.ts` | 4 |
 | `/skills` | `skills.spec.ts` | 6 |
 
