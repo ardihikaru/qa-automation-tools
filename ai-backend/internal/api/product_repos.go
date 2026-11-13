@@ -476,8 +476,7 @@ func (r *Router) doVerify(w http.ResponseWriter, req *http.Request, p models.Pro
 
 func (r *Router) addRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid int) {
 	var in repoBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&in); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+	if !decodeStrictJSON(w, req, 1<<16, &in) {
 		return
 	}
 	if msg := validateRepo(&in); msg != "" {
@@ -523,8 +522,7 @@ func (r *Router) addRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid
 
 func (r *Router) updateRepo(w http.ResponseWriter, req *http.Request, d *db.DB, pid, rid int) {
 	var patch repoPatch
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&patch); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+	if !decodeStrictJSON(w, req, 1<<16, &patch) {
 		return
 	}
 	ctx := req.Context()
@@ -630,8 +628,7 @@ func (r *Router) deleteRepo(w http.ResponseWriter, req *http.Request, d *db.DB, 
 
 func (r *Router) putBranches(w http.ResponseWriter, req *http.Request, d *db.DB, pid, rid int) {
 	var body branchesBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&body); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid JSON body")
+	if !decodeStrictJSON(w, req, 1<<16, &body) {
 		return
 	}
 	ctx := req.Context()
