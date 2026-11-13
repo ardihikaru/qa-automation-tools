@@ -235,3 +235,41 @@ func TestValidateRepoAndSet(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeStrictJSON(t *testing.T) {
+	type body struct {
+		Name string `json:"name"`
+	}
+	cases := []struct {
+		name, in string
+		ok       bool
+	}{
+		{"known field", `{"name":"a"}`, true},
+		{"unknown field", `{"name":"a","default_branches":["x"]}`, false},
+		{"trailing data", `{"name":"a"} {"name":"b"}`, false},
+		{"not json", `nope`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(c.in))
+			var b body
+			if got := decodeStrictJSON(rec, req, 1<<10, &b); got != c.ok {
+				t.Fatalf("ok=%v, want %v", got, c.ok)
+			}
+			if !c.ok && rec.Code != http.StatusBadRequest {
+				t.Fatalf("code=%d, want 400", rec.Code)
+			}
+		})
+	}
+}
+
+// Legacy PUT bodies that still carry the flat repo fields must keep working (ignored, 200).
+func TestProductUpdateBodyAcceptsLegacyFields(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(`{"name":"n","repo_url":"x","root_dir":"y","branch":"z"}`))
+	var b productUpdateBody
+	if !decodeStrictJSON(rec, req, 1<<10, &b) {
+		t.Fatalf("legacy fields rejected: %s", rec.Body.String())
+	}
+}
