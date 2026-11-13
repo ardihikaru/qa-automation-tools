@@ -113,6 +113,15 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 		out, err := s.Summary(ctx, pid)
 		respond(w, out, err)
 
+	case seg == "coverage" && len(rest) == 1:
+		if method != http.MethodGet {
+			bad()
+			return
+		}
+		q := req.URL.Query()
+		m, err := s.CoverageBy(ctx, pid, q.Get("by"), knowledge.Scope{Part: q.Get("part"), Module: q.Get("module"), Submodule: q.Get("submodule"), Epic: q.Get("epic")})
+		respond(w, map[string]any{"by": q.Get("by"), "coverage": m}, err)
+
 	case seg == "tree" && len(rest) == 1:
 		if method != http.MethodGet {
 			bad()
@@ -259,6 +268,8 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 		Level: q.Get("level"), Priority: q.Get("priority"), Origin: q.Get("origin"), Tag: q.Get("tag"),
 		Q: q.Get("q"), Automated: q.Get("automated"), IncludeRemoved: boolParam(req, "include_removed"),
 		Page: intParam(req, "page"), PageSize: intParam(req, "page_size"),
+		Part: q.Get("part"), Module: q.Get("module"), Submodule: q.Get("submodule"),
+		Release: q.Get("release"), Coverage: q.Get("coverage"),
 	}
 	ctx := req.Context()
 	switch et {
@@ -271,8 +282,14 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 	case knowledge.TypeEpic:
 		out, err := r.kb.Epics(ctx, pid, f.IncludeRemoved)
 		respond(w, map[string]any{"epics": out}, err)
+	case knowledge.TypeFeature:
+		out, err := r.kb.Features(ctx, pid, f)
+		respond(w, out, err)
+	case knowledge.TypeModule:
+		out, err := r.kb.Modules(ctx, pid, f.IncludeRemoved)
+		respond(w, map[string]any{"modules": out}, err)
 	default:
-		// Parts, modules, sub-modules and features are browsed through the tree.
+		// Parts and sub-modules are browsed through the tree.
 		writeJSONError(w, http.StatusNotFound, "use knowledge/tree")
 	}
 }
