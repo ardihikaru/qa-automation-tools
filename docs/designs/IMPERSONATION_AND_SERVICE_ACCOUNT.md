@@ -1,7 +1,7 @@
 # Impersonation and the AI service account
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Revised after Goldfish review (2026-11-13: design, codebase-details and implementation-readiness reviewers; re-review verdict "Ready with fixes", and those fixes are applied). Awaiting owner approval of the spec PR.
+*   **Status:** Implemented on branch `feat/impersonation-service-account` (owner approved the spec 2026-11-13). Goldfish review 2026-11-13: design, codebase-details and implementation-readiness; re-review "Ready with fixes", and those fixes are applied.
 *   **Date:** 2026-11-13
 
 ## Overview
@@ -268,7 +268,7 @@ Existing handlers:
         *   `ai-backend/internal/seed/seed_users_test.go`
     *   Dashboard: `dashboard/src/components/{ImpersonationBanner,ImpersonateDialog,Modal}.tsx`
     *   E2E: `this-qa-automation-system-playwright/tests/api/impersonation.spec.ts`
-    *   AI tooling: `.claude/skills/qa-tool-session/SKILL.md`, `.claude/agents/qa-tool-operator.md`, `.claude/rules/qa-tool-ai-account.md`
+    *   AI tooling: `.claude/skills/qa-tool-session/SKILL.md` + `qa-tool.sh` (helper script), `.claude/agents/qa-tool-operator.md`, `.claude/rules/qa-tool-ai-account.md`
 *   **Modify:**
     *   Backend:
         *   `ai-backend/cmd/server/main.go`
@@ -331,3 +331,12 @@ Follow-ups:
 *   Login rate limiting.
 *   The `Content-Type` check on all POST endpoints.
 *   Removing `applyCORS` reflect mode.
+
+## Implementation notes (2026-11-13)
+*   **Time zones.** The DSN uses `loc=Local`, so the driver writes Go timestamps in the host's local zone. `ValidateSession` therefore compares `active_impersonations.expires_at` against a Go-supplied `now`, not `UTC_TIMESTAMP()`, so the check holds on any host time zone. The existing `sessions.expires_at > UTC_TIMESTAMP()` check has the same latent skew on non-UTC hosts; it was left unchanged and is a follow-up.
+*   **Verification.**
+    *   Unit tests: `internal/auth`, `internal/seed`, `internal/api`.
+    *   `impersonation_integration_test.go` against a disposable `mysql:8.0` container.
+    *   `tests/api/impersonation.spec.ts` (3/3 pass) and `qa-tool.sh smoke`, against a local backend on that container.
+    *   `npm run build`.
+*   **Not yet verified:** browser checks of the dashboard UI, and production. Production needs the migration, the env and a deploy, each a separate approval.

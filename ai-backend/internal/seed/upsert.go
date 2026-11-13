@@ -17,6 +17,8 @@ type userRow struct {
 	WhatsApp string
 	OdooID   string
 	Password string // plaintext; bcrypted before INSERT
+	// MustChangePW is the must_change_pw value for a NEW row only.
+	MustChangePW bool
 }
 
 // upsertUser inserts a new user when the username is unknown. Returns
@@ -37,8 +39,10 @@ func upsertUser(ctx context.Context, db *sql.DB, u userRow) (bool, error) {
 	err := db.QueryRowContext(ctx, `SELECT id FROM users WHERE username = ? LIMIT 1`, u.Username).Scan(&existingID)
 	if err == nil {
 		// Update metadata in place but never touch password_hash / must_change_pw.
+		// Service accounts are owned by upsertServiceUser: no other seed path
+		// may change them (e.g. a taskmgr user with the same username).
 		_, uerr := db.ExecContext(ctx,
-			`UPDATE users SET role = ?, is_lead = ?, whatsapp = ?, odoo_id = ? WHERE id = ?`,
+			`UPDATE users SET role = ?, is_lead = ?, whatsapp = ?, odoo_id = ? WHERE id = ? AND role <> 'Service'`,
 			u.Role, boolToTinyint(u.IsLead), u.WhatsApp, u.OdooID, existingID,
 		)
 		if uerr != nil {
@@ -62,8 +66,9 @@ func upsertUser(ctx context.Context, db *sql.DB, u userRow) (bool, error) {
 		INSERT INTO users
 			(id, username, role, is_lead, whatsapp, odoo_id,
 			 password_hash, must_change_pw, active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
 		u.ID, u.Username, u.Role, boolToTinyint(u.IsLead), u.WhatsApp, u.OdooID, hash,
+		boolToTinyint(u.MustChangePW),
 	)
 	if err != nil {
 		return false, fmt.Errorf("insert: %w", err)
