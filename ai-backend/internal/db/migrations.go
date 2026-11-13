@@ -630,6 +630,31 @@ ALTER TABLE product_settings ADD COLUMN knowledge_format VARCHAR(50) NULL DEFAUL
 INSERT INTO product_settings (product_id, knowledge_format)
 SELECT id, 'hisv3-test-catalog-v1' FROM products WHERE name = 'HISv3'
 ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_settings.knowledge_format, 'hisv3-test-catalog-v1');`,
+	// COST_TRACKING: one row per AI call attempt made by this backend (success or failure), with
+	// the feature that issued it. Replaces the never-written request_logs for the /cost page.
+	`CREATE TABLE IF NOT EXISTS ai_call_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  feature VARCHAR(64) NOT NULL DEFAULT 'unknown',
+  caller VARCHAR(64) NOT NULL DEFAULT '',
+  provider VARCHAR(64) NOT NULL DEFAULT '',
+  model VARCHAR(128) NOT NULL DEFAULT '',
+  requested_provider VARCHAR(64) NOT NULL DEFAULT '',
+  status ENUM('ok','error') NOT NULL,
+  error VARCHAR(1000) NULL,
+  fallback TINYINT(1) NOT NULL DEFAULT 0,
+  input_tokens INT NOT NULL DEFAULT 0,
+  output_tokens INT NOT NULL DEFAULT 0,
+  cost_usd DECIMAL(12,6) NOT NULL DEFAULT 0,
+  cost_idr DECIMAL(16,2) NOT NULL DEFAULT 0,
+  cost_source VARCHAR(32) NOT NULL DEFAULT '',
+  latency_ms INT NOT NULL DEFAULT 0,
+  user_id CHAR(36) NULL,
+  job_id VARCHAR(64) NULL,
+  INDEX idx_ai_call_log_created (created_at),
+  INDEX idx_ai_call_log_feature (feature, created_at),
+  INDEX idx_ai_call_log_status (status, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
