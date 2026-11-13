@@ -123,7 +123,7 @@ export function SyncResults({ results, syncedAt }: { results: BranchResult[]; sy
 
 // ---- repo card ----
 
-export type RepoAction = 'verify' | 'clone' | 'checkout' | 'branches' | 'main' | 'central' | 'delete' | 'edit';
+export type RepoAction = 'verify' | 'clone' | 'checkout' | 'branches' | 'main' | 'automation' | 'central' | 'delete' | 'edit';
 
 interface Props {
   repo: Repo;
@@ -159,8 +159,9 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="font-semibold text-gray-900 break-all">{repo.name}</h4>
             {repo.is_main && <span className="badge badge-success">Main</span>}
+            {repo.is_automation && <span className="badge bg-sky-100 text-sky-800">Automation</span>}
             {repo.is_central && <span className="badge bg-indigo-100 text-indigo-800">Central</span>}
-            {!repo.is_main && !allowWork && <span className="badge bg-gray-100 text-gray-700" title="Read-only context repo">Read only</span>}
+            {!repo.is_automation && !allowWork && <span className="badge bg-gray-100 text-gray-700" title="Not the automation repo: read-only on the remote">Read only</span>}
             {!verified ? (
               <span className="badge bg-gray-100 text-gray-700">Unverified</span>
             ) : ok ? (
@@ -176,6 +177,16 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
             <code>{repo.root_dir}</code>
             {verified && <> · verified {new Date(repo.last_verified_at as string).toLocaleString()}</>}
           </div>
+          {repo.is_automation && !verified && (
+            <button
+              type="button"
+              className="text-xs font-medium text-amber-800 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={anyBusy || !poolEnabled || !canVerify}
+              onClick={() => onAction(repo, 'verify')}
+            >
+              Verify now
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-1 justify-end">
           <SubmitButton
@@ -184,7 +195,7 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
             loadingLabel="Verifying…"
             disabled={anyBusy || !poolEnabled || !canVerify}
             onClick={() => onAction(repo, 'verify')}
-            title="Check the checkout, origin and (main repo) Playwright and staging URL"
+            title="Check the checkout and origin; the automation repo also gets the Playwright and staging URL checks"
           >
             <RepoCheckIcon className="w-4 h-4" /> Verify
           </SubmitButton>
@@ -220,8 +231,8 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
           <SubmitButton
             className="btn btn-secondary text-xs px-2 py-1 text-red-600"
             loading={loading('delete')}
-            disabled={anyBusy || !canManage || repo.is_main}
-            title={repo.is_main ? 'Promote another repo to main first' : manageTitle}
+            disabled={anyBusy || !canManage || repo.is_main || repo.is_automation}
+            title={repo.is_main ? 'Promote another repo to main first' : repo.is_automation ? 'Promote another repo to automation first' : manageTitle}
             aria-label={`Remove ${repo.name}`}
             onClick={() => onAction(repo, 'delete')}
           >
@@ -241,6 +252,18 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
             onClick={() => onAction(repo, 'main')}
           >
             Make main
+          </SubmitButton>
+        )}
+        {!repo.is_automation && (
+          <SubmitButton
+            className="btn btn-secondary text-xs px-2 py-1"
+            loading={loading('automation')}
+            loadingLabel="Promoting…"
+            disabled={anyBusy || !canManage}
+            title={manageTitle ?? 'Make this the automation repo; the current automation repo becomes a sibling'}
+            onClick={() => onAction(repo, 'automation')}
+          >
+            Make automation
           </SubmitButton>
         )}
         <SubmitButton
@@ -274,6 +297,7 @@ export default function RepoCard({ repo, allowWork, draft, onDraft, results, syn
 
       <div className="mt-4">
         <BranchesField value={draft} onChange={onDraft} disabled={anyBusy || !canManage} name={`repo-${repo.id}`} />
+        {repo.is_automation && legacyEmpty && !dirty && <p className="text-xs text-amber-800 mt-1">Set a default branch (the legacy mirror needs one).</p>}
         {legacyEmpty && !dirty && <p className="text-xs text-gray-500 mt-1">Legacy repo without a branch list: the clone keeps its current branch until you add branches.</p>}
         {dirty && problem && <p role="alert" className="text-xs text-red-700 mt-1">{problem}</p>}
         <div className="flex gap-2 mt-2">

@@ -12,12 +12,14 @@ import {
   Repo,
   SyncResponse,
   api,
+  automationRepo,
   branchProblem,
+  mainRepo,
   repoFieldProblem,
 } from './api';
 
 const FLAG_WARNING =
-  'Sibling repos become writable for branch creation and PRs. Automation scripts normally live only in the main repo.';
+  'Sibling repos become writable for branch creation and PRs. Automation scripts normally live only in the automation repo.';
 
 interface Props {
   product: Product;
@@ -35,14 +37,16 @@ interface NewRepoForm {
   repo_url: string;
   root_dir: string;
   is_main: boolean;
+  is_automation: boolean;
   is_central: boolean;
   draft: BranchDraft;
 }
-const emptyNewRepo = (isMain: boolean): NewRepoForm => ({
+const emptyNewRepo = (isMain: boolean, isAutomation: boolean): NewRepoForm => ({
   name: '',
   repo_url: '',
   root_dir: '',
   is_main: isMain,
+  is_automation: isAutomation,
   is_central: false,
   draft: { branches: ['main'], default: 'main' },
 });
@@ -67,7 +71,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
   const [lastResults, setLastResults] = useState<Record<number, { at?: string; results: BranchResult[] }>>({});
   const [meta, setMeta] = useState({ name: product.name, staging_url: product.staging_url });
   const [adding, setAdding] = useState(false);
-  const [newRepo, setNewRepo] = useState<NewRepoForm>(() => emptyNewRepo(product.repos.length === 0));
+  const [newRepo, setNewRepo] = useState<NewRepoForm>(() => emptyNewRepo(product.repos.length === 0, product.repos.length === 0));
   const [addError, setAddError] = useState<string | null>(null);
   const [editRepo, setEditRepo] = useState<{ repo: Repo; name: string; repo_url: string; root_dir: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -76,7 +80,10 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
 
   const repos = product.repos ?? [];
   const hasMain = repos.some((r) => r.is_main);
-  const showAddForm = adding || repos.length === 0 || !hasMain;
+  const hasAutomation = repos.some((r) => r.is_automation);
+  const mainR = mainRepo(product);
+  const autoR = automationRepo(product);
+  const showAddForm = adding || repos.length === 0 || !hasMain || !hasAutomation;
   const metaDirty = meta.name.trim() !== product.name || meta.staging_url.trim() !== product.staging_url;
 
   /** Runs one write at a time for the whole product; shows the error banner on failure. */
@@ -144,6 +151,9 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       case 'main':
         void run(`${repo.id}:main`, () => api<Product>(rb, put({ is_main: true })), onChange);
         break;
+      case 'automation':
+        void run(`${repo.id}:automation`, () => api<Product>(rb, put({ is_automation: true })), onChange);
+        break;
       case 'central':
         void run(`${repo.id}:central`, () => api<Product>(rb, put({ is_central: !repo.is_central })), onChange);
         break;
@@ -188,6 +198,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
             repo_url: f.repo_url.trim(),
             root_dir: f.root_dir.trim(),
             is_main: f.is_main,
+            is_automation: f.is_automation,
             is_central: f.is_central,
             branches: f.draft.branches,
             default_branch: f.draft.default,
@@ -196,7 +207,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       onChange,
     );
     if (ok) {
-      setNewRepo(emptyNewRepo(false));
+      setNewRepo(emptyNewRepo(false, false));
       setAdding(false);
     }
   }
@@ -243,7 +254,19 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       )}
       {!hasMain && (
         <div role="status" className="text-sm text-yellow-800 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
-          No main repo: add one. The main repo holds the automation scripts.
+          No main repo: add one.
+        </div>
+      )}
+      {hasMain && !hasAutomation && (
+        <div role="status" className="text-sm text-yellow-800 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
+          No automation repo: promote one (Make automation) or add one with Automation repo ticked.
+        </div>
+      )}
+      {mainR && autoR && mainR.id !== autoR.id && (
+        <div role="note" className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 break-words">
+          Automation scripts live in <code>{autoR.name}</code>, not in the main repo <code>{mainR.name}</code>: Playwright verify, PR source and the
+          product status apply to <code>{autoR.name}</code>. <code>{mainR.name}</code> (the AI base workspace) is read-only on the remote unless
+          Allow non-automation work is on.
         </div>
       )}
 
@@ -270,7 +293,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
           <div className="min-w-0">
             <div className="text-sm font-medium text-gray-800" id="flag-label">Allow non-automation work</div>
             <p className="text-xs text-gray-500 mt-1">
-              Off by default. Sibling repos are read-only context; only the main repo may create branches, push or open PRs.
+              Off by default. Sibling repos are read-only context; only the automation repo may create branches, push or open PRs.
             </p>
             {product.allow_non_automation_work && (
               <p role="note" className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1 mt-2">
@@ -353,16 +376,26 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
                 Main repo
               </label>
               <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={newRepo.is_automation}
+                  disabled={repos.length === 0}
+                  onChange={(e) => setNewRepo((f) => ({ ...f, is_automation: e.target.checked }))}
+                />
+                Automation repo
+              </label>
+              <label className="inline-flex items-center gap-2">
                 <input type="checkbox" checked={newRepo.is_central} onChange={(e) => setNewRepo((f) => ({ ...f, is_central: e.target.checked }))} />
                 Central repo
               </label>
             </div>
             {hasMain && newRepo.is_main && <p className="text-xs text-amber-800">The current main repo becomes a sibling.</p>}
+            {hasAutomation && newRepo.is_automation && <p className="text-xs text-amber-800">The current automation repo becomes a sibling.</p>}
             {newRepo.is_central && repos.some((r) => r.is_central) && <p className="text-xs text-amber-800">The central flag moves from the current central repo.</p>}
             <BranchesField value={newRepo.draft} onChange={(d) => setNewRepo((f) => ({ ...f, draft: d }))} name="new-repo" disabled={busyKey !== null} />
             {addError && <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{addError}</div>}
             <div className="flex justify-end gap-2">
-              {hasMain && (
+              {hasMain && hasAutomation && (
                 <button type="button" className="btn btn-secondary" disabled={busyKey !== null} onClick={() => setAdding(false)}>
                   Cancel
                 </button>

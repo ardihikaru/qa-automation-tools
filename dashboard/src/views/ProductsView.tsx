@@ -7,7 +7,7 @@ import { ProductsIcon } from '../components/icons';
 import { useAuth } from '../auth/AuthContext';
 import ProductDetail from './products/ProductDetail';
 import { BranchesField } from './products/RepoCard';
-import { BranchDraft, Product, api, branchProblem, mainRepo, repoFieldProblem } from './products/api';
+import { BranchDraft, Product, api, branchProblem, automationRepo, mainRepo, repoFieldProblem } from './products/api';
 
 interface ProductForm {
   name: string;
@@ -28,13 +28,30 @@ const EMPTY_FORM: ProductForm = {
 };
 
 function StatusChip({ p }: { p: Product }) {
+  const auto = automationRepo(p);
   const main = mainRepo(p);
-  if (!main) return <span className="badge badge-error">No main repo</span>;
-  if (!main.last_verified_at) return <span className="badge bg-gray-100 text-gray-700">Unverified</span>;
-  return main.playwright_accessible ? (
+  if (!auto) return <span className="badge badge-error">No automation repo</span>;
+  const autoChip = !auto.last_verified_at ? (
+    <span className="badge bg-gray-100 text-gray-700">Unverified</span>
+  ) : auto.playwright_accessible ? (
     <span className="badge badge-success">Accessible</span>
   ) : (
     <span className="badge badge-error">Not accessible</span>
+  );
+  if (!main || main.id === auto.id) return autoChip;
+  const mainOk = main.verify_report?.ok ?? main.playwright_accessible;
+  const mainChip = !main.last_verified_at ? (
+    <span className="badge bg-gray-100 text-gray-700">Main: Unverified</span>
+  ) : mainOk ? (
+    <span className="badge badge-success">Main: OK</span>
+  ) : (
+    <span className="badge badge-error">Main: Failing</span>
+  );
+  return (
+    <span className="inline-flex flex-wrap gap-1">
+      {autoChip}
+      {mainChip}
+    </span>
   );
 }
 
@@ -116,6 +133,7 @@ export default function ProductsView() {
               repo_url: f.repo_url.trim(),
               root_dir: f.root_dir.trim(),
               is_main: true,
+              is_automation: true,
               is_central: false,
               branches: f.draft.branches,
               default_branch: f.draft.default,
@@ -189,7 +207,7 @@ export default function ProductsView() {
               <tr>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">Staging URL</th>
-                <th className="px-4 py-3">Main repo / branch</th>
+                <th className="px-4 py-3">Automation repo / branch</th>
                 <th className="px-4 py-3">Repos</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -209,6 +227,7 @@ export default function ProductsView() {
                 </tr>
               )}
               {products.map((p) => {
+                const auto = automationRepo(p);
                 const main = mainRepo(p);
                 return (
                   <tr key={p.id} className="align-top">
@@ -220,21 +239,24 @@ export default function ProductsView() {
                       <a href={p.staging_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline break-all">{p.staging_url}</a>
                     </td>
                     <td className="px-4 py-3 max-w-[16rem]">
-                      {main ? (
+                      {auto ? (
                         <>
-                          <a href={main.repo_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline inline-flex items-center gap-1 break-all">
-                            {main.repo_url.replace('https://github.com/', '')} <ExternalLink className="w-3 h-3 shrink-0" />
+                          <a href={auto.repo_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline inline-flex items-center gap-1 break-all">
+                            {auto.repo_url.replace('https://github.com/', '')} <ExternalLink className="w-3 h-3 shrink-0" />
                           </a>
-                          <div className="text-xs text-gray-500 break-all"><code>{main.root_dir}</code> · {main.default_branch || '—'}</div>
+                          <div className="text-xs text-gray-500 break-all"><code>{auto.root_dir}</code> · {auto.default_branch || '—'}</div>
+                          {main && main.id !== auto.id && (
+                            <div className="text-xs text-gray-400 break-all" title="Main repo (AI base workspace)">Main: {main.name}</div>
+                          )}
                         </>
                       ) : (
-                        <span className="text-xs text-gray-500">No main repo: add one</span>
+                        <span className="text-xs text-gray-500">No automation repo: add one</span>
                       )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">{p.repos?.length ?? 0}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <StatusChip p={p} />
-                      {main?.last_verified_at && <div className="text-xs text-gray-500 mt-1">{new Date(main.last_verified_at).toLocaleString()}</div>}
+                      {auto?.last_verified_at && <div className="text-xs text-gray-500 mt-1">{new Date(auto.last_verified_at).toLocaleString()}</div>}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 justify-end">
@@ -265,7 +287,7 @@ export default function ProductsView() {
           <form onSubmit={submitForm} className="space-y-3">
             <Field label="Name" value={editing.name} onChange={(v) => setField('name', v)} placeholder="SUT" required />
             <Field label="Main URL (staging)" value={editing.staging_url} onChange={(v) => setField('staging_url', v)} placeholder="https://staging.example.com" required />
-            <p className="text-xs text-gray-500">The first repo is the main repo (automation scripts). Add central and sibling repos from the product details.</p>
+            <p className="text-xs text-gray-500">The first repo is both the main (AI workspace) and the automation repo. Change roles in the product detail. Add central and sibling repos from the product details.</p>
             <Field label="Main repo name" value={editing.repo_name} onChange={(v) => setField('repo_name', v)} placeholder="main" required />
             <Field label="Repo link" value={editing.repo_url} onChange={(v) => setField('repo_url', v)} placeholder="https://github.com/owner/repo" required />
             <Field label="Root dir (inside the repo pool)" value={editing.root_dir} onChange={(v) => setField('root_dir', v)} placeholder="owner/repo" hint="Relative to the pool, e.g. example-org/sut. Created by Clone." required />

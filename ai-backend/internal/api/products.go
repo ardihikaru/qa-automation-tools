@@ -27,7 +27,7 @@ const productCols = `id, name, repo_url, staging_url, root_dir, branch, playwrig
 	last_verified_at, verify_report, created_at, updated_at`
 
 // repoCols selects from product_repos aliased as r.
-const repoCols = `r.id, r.product_id, r.name, r.repo_url, r.root_dir, r.is_main, r.is_central,
+const repoCols = `r.id, r.product_id, r.name, r.repo_url, r.root_dir, r.is_main, r.is_automation, r.is_central,
 	r.playwright_accessible, r.last_verified_at, r.verify_report, r.sync_report, r.created_at, r.updated_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -64,7 +64,7 @@ func scanRepo(s rowScanner) (models.ProductRepo, error) {
 	var rp models.ProductRepo
 	var verified sql.NullTime
 	var verifyRep, syncRep sql.NullString
-	if err := s.Scan(&rp.ID, &rp.ProductID, &rp.Name, &rp.RepoURL, &rp.RootDir, &rp.IsMain, &rp.IsCentral,
+	if err := s.Scan(&rp.ID, &rp.ProductID, &rp.Name, &rp.RepoURL, &rp.RootDir, &rp.IsMain, &rp.IsAutomation, &rp.IsCentral,
 		&rp.PlaywrightAccessible, &verified, &verifyRep, &syncRep, &rp.CreatedAt, &rp.UpdatedAt); err != nil {
 		return rp, err
 	}
@@ -82,16 +82,18 @@ func scanRepo(s rowScanner) (models.ProductRepo, error) {
 	return rp, nil
 }
 
-// sortRepos orders repos: main first, then central (if not main), then by name.
+// sortRepos orders repos: main, automation (if not main), central (if neither), then by name.
 func sortRepos(repos []models.ProductRepo) {
 	rank := func(r models.ProductRepo) int {
 		switch {
 		case r.IsMain:
 			return 0
-		case r.IsCentral:
+		case r.IsAutomation:
 			return 1
+		case r.IsCentral:
+			return 2
 		}
-		return 2
+		return 3
 	}
 	sort.SliceStable(repos, func(i, j int) bool {
 		if ri, rj := rank(repos[i]), rank(repos[j]); ri != rj {
@@ -322,6 +324,7 @@ func notFound(msg string) *apiError   { return &apiError{http.StatusNotFound, ms
 
 var (
 	errNoMain       = conflict("product has no main repo")
+	errNoAutomation = conflict("product has no automation repo")
 	errProductGone  = notFound("product not found")
 	errRepoNotFound = notFound("repo not found")
 )
@@ -335,6 +338,7 @@ var duplicateKeyMessages = map[string]string{
 	"uq_product_repos_url":           "this repository is already listed for the product",
 	"uq_product_repos_main":          "the product already has a main repo",
 	"uq_product_repos_central":       "the product already has a central repo",
+	"uq_product_repos_automation":    "the product already has an automation repo",
 	"uq_product_repo_branches":       "duplicate or colliding branch name",
 	"uq_product_repo_branch_slug":    "duplicate or colliding branch name",
 	"uq_product_repo_branch_default": "only one default branch is allowed",
@@ -546,14 +550,15 @@ func (r *Router) createProduct(w http.ResponseWriter, req *http.Request, d *db.D
 	case body.Repos != nil:
 		repos = *body.Repos
 	default:
-		in := repoBody{Name: "main", RepoURL: body.RepoURL, RootDir: body.RootDir, IsMain: true}
+		in := repoBody{Name: "main", RepoURL: body.RepoURL, RootDir: body.RootDir, IsMain: true, IsAutomation: true}
 		if strings.TrimSpace(body.Branch) != "" {
 			in.Branches = []string{body.Branch}
 			in.DefaultBranch = body.Branch
 		}
 		repos = []repoBody{in}
 	}
-	if msg := validateRepoSet(repos); msg != "" {
+	repos, msg := validateRepoSet(repos)
+	if msg != "" {
 		writeJSONError(w, http.StatusBadRequest, msg)
 		return
 	}
@@ -572,15 +577,16 @@ func (r *Router) createProduct(w http.ResponseWriter, req *http.Request, d *db.D
 
 	var newID int
 	err = d.WithTx(req.Context(), func(tx *sql.Tx) error {
-		var main repoBody
+		// The legacy columns start from the automation row (the mirror overwrites them below).
+		var auto repoBody
 		for _, in := range repos {
-			if in.IsMain {
-				main = in
+			if in.IsAutomation {
+				auto = in
 			}
 		}
 		res, err := tx.ExecContext(req.Context(),
 			`INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES (?, ?, ?, ?, '')`,
-			p.Name, main.RepoURL, p.StagingURL, main.RootDir)
+			p.Name, auto.RepoURL, p.StagingURL, auto.RootDir)
 		if err != nil {
 			return err
 		}
@@ -594,7 +600,7 @@ func (r *Router) createProduct(w http.ResponseWriter, req *http.Request, d *db.D
 			}
 		}
 		newID = int(pid)
-		return mirrorMainToLegacy(tx, newID)
+		return mirrorAutomationToLegacy(tx, newID)
 	})
 	if err != nil {
 		writeOpError(w, "create", err)
@@ -660,12 +666,12 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 			}
 		}
 		if cur.StagingURL != oldStaging {
-			// The main repo's report includes the staging probe: it is stale now. Siblings are unaffected.
+			// The automation repo's report includes the staging probe: it is stale now. Other repos are unaffected.
 			if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET playwright_accessible=0, last_verified_at=NULL, verify_report=NULL
-				WHERE product_id=? AND is_main=1`, id); err != nil {
+				WHERE product_id=? AND is_automation=1`, id); err != nil {
 				return err
 			}
-			return mirrorMainToLegacy(tx, id)
+			return mirrorAutomationToLegacy(tx, id)
 		}
 		return nil
 	})
@@ -679,8 +685,35 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 	r.respondProduct(w, req, id, http.StatusOK)
 }
 
+// Push policy retry: a busy checkout (a sync is running) is retried a few times.
+const (
+	pushPolicyAttempts = 3
+	pushPolicyWait     = time.Second
+)
+
+// setPushPolicyRetry calls set, retrying on repopool.ErrBusy up to attempts times with wait
+// between attempts (ctx permitting). Any other error is returned at once.
+func setPushPolicyRetry(ctx context.Context, set func(context.Context, string, bool) error, rel string, allow bool, attempts int, wait time.Duration) error {
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = set(ctx, rel, allow); !errors.Is(err, repopool.ErrBusy) {
+			return err
+		}
+		if i == attempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(wait):
+		}
+	}
+	return err
+}
+
 // applyPushPolicies re-applies the origin push policy of every repo of a product after the DB
-// commit (best effort: busy or missing checkouts are logged and fixed by the next sync).
+// commit (best effort: busy checkouts are retried, then logged and fixed by the next sync; the
+// DB write guard stays authoritative). allow = is_automation OR the product flag.
 func (r *Router) applyPushPolicies(ctx context.Context, d *db.DB, productID int) {
 	if r.repoPool == nil {
 		return
@@ -691,8 +724,8 @@ func (r *Router) applyPushPolicies(ctx context.Context, d *db.DB, productID int)
 	}
 	p := list[0]
 	for _, rp := range p.Repos {
-		allow := rp.IsMain || p.AllowNonAutomationWork
-		if err := r.repoPool.SetPushPolicy(context.WithoutCancel(ctx), rp.RootDir, allow); err != nil {
+		allow := rp.IsAutomation || p.AllowNonAutomationWork
+		if err := setPushPolicyRetry(context.WithoutCancel(ctx), r.repoPool.SetPushPolicy, rp.RootDir, allow, pushPolicyAttempts, pushPolicyWait); err != nil {
 			log.Printf("products %q: push policy for repo %q: %v", p.Name, rp.Name, err)
 		}
 	}
@@ -726,10 +759,11 @@ func (r *Router) respondProduct(w http.ResponseWriter, req *http.Request, id, st
 	writeJSON(w, status, p)
 }
 
-// verifyAndStore verifies one repo of p and persists its report (and, for the main repo, the legacy mirror).
+// verifyAndStore verifies one repo of p and persists its report (and, for the automation repo, the legacy mirror).
+// Only the automation repo gets the Playwright check and the staging probe.
 func (r *Router) verifyAndStore(ctx context.Context, p models.Product, repo models.ProductRepo) error {
 	var rep repopool.Report
-	if repo.IsMain {
+	if repo.IsAutomation {
 		rep = r.repoPool.Verify(ctx, repo.RepoURL, repo.RootDir, p.StagingURL)
 	} else {
 		rep = r.repoPool.VerifyRepo(ctx, repo.RepoURL, repo.RootDir, false)
@@ -742,7 +776,7 @@ func (r *Router) verifyAndStore(ctx context.Context, p models.Product, repo mode
 
 // storeVerify persists a report conditionally, in one transaction that starts by locking the
 // product row: a result is dropped when the inputs it was computed from changed meanwhile
-// (repo_url, root_dir; for the main repo also staging_url and its main role).
+// (repo_url, root_dir, its automation role; for the automation repo also staging_url).
 func (r *Router) storeVerify(ctx context.Context, productID int, repo models.ProductRepo, probedStaging string, rep repopool.Report) error {
 	b, err := json.Marshal(rep)
 	if err != nil {
@@ -753,22 +787,22 @@ func (r *Router) storeVerify(ctx context.Context, productID int, repo models.Pro
 		if err := tx.QueryRowContext(ctx, `SELECT staging_url FROM products WHERE id = ?`, productID).Scan(&staging); err != nil {
 			return err
 		}
-		var isMain bool
-		if err := tx.QueryRowContext(ctx, `SELECT is_main FROM product_repos WHERE id = ? AND product_id = ?`, repo.ID, productID).Scan(&isMain); err != nil {
+		var isAutomation bool
+		if err := tx.QueryRowContext(ctx, `SELECT is_automation FROM product_repos WHERE id = ? AND product_id = ?`, repo.ID, productID).Scan(&isAutomation); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil // repo deleted meanwhile
 			}
 			return err
 		}
-		if isMain != repo.IsMain || (isMain && staging != probedStaging) {
+		if isAutomation != repo.IsAutomation || (isAutomation && staging != probedStaging) {
 			return nil // stale: role or staging URL changed since the check ran
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE product_repos SET playwright_accessible=?, last_verified_at=UTC_TIMESTAMP(), verify_report=?
 			WHERE id=? AND repo_url=? AND root_dir=?`, rep.OK, string(b), repo.ID, repo.RepoURL, repo.RootDir); err != nil {
 			return err
 		}
-		if isMain {
-			return mirrorMainToLegacy(tx, productID)
+		if isAutomation {
+			return mirrorAutomationToLegacy(tx, productID)
 		}
 		return nil
 	})
@@ -796,8 +830,8 @@ func (r *Router) StartProductVerifier(ctx context.Context, interval time.Duratio
 }
 
 // verifyAllProducts probes each product's staging URL once, then verifies every repo
-// (the main repo with the Playwright check and the probe result merged in). Products without
-// a main repo are skipped; busy repos are skipped silently.
+// (the automation repo with the Playwright check and the probe result merged in). Products without
+// a main or an automation repo are skipped; busy repos are skipped silently.
 func (r *Router) verifyAllProducts(ctx context.Context) {
 	list, err := loadProducts(ctx, r.db.SQL, 0)
 	if err != nil {
@@ -805,17 +839,13 @@ func (r *Router) verifyAllProducts(ctx context.Context) {
 		return
 	}
 	for _, p := range list {
-		hasMain := false
-		for _, rp := range p.Repos {
-			hasMain = hasMain || rp.IsMain
-		}
-		if !hasMain {
+		if !hasMain(p.Repos) || !hasAutomation(p.Repos) {
 			continue
 		}
 		probe := r.repoPool.ProbeStaging(ctx, p.StagingURL)
 		for _, rp := range p.Repos {
 			var rep repopool.Report
-			if rp.IsMain {
+			if rp.IsAutomation {
 				rep = r.repoPool.VerifyRepo(ctx, rp.RepoURL, rp.RootDir, true)
 				if !rep.Busy {
 					rep.Append(probe)
