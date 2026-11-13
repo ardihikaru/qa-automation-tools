@@ -29,6 +29,9 @@ func TestSearchIntegration(t *testing.T) {
 	cfg := config.LoadConfig()
 
 	// Verify database configuration exists
+	if reason := integrationOptOut(); reason != "" {
+		t.Skip(reason)
+	}
 	if cfg.Backend.Database.Host == "" && cfg.GetDatabaseURL() == "" {
 		t.Skip("Skipping integration test: No database configured in config.yaml")
 	}

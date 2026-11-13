@@ -22,7 +22,10 @@ Values already set in the environment win over values from these files.
 
 ## Recommended Env Setup
 
+These tests run migrations and write rows, and the config defaults to the shared **production** MySQL (`10.8.0.4:5306`). They therefore only run when you opt in with `QA_INTEGRATION_TESTS=1`. Always point them at a disposable database, for example `docker run -d --rm --name qa-it-mysql -e MYSQL_ROOT_PASSWORD=itpw -e MYSQL_DATABASE=qa_automation_test -p 127.0.0.1:3306:3306 mysql:8.0`.
+
 ```bash
+export QA_INTEGRATION_TESTS=1   # required; never with DB_* pointing at production
 export DB_HOST=127.0.0.1 DB_PORT=3306 DB_USER=qa_test DB_PASSWORD=... DB_NAME=qa_automation_test
 # or a go-sql-driver/mysql DSN:
 # export DATABASE_URL='qa_test:...@tcp(127.0.0.1:3306)/qa_automation_test?parseTime=true'
@@ -54,8 +57,9 @@ ok   github.com/qa-automation/ai-backend/internal/api  <duration>
 
 Tests skip (instead of fail) when:
 
-1. No database is configured or the database is unreachable.
-2. The AI provider is not configured (search integration tests).
+1. `QA_INTEGRATION_TESTS` is not `1`.
+2. No database is configured or the database is unreachable.
+3. The AI provider is not configured (search integration tests).
 
 ## Troubleshooting
 
