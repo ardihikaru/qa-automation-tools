@@ -216,6 +216,8 @@ type Product struct {
 	VerifyReport         json.RawMessage `json:"verify_report"`
 	// AllowNonAutomationWork comes from product_settings (a missing row is false).
 	AllowNonAutomationWork bool `json:"allow_non_automation_work"`
+	// KnowledgeFormat is product_settings.knowledge_format ("" = not set or sync off; PRODUCT_KNOWLEDGE_SYNC.md).
+	KnowledgeFormat string `json:"knowledge_format"`
 	// Repos lists the product's repos (main first). The legacy fields above mirror the automation repo.
 	Repos     []ProductRepo `json:"repos"`
 	CreatedAt time.Time     `json:"created_at"`

@@ -1,6 +1,9 @@
 package db
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSkipIf(t *testing.T) {
 	cases := []struct {
@@ -30,18 +33,27 @@ func TestParseSkipIf(t *testing.T) {
 	}
 }
 
-func TestExistingMigrationsHaveNoGuardExceptTheAutomationAlter(t *testing.T) {
-	guarded := 0
-	for i, m := range migrations {
+// TestGuardedMigrationsAreKnown pins which entries carry a skip-if guard: only the automation-role
+// ALTER and the two PRODUCT_KNOWLEDGE_SYNC entries (knowledge_format ALTER, one-time seed), in that order.
+func TestGuardedMigrationsAreKnown(t *testing.T) {
+	want := []string{
+		"ADD COLUMN is_automation",
+		"ADD COLUMN knowledge_format",
+		"INSERT INTO product_settings (product_id, knowledge_format)",
+	}
+	var got []string
+	for _, m := range migrations {
 		if _, ok := parseSkipIf(m); ok {
-			guarded++
-			if i != len(migrations)-2 {
-				t.Errorf("unexpected guarded entry %d", i)
-			}
+			got = append(got, m)
 		}
 	}
-	if guarded != 1 {
-		t.Fatalf("want exactly 1 guarded entry, got %d", guarded)
+	if len(got) != len(want) {
+		t.Fatalf("want %d guarded entries, got %d", len(want), len(got))
+	}
+	for i, w := range want {
+		if !strings.Contains(got[i], w) {
+			t.Errorf("guarded entry %d does not contain %q", i, w)
+		}
 	}
 }
 

@@ -115,6 +115,12 @@ SET p.repo_url = r.repo_url, p.root_dir = r.root_dir,
 ```
 Concurrent racing is covered by the unique key: the loser of a promotion race gets 1062 on `uq_product_repos_automation`, mapped to 409.
 
+## Knowledge base tables (PRODUCT_KNOWLEDGE_SYNC.md)
+- `kb_syncs`: one row per sync attempt; `running_flag` (generated from `status`) + `UNIQUE(product_id, running_flag)` allows one running sync per product. `counts`/`diff`/`problems` JSON are written in the same transaction as the entity rows; `ai_status` tracks the post-commit summary.
+- Entity tables `kb_parts`, `kb_modules`, `kb_submodules`, `kb_features`, `kb_epics`, `kb_stories`, `kb_test_cases`: `UNIQUE(product_id, code)`, every code column `utf8mb4_bin`, links by code; `origin` sync|local, `content_hash` (without location), `removed_at`/`removed_sync_id` soft delete.
+- `kb_story_features` (link index, `origin`), `kb_annotations` (keyed by `(product_id, entity_type, entity_code)`, survives re-syncs).
+- `product_settings.knowledge_format`: `NULL` never set, `''` off. Added by a guarded ALTER; a one-time guarded seed sets SUT to `test-catalog-v1` while no product has a value.
+
 **Tests:** `internal/testdb` gives DB-backed tests a scratch schema from `QA_TEST_MYSQL_DSN` (tests skip when empty; a DSN naming `qa_automation` is refused).
 
 ## Side Effects

@@ -70,7 +70,9 @@ type ExecutorConfig struct {
 type ProductsConfig struct {
 	PoolDir               string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
 	VerifyIntervalMinutes int    // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
-	AllowedOwners         string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
+	// KnowledgeSyncIntervalMinutes is KB_SYNC_INTERVAL_MINUTES: scheduled knowledge sync, 0 disables (PRODUCT_KNOWLEDGE_SYNC.md).
+	KnowledgeSyncIntervalMinutes int
+	AllowedOwners                string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
 }
 
 // DatabaseConfig holds database settings
@@ -317,9 +319,10 @@ func LoadConfig() *Config {
 				CORSOrigins:  getEnvString("CORS_ORIGINS", "*"),
 			},
 			Products: ProductsConfig{
-				PoolDir:               getEnvString("REPO_POOL_DIR", ""),
-				VerifyIntervalMinutes: getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
-				AllowedOwners:         getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
+				PoolDir:                      getEnvString("REPO_POOL_DIR", ""),
+				VerifyIntervalMinutes:        getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
+				KnowledgeSyncIntervalMinutes: getEnvInt("KB_SYNC_INTERVAL_MINUTES", 360),
+				AllowedOwners:                getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),
