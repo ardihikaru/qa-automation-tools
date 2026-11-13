@@ -384,6 +384,64 @@ The dashboard is built by the `frontend-worker` agent, which applies Emil Kowals
     *   The drawer traps focus and closes on Escape.
     *   Icons come from lucide-react only.
 
+### Amendment 1 (2026-11-14): coverage and detail pages
+Every entity gets a `Coverage` object: `{test_cases, automated, planned, blocked, manual_only, wont, pct, state}`. `state` is one of:
+*   `untested`: no test cases;
+*   `none`: test cases, but none automated;
+*   `partial`: some automated;
+*   `full`: all automated.
+
+For a part, module, sub-module or feature, coverage counts the distinct active test cases of the active stories linked to its active features. For an epic or a story, it counts that epic's or story's active test cases.
+
+New and changed API:
+*   **New:** `GET knowledge/coverage?by=part|module|submodule|feature|epic|story[&part=&module=&submodule=&epic=]`, which returns `{by, coverage:{code: Coverage}}`. An unknown `by` is 400.
+*   **New:** `GET knowledge/modules`, which returns modules with `coverage`, `features` and `submodules` counts.
+*   **New:** `GET knowledge/features?part=&module=&submodule=&release=&coverage=<states,…>&q=&page=`, paginated, with coverage on every item.
+*   **Changed:** `stories` and `test-cases` accept `part`, `module` and `submodule` filters, which work through the linked features. `stories` also accepts `coverage=`.
+*   **Changed:** detail endpoints return the entity's `coverage` and the coverage of the children they list.
+
+Dashboard: one page per entity at `/products/:id/knowledge/:type/:code`. Each page has:
+*   a breadcrumb trail;
+*   a one-sentence coverage summary;
+*   a case grid: one square per test case, colored by status;
+*   child lists filtered by automation state.
+
+### Amendment 2 (2026-11-14): assistant files
+The same sync, with the same button, schedule and history, also reads these files from the automation repo:
+
+| Kind | Files |
+|---|---|
+| `agent` | `.claude/agents/**/*.md` |
+| `skill` | `.claude/skills/<name>/SKILL.md` |
+| `rule` | `.claude/rules/**/*.md` |
+| `command` | `.claude/commands/**/*.md` |
+| `instructions` | every `CLAUDE.md` / `AGENTS.md` outside `node_modules`, `vendor`, `.git`, `dist` and `build` |
+
+`ReadTree` now takes a path filter (`keep func(path) bool`) instead of a prefix, and the sync passes `KeepForSync`.
+
+Parsing:
+*   **Frontmatter:** the YAML is parsed with `yaml.v3` and stored as JSON. Invalid YAML is a Problem, and the file is still stored.
+*   **Name:** frontmatter `name`; otherwise the skill's folder name, the instructions file's path, or the file name.
+*   **Description:** frontmatter `description`; otherwise the first plain paragraph line, otherwise the first heading.
+*   **Body:** capped at 1 MiB.
+
+Storage:
+*   Files go into `kb_assistants`, keyed by `code = <kind>~<slug(path,33)>-<6 hex sha1(path)>`. The table has the same soft-delete, diff and annotation semantics as the other entity tables.
+*   `kb_annotations.entity_type` gains `assistant` (guarded ALTER).
+*   `parser_version` is now `format.Version()*1000 + AssistantsVersion`, so a parser upgrade re-syncs an unchanged commit.
+*   `counts` gains `agents`, `skills`, `rules`, `commands` and `instructions`.
+
+API:
+*   `GET knowledge/assistants?kind=&q=&page=` lists one product's files. Bodies are left out of the list, and the response includes `kinds` counts.
+*   `GET knowledge/assistants/{code}` returns the full file, including its body.
+*   `GET /api/assistants?product_id=&kind=&q=&page=` lists the files of every product. Each item has `product_id`, `product_name` and `source_url`.
+
+QA check skills (the `skills` table) gain `product_id INT NULL` (guarded ALTER; `NULL` means global). The filter `GET /api/skills?product_id=N` returns the global skills plus product N's; `product_id=global` returns only the global ones.
+
+Dashboard:
+*   `/skills` gets a product filter and a switch between "QA checks" and "Repo skills".
+*   New `/agents` and `/rules` pages, where "rules" covers rules, commands and instructions, with the same product filter.
+
 ### Rollback
 Everything here is additive. The previous binary ignores the new tables and the new column. Rolling back is a redeploy of the previous image, with no data repair needed. The mirrors under `.kb-mirrors/` can stay where they are.
 

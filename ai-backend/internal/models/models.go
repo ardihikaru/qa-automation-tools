@@ -45,6 +45,8 @@ type Skill struct {
 	IsBuiltin   bool      `json:"is_builtin"`
 	IsActive    bool      `json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
+	// ProductID ties a QA check skill to one product; nil means global (every product).
+	ProductID *int `json:"product_id"`
 }
 
 // RawIssue represents a detected issue

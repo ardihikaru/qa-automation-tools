@@ -25,6 +25,7 @@ var tables = map[string]table{
 	TypeFeature:   {"kb_features", []string{"module_code", "submodule_code", "name", "repo_entry", "release_status", "status_as_of", "evidence", "notes"}},
 	TypeEpic:      {"kb_epics", []string{"title", "service", "area"}},
 	TypeStory:     {"kb_stories", []string{"epic_code", "text", "unmapped_reason"}},
+	TypeAssistant: {"kb_assistants", []string{"kind", "name", "description", "path", "frontmatter", "body"}},
 	TypeTestCase:  {"kb_test_cases", []string{"epic_code", "story_code", "scenario", "polarity", "level", "priority", "status", "automated", "spec_paths", "reason_category", "reason_detail"}},
 }
 
@@ -96,6 +97,13 @@ func rowsOf(s *Snapshot) map[string][]row {
 	}
 	for _, x := range s.TestCases {
 		out[TypeTestCase] = append(out[TypeTestCase], testCaseRow(x))
+	}
+	for _, x := range s.Assistants {
+		fm := string(x.Frontmatter)
+		if fm == "" {
+			fm = "{}"
+		}
+		out[TypeAssistant] = append(out[TypeAssistant], row{code: x.Code, vals: []any{x.Kind, x.Name, x.Description, clipRunes(x.Path, 300), fm, x.Body}, file: x.Path})
 	}
 	return out
 }
@@ -338,6 +346,11 @@ type Counts struct {
 	StoriesUnmapped     int `json:"stories_unmapped"`
 	TestCases           int `json:"test_cases"`
 	Automated           int `json:"automated"`
+	Agents              int `json:"agents"`
+	Skills              int `json:"skills"`
+	Rules               int `json:"rules"`
+	Commands            int `json:"commands"`
+	Instructions        int `json:"instructions"`
 }
 
 type querier interface {
@@ -360,9 +373,16 @@ func countActive(ctx context.Context, q querier, productID int) (Counts, error) 
   (SELECT COUNT(*) FROM kb_stories`+act+`),
   (SELECT COUNT(*) FROM kb_stories`+act+` AND unmapped_reason IS NOT NULL),
   (SELECT COUNT(*) FROM kb_test_cases`+act+`),
-  (SELECT COUNT(*) FROM kb_test_cases`+act+` AND automated = 1)`,
+  (SELECT COUNT(*) FROM kb_test_cases`+act+` AND automated = 1),
+  (SELECT COUNT(*) FROM kb_assistants`+act+` AND kind = 'agent'),
+  (SELECT COUNT(*) FROM kb_assistants`+act+` AND kind = 'skill'),
+  (SELECT COUNT(*) FROM kb_assistants`+act+` AND kind = 'rule'),
+  (SELECT COUNT(*) FROM kb_assistants`+act+` AND kind = 'command'),
+  (SELECT COUNT(*) FROM kb_assistants`+act+` AND kind = 'instructions')`,
 		productID, productID, productID, productID, productID, productID, productID, productID, productID, productID,
-	).Scan(&c.Parts, &c.Modules, &c.Submodules, &c.Features, &c.FeaturesWithStories, &c.Epics, &c.Stories, &c.StoriesUnmapped, &c.TestCases, &c.Automated)
+		productID, productID, productID, productID, productID,
+	).Scan(&c.Parts, &c.Modules, &c.Submodules, &c.Features, &c.FeaturesWithStories, &c.Epics, &c.Stories, &c.StoriesUnmapped, &c.TestCases, &c.Automated,
+		&c.Agents, &c.Skills, &c.Rules, &c.Commands, &c.Instructions)
 	return c, err
 }
 

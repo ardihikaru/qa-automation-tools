@@ -24,7 +24,7 @@ type Summarizer interface {
 }
 
 // TreeReader reads a repo tree (repopool.Pool.ReadTree, replaced in tests).
-type TreeReader func(ctx context.Context, repoID int, repoURL, branch, prefix string, maxBytes int64) (string, map[string][]byte, error)
+type TreeReader func(ctx context.Context, repoID int, repoURL, branch string, keep func(string) bool, maxBytes int64) (string, map[string][]byte, error)
 
 // Syncer runs knowledge syncs.
 type Syncer struct {
@@ -135,7 +135,7 @@ func (s *Syncer) start(ctx context.Context, productID int, trigger, userID strin
 	if err != nil {
 		return 0, nil, err
 	}
-	args := []any{productID, t.repoID, t.repoName, t.repoURL, t.branch, t.format.Name(), t.format.Version(), trigger, nullIfEmpty(userID)}
+	args := []any{productID, t.repoID, t.repoName, t.repoURL, t.branch, t.format.Name(), parserVersion(t.format), trigger, nullIfEmpty(userID)}
 	res, err := s.DB.Exec(ctx, insertSync, args...)
 	if err != nil {
 		var me *mysql.MySQLError
@@ -207,7 +207,7 @@ func (s *Syncer) run(id int64, t *target, trigger string) {
 		s.finish(id, "failed", msg, "")
 	}
 
-	sha, files, err := s.ReadTree(ctx, t.repoID, t.repoURL, t.branch, "docs", treeMaxBytes)
+	sha, files, err := s.ReadTree(ctx, t.repoID, t.repoURL, t.branch, KeepForSync, treeMaxBytes)
 	if err != nil {
 		if errors.Is(err, repopool.ErrBusy) {
 			fail("the repo mirror is busy; try again")
@@ -225,7 +225,7 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 		fail("read previous sync: " + err.Error())
 		return
 	}
-	sameCommit := hasPrev && prev.sha.String == sha && prev.version == t.format.Version() &&
+	sameCommit := hasPrev && prev.sha.String == sha && prev.version == parserVersion(t.format) &&
 		prev.repoID.Int64 == int64(t.repoID) && prev.branch == t.branch && prev.format == t.format.Name()
 	if trigger == TriggerSchedule && sameCommit {
 		terminal = true
@@ -238,6 +238,9 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 		fail(err.Error())
 		return
 	}
+	var aprobs []Problem
+	snap.Assistants, aprobs = ParseAssistants(files)
+	problems = append(problems, aprobs...)
 	// A half of the catalog that vanished at once (folder renamed, wrong path) fails the sync
 	// instead of soft-deleting everything in it.
 	if hasPrev && len(prev.counts) > 0 {
@@ -456,3 +459,7 @@ func (s *Syncer) syncAll(ctx context.Context) {
 		}
 	}
 }
+
+// parserVersion combines the catalog format's version with the assistant parser's, so a change to
+// either re-syncs an unchanged commit.
+func parserVersion(f Format) int { return f.Version()*1000 + AssistantsVersion }
