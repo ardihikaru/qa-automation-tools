@@ -35,6 +35,8 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/flows` | GET, POST | `handleFlows` |
 | `/api/products` | GET, POST | `handleProducts` (`products.go`): list products with their `repos` (main first, then central, then by name), `allow_non_automation_work`, and the legacy fields mirrored from the main repo. POST takes `{name, staging_url, repos:[...]}` (exactly one `is_main`) or the legacy flat `{repo_url, root_dir, branch}` (one repo named `main`; both forms is 400). Writes: Admin/DevOps/Developer |
 | `/api/products/{id}` | GET, PUT, DELETE | PUT applies `name`, `staging_url` and `allow_non_automation_work` (Admin/DevOps only; another role changing it gets 403 and nothing is saved); legacy `repo_url`/`root_dir`/`branch` in the body are ignored with 200. DELETE removes registry rows (repos, branches, settings cascade), never checkouts |
+
+Product and repo request bodies (create, update, repo add/update, branches) are decoded strictly (`decodeStrictJSON`): an unknown field or trailing data is a 400. The legacy flat fields above remain declared on the product update body so old clients keep getting 200.
 | `/api/products/{id}/repos` | POST | Add a repo (`product_repos.go`); `is_main:true` promotes atomically (old main becomes a sibling), `is_central:true` moves the central flag. 201 Product |
 | `/api/products/{id}/repos/{rid}` | PUT, DELETE | PUT is partial (`name`, `repo_url`, `root_dir`, `is_main`, `is_central`); `is_main:false` on the main and DELETE of the main are 409. DELETE of the central repo is allowed. 200 Product |
 | `/api/products/{id}/repos/{rid}/branches` | PUT | Replaces the branch list and the single default in one tx (1 to 10 branches; legacy empty list may stay empty). Does not touch disk |
