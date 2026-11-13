@@ -339,7 +339,7 @@ func (s *Syncer) summarize(id int64, t *target, prevSHA, sha string, snap *Snaps
 		}
 	}
 	prompt := clipRunes(b.String(), 60000)
-	text, err := s.AI.ChatMessages(ctx, []models.Message{{Role: "system", Content: summarySystem}, {Role: "user", Content: prompt}}, ai.ChatOpts{Temperature: 0.3})
+	text, err := s.AI.ChatMessages(ctx, []models.Message{{Role: "system", Content: summarySystem}, {Role: "user", Content: prompt}}, ai.ChatOpts{Temperature: 0.3, Feature: "knowledge-summary"})
 	wctx, wcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer wcancel()
 	if err != nil {

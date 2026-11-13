@@ -54,14 +54,17 @@ type aiManagerChatRequest struct {
 
 // aiManagerChatResponse mirrors ai-manager ChatManagerResponse (subset).
 type aiManagerChatResponse struct {
-	Text         string  `json:"text"`
-	Provider     string  `json:"provider"`
-	Model        string  `json:"model"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	CostUSD      float64 `json:"cost_usd"`
-	Fallback     bool    `json:"fallback"`
-	Error        string  `json:"error"`
+	Text              string  `json:"text"`
+	Provider          string  `json:"provider"`
+	Model             string  `json:"model"`
+	InputTokens       int     `json:"input_tokens"`
+	OutputTokens      int     `json:"output_tokens"`
+	CostUSD           float64 `json:"cost_usd"`
+	CostIDR           float64 `json:"cost_idr"`
+	CostSource        string  `json:"cost_source"`
+	Fallback          bool    `json:"fallback"`
+	RequestedProvider string  `json:"requested_provider"`
+	Error             string  `json:"error"`
 }
 
 const healthCacheTTL = 30 * time.Second
@@ -89,13 +92,17 @@ func (p *aiManagerProvider) Chat(ctx context.Context, messages []models.Message,
 	if !p.Configured() {
 		return ChatResult{}, fmt.Errorf("ai-manager: AI_MANAGER_URL/AI_MANAGER_LOGIN_ID/AI_MANAGER_SECRET_KEY not set")
 	}
+	caller := p.cfg.Caller
+	if opts.Caller != "" {
+		caller = opts.Caller
+	}
 	body, err := json.Marshal(aiManagerChatRequest{
 		Messages:    messages,
 		Provider:    p.cfg.Provider,
 		Model:       p.cfg.Model,
 		Temperature: opts.Temperature,
 		MaxTokens:   opts.MaxTokens,
-		Caller:      p.cfg.Caller,
+		Caller:      caller,
 		NoFallback:  p.cfg.NoFallback,
 	})
 	if err != nil {
@@ -130,20 +137,26 @@ func (p *aiManagerProvider) Chat(ctx context.Context, messages []models.Message,
 		}
 		return ChatResult{}, fmt.Errorf("ai-manager: status %d: %s", resp.StatusCode, msg)
 	}
+	// The call reached ai-manager and may have cost money: keep the usage on rejections too.
+	res := ChatResult{
+		Text:              out.Text,
+		Provider:          out.Provider,
+		Model:             out.Model,
+		InputTokens:       out.InputTokens,
+		OutputTokens:      out.OutputTokens,
+		CostUSD:           out.CostUSD,
+		CostIDR:           out.CostIDR,
+		CostSource:        out.CostSource,
+		Fallback:          out.Fallback,
+		RequestedProvider: out.RequestedProvider,
+	}
 	if p.cfg.NoFallback && p.cfg.Provider != "" && (out.Fallback || (out.Provider != "" && out.Provider != p.cfg.Provider)) {
-		return ChatResult{}, fmt.Errorf("ai-manager: answered by %q but provider is pinned to %q", out.Provider, p.cfg.Provider)
+		return res, fmt.Errorf("ai-manager: answered by %q but provider is pinned to %q", out.Provider, p.cfg.Provider)
 	}
 	if strings.TrimSpace(out.Text) == "" {
-		return ChatResult{}, fmt.Errorf("ai-manager: empty response text")
+		return res, fmt.Errorf("ai-manager: empty response text")
 	}
-	return ChatResult{
-		Text:         out.Text,
-		Provider:     out.Provider,
-		Model:        out.Model,
-		InputTokens:  out.InputTokens,
-		OutputTokens: out.OutputTokens,
-		CostUSD:      out.CostUSD,
-	}, nil
+	return res, nil
 }
 
 // Health probes GET /v1/health (unauthenticated) and caches the result for 30s,

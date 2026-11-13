@@ -51,6 +51,7 @@ func main() {
 			log.Println("   Database: Connected ✓")
 
 			// Initialize DB-backed services (MySQL-backed *db.DB wrapper).
+			aiService.SetRecorder(&ai.SQLRecorder{DB: database.SQL})
 			learningService = learning.NewService(database)
 			skillsService = skills.NewService(database, aiService)
 
