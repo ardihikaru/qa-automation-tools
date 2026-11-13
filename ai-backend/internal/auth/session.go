@@ -69,9 +69,8 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, erro
 		tRole                              sql.NullString
 		tLead, tActive                     sql.NullBool
 	)
-	// ai.expires_at is compared with a Go timestamp, not UTC_TIMESTAMP(): it is
-	// written from Go too, so the driver's loc= conversion applies to both sides
-	// and the check holds whatever the host time zone.
+	// Connections are pinned to UTC (db.NormalizeDSN), so Go timestamps and
+	// UTC_TIMESTAMP() agree; ai.expires_at is compared with Go's now as well.
 	err := db.QueryRowContext(ctx, q, time.Now().UTC(), token).Scan(
 		&u.ID, &u.Username, &u.FullName, &u.Email,
 		&u.WhatsApp, &u.OdooID, &u.Role,
