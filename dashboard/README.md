@@ -53,7 +53,10 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/issues` | `IssueDebugger` | Issues with suggestions + patches |
 | `/cost` | `CostAnalytics` | AI usage, spend, errors, latency, recent calls and the ai-manager gateway view |
 | `/fixes` | `FixTracking` | is_fixed checkboxes + notes |
-| `/skills` | `SkillsView` | QA skills, stats, and logs |
+| `/skills` | `SkillsView` | Switch in `?view=`: QA checks (default; skills table, stats and logs; each check shows Global or its product) or `repo` (Claude skills synced from automation repos, `kind=skill`). Product filter in `?product=` (`global` = global QA checks only; ignored on stats and logs) |
+| `/agents` | `assistants/AgentsView` | Agents synced from each product's automation repo (`.claude/agents`): product filter `?product=`, search `?q=`, `?page=`; rows show model, tools and path |
+| `/rules` | `assistants/RulesView` | Rules, commands and instructions (`CLAUDE.md`/`AGENTS.md`); segmented filter `?kind=rule\|command\|instructions` (empty = all three, counts from `kinds`), same product filter and search; rules show their `paths` globs |
+| `/assistants/:productId/:code` | `assistants/AssistantDetailView` | One synced agent, skill, rule, command or instructions file: frontmatter, body (safe markdown renderer `assistants/Markdown.tsx`, or source), View in repo, removed banner, notes and tags for Admin, DevOps, Developer, QA, QC |
 | `/navigation` | `NavigationGraphView` | Learned page-navigation graph |
 | `/learning` | `LearningProgressView` | Learning cache progress |
 | `/products` | `ProductsView` | Master list with repos; product detail panel with repo badges (Main, Automation, Central), Make main and Make automation actions, a Verify now prompt on an unverified automation repo, branch lists with default, the Allow non-automation work toggle (Admin/DevOps), per-repo Verify/Clone/Sync, and the Knowledge base card (`views/knowledge/KnowledgeCard.tsx`: format select for Admin/DevOps, Sync now, latest sync, counts, What changed). `?product=<id>` opens that product's detail |
@@ -126,12 +129,21 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/products/{id}/knowledge/stories`, `/test-cases` (and `/{code}`) | POST; PUT, DELETE | `views/knowledge/DraftModal.tsx`, `EntityPanel.tsx` (local drafts, `^L-[A-Z0-9-]{1,30}$`) |
 
 The product views share `views/products/api.ts` (fetch helper, types, form validation); `components/Modal.tsx` and `components/Field.tsx` were moved out of `ProductsView.tsx`. The legacy `/api/products/{id}/verify|clone|checkout` routes remain on the server for old clients but are no longer called, and the Switch-branch modal is gone.
-| `/api/skills?...`, `/api/skills/stats?...`, `/api/skills/logs?...` | GET | `views/SkillsView.tsx` |
+| `/api/skills?...&product_id=<id>\|global`, `/api/skills/stats?...`, `/api/skills/logs?...` | GET | `views/SkillsView.tsx` |
+| `/api/assistants?product_id&kind&q&page&page_size` | GET | `views/assistants/api.ts` (`AssistantList`: agents, rules, repo skills) |
+| `/api/products/{id}/knowledge/assistants/{code}` | GET | `views/assistants/api.ts` (`AssistantDetailView`) |
+| `/api/products/{id}/knowledge/annotations/assistant/{code}` | PUT, DELETE | `views/assistants/AnnotationEditor.tsx` |
+| `/api/products` | GET | `views/assistants/api.ts` `useProducts` (product filter; loaded once per page load) |
 | `/api/learning?limit=100`, `/api/learning/navigation?source=` | GET | `views/NavigationGraphView.tsx` |
 | `/api/learning?limit=500` | GET | `views/LearningProgressView.tsx` |
 
 ## Invariants
 
+- **Assistant files** (`src/views/assistants/`): synced repo content is untrusted. `Markdown.tsx`
+  builds React elements only (no `dangerouslySetInnerHTML`); raw HTML shows as text, and links
+  are limited to http(s), mailto, in-page anchors and repo-relative paths resolved against the
+  file's `source_url`. The list is read-only; the only write is the note/tag annotation
+  (`SubmitButton`, one request in flight).
 - **Knowledge base** (`src/views/knowledge/`): the sync card polls `GET syncs/{sid}` every
   1.5 s while `status='running'` or `ai_status='pending'`, stops after 10 minutes or on
   unmount, and resumes when the page opens on a running sync (`useSyncFollower.ts`). Synced

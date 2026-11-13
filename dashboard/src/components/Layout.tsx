@@ -11,6 +11,8 @@ import {
   Zap,
   GitBranch,
   Brain,
+  Bot,
+  ScrollText,
 } from 'lucide-react';
 import UserChip from './UserChip';
 import ImpersonationBanner from './ImpersonationBanner';
@@ -28,6 +30,8 @@ const navItems = [
   { path: '/cost', label: 'Cost Analytics', icon: DollarSign },
   { path: '/fixes', label: 'Fix Tracking', icon: CheckCircle },
   { path: '/skills', label: 'Skills', icon: Zap },
+  { path: '/agents', label: 'Agents', icon: Bot },
+  { path: '/rules', label: 'Rules', icon: ScrollText },
   { path: '/navigation', label: 'Navigation Graph', icon: GitBranch },
   { path: '/learning', label: 'Learning Progress', icon: Brain },
   { path: '/products', label: 'Products', icon: ProductsIcon },
