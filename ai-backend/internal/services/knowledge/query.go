@@ -423,9 +423,13 @@ func orEmpty(l []Item) []Item {
 // Filter holds list query parameters.
 type Filter struct {
 	Epic, Story, Feature, Status, Level, Priority, Origin, Tag, Q string
-	Automated                                                     string // "", "1", "0"
-	IncludeRemoved                                                bool
-	Page, PageSize                                                int
+	// Part, Module, Submodule narrow stories and test cases through their linked features.
+	Part, Module, Submodule string
+	// Release filters features; Coverage (comma-separated states) filters features and stories.
+	Release, Coverage string
+	Automated         string // "", "1", "0"
+	IncludeRemoved    bool
+	Page, PageSize    int
 }
 
 func likeArg(q string) string {
@@ -504,7 +508,23 @@ func (s *Syncer) Stories(ctx context.Context, pid int, f Filter) (Item, error) {
 		where = and(where, "(t.code LIKE ? OR t.text LIKE ?)")
 		args = append(args, likeArg(f.Q), likeArg(f.Q))
 	}
-	return s.page(ctx, pid, TypeStory, where, args, f)
+	if w, a := featureScope("t.code", f); w != "" {
+		where = and(where, w)
+		args = append(args, a...)
+	}
+	items, err := s.list(ctx, pid, TypeStory, where, args, "")
+	if err != nil {
+		return nil, err
+	}
+	cov, err := s.CoverageBy(ctx, pid, "story", Scope{Epic: f.Epic})
+	if err != nil {
+		return nil, err
+	}
+	attachCoverage(items, cov)
+	if items, err = filterCoverage(items, f.Coverage); err != nil {
+		return nil, err
+	}
+	return pageItems(items, f), nil
 }
 
 // TestCases lists test cases.
@@ -557,6 +577,10 @@ func (s *Syncer) TestCases(ctx context.Context, pid int, f Filter) (Item, error)
 	if f.Q != "" {
 		where = and(where, "(t.code LIKE ? OR t.scenario LIKE ?)")
 		args = append(args, likeArg(f.Q), likeArg(f.Q))
+	}
+	if w, a := featureScope("t.story_code", f); w != "" {
+		where = and(where, w)
+		args = append(args, a...)
 	}
 	return s.page(ctx, pid, TypeTestCase, where, args, f)
 }
@@ -715,6 +739,9 @@ func (s *Syncer) Entity(ctx context.Context, pid int, et, code string) (Item, er
 	}
 	if e != nil {
 		return nil, e
+	}
+	if err := s.entityCoverage(ctx, pid, et, code, it); err != nil {
+		return nil, err
 	}
 	if et == TypeStory {
 		codes := []string{}
@@ -1072,4 +1099,47 @@ func ValidFormat(name string) bool {
 	}
 	_, ok := Lookup(name)
 	return ok
+}
+
+// entityCoverage adds the entity's own coverage and the coverage of its listed children.
+func (s *Syncer) entityCoverage(ctx context.Context, pid int, et, code string, it Item) error {
+	c, err := s.coverageOf(ctx, pid, et, code)
+	if err != nil {
+		return err
+	}
+	if c != nil {
+		it["coverage"] = c
+	}
+	child := func(key, by string, sc Scope) error {
+		list, ok := it[key].([]Item)
+		if !ok || len(list) == 0 {
+			return nil
+		}
+		m, err := s.CoverageBy(ctx, pid, by, sc)
+		if err != nil {
+			return err
+		}
+		attachCoverage(list, m)
+		return nil
+	}
+	switch et {
+	case TypePart:
+		return child("modules", "module", Scope{Part: code})
+	case TypeModule:
+		if err := child("submodules", "submodule", Scope{Module: code}); err != nil {
+			return err
+		}
+		return child("features", "feature", Scope{Module: code})
+	case TypeSubmodule:
+		return child("features", "feature", Scope{Submodule: code})
+	case TypeFeature:
+		return child("stories", "story", Scope{})
+	case TypeEpic:
+		return child("stories", "story", Scope{Epic: code})
+	case TypeTestCase:
+		return child("features", "feature", Scope{})
+	case TypeStory:
+		return child("features", "feature", Scope{})
+	}
+	return nil
 }

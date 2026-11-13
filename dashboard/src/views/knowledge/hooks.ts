@@ -40,5 +40,5 @@ export function useLoad<T>(key: string, fetcher: (signal: AbortSignal) => Promis
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, retry]);
 
-  return { data, loading, error, reload: () => setRetry((n) => n + 1) };
+  return { data, setData, loading, error, reload: () => setRetry((n) => n + 1) };
 }

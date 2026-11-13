@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bot, Search, StickyNote } from 'lucide-react';
-import { Enums, Epic, Page, TestCase, listTestCases } from './api';
+import { Enums, Epic, Page, TestCase, entityHref, listTestCases } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Loading, Pagination, RemovedBadge } from './ui';
+import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Loading, Pagination, PeekButton, RemovedBadge } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 
@@ -92,7 +93,7 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
 
       {data && data.items.length > 0 && (
         <div className={`card overflow-x-auto ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-          <table className="w-full min-w-[56rem] table-fixed text-sm">
+          <table className="w-full min-w-[59rem] table-fixed text-sm">
             <colgroup>
               <col className="w-[11rem]" />
               <col />
@@ -101,6 +102,7 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
               <col className="w-[4.5rem]" />
               <col className="w-[3rem]" />
               <col className="w-[8rem]" />
+              <col className="w-[3rem]" />
             </colgroup>
             <thead className="bg-gray-50 text-left text-gray-600">
               <tr>
@@ -111,6 +113,9 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
                 <th className="px-3 py-2 font-medium">Priority</th>
                 <th className="px-3 py-2 font-medium" title="Polarity">±</th>
                 <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-1 py-2 font-medium">
+                  <span className="sr-only">Quick peek</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -118,23 +123,18 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
                 const removed = !!c.removed_at;
                 const scen = flat(c.scenario);
                 return (
-                  <tr key={c.code} className={`kb-row cursor-pointer ${selected === c.code ? 'bg-primary-50' : ''}`} onClick={() => onOpen({ type: 'test_case', code: c.code })}>
+                  <tr key={c.code} className={`kb-row ${selected === c.code ? 'bg-primary-50' : ''}`}>
                     <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5 min-w-0 min-h-8 text-left"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpen({ type: 'test_case', code: c.code });
-                        }}
-                      >
+                      <Link to={entityHref(pid, 'test_case', c.code)} className="flex items-center gap-1.5 min-w-0 min-h-8 text-left hover:underline">
                         <CodeLabel code={c.code} origin={c.origin} removed={removed} />
                         {c.annotation && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-label="has a note" />}
-                      </button>
+                      </Link>
                       {removed && <RemovedBadge syncId={c.removed_sync_id} />}
                     </td>
-                    <td className={`px-3 py-2 truncate ${removed ? 'line-through text-gray-400' : 'text-gray-800'}`} title={scen}>
-                      {scen}
+                    <td className="px-3 py-2 truncate" title={scen}>
+                      <Link to={entityHref(pid, 'test_case', c.code)} tabIndex={-1} className={`hover:underline ${removed ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                        {scen}
+                      </Link>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-gray-600 truncate" title={c.story_code ?? ''}>
                       {c.story_code || <span className="text-gray-400">—</span>}
@@ -147,6 +147,9 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
                         <CaseStatusChip status={c.status} />
                         {c.automated && c.status !== 'automated' && <Bot className="w-3.5 h-3.5 text-green-600" aria-label="automated" />}
                       </span>
+                    </td>
+                    <td className="px-1 py-1">
+                      <PeekButton label={`Quick peek at test case ${c.code}`} active={selected === c.code} onClick={() => onOpen({ type: 'test_case', code: c.code })} />
                     </td>
                   </tr>
                 );
