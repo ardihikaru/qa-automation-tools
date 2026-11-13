@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import Field from '../../components/Field';
 import Modal from '../../components/Modal';
 import SubmitButton from '../../components/SubmitButton';
@@ -30,7 +30,6 @@ interface Props {
   /** Admin and DevOps only; the server enforces it too. */
   canToggle: boolean;
   onChange: (p: Product) => void;
-  onClose: () => void;
 }
 
 interface NewRepoForm {
@@ -63,7 +62,7 @@ function describe(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-export default function ProductDetail({ product, poolEnabled, canManage, canVerify, canToggle, onChange, onClose }: Props) {
+export default function ProductDetail({ product, poolEnabled, canManage, canVerify, canToggle, onChange }: Props) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const inflight = useRef(false); // synchronous guard against rapid double clicks
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -244,10 +243,6 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
 
   return (
     <div className="space-y-4">
-      <button type="button" className="inline-flex items-center gap-1 text-sm text-primary-600 hover:underline" onClick={onClose}>
-        <ArrowLeft className="w-4 h-4" /> Back to products
-      </button>
-
       {error && (
         <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
           {error}
@@ -272,7 +267,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       )}
 
       <form onSubmit={saveMeta} className="card p-4 space-y-3">
-        <h3 className="text-lg font-semibold break-all">{product.name}</h3>
+        <h3 className="text-base font-semibold">Name and staging URL</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Name" value={meta.name} onChange={(v) => setMeta((m) => ({ ...m, name: v }))} required />
           <Field label="Main URL (staging)" value={meta.staging_url} onChange={(v) => setMeta((m) => ({ ...m, staging_url: v }))} required />

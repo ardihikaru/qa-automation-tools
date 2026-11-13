@@ -166,9 +166,8 @@ export default function DocsView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Documentation</h2>
           <p className="text-gray-600">
             {viewMode === 'docs' ? 'Server-driven docs search/filter/pagination' : 'User flows overview'}
           </p>

@@ -10,7 +10,6 @@ export default function AgentsView() {
   return (
     <div className="space-y-6 min-w-0">
       <header>
-        <h2 className="text-2xl font-bold text-gray-900">Agents</h2>
         <p className="text-gray-600">Sub-agents defined in each product&rsquo;s automation repo, refreshed by the product sync.</p>
       </header>
       <AssistantList
