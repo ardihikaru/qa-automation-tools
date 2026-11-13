@@ -180,7 +180,6 @@ export default function LearningProgressView() {
   if (error) {
     return (
       <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-3">Learning Progress</h2>
         <div className="card p-6">
           <p className="text-red-600 mb-4">{error}</p>
           <button onClick={fetchLearningRecords} className="btn btn-primary">
@@ -194,7 +193,6 @@ export default function LearningProgressView() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Learning Progress</h2>
         <p className="text-gray-600">Track learning cache quality, usage, and top actions</p>
       </div>
 

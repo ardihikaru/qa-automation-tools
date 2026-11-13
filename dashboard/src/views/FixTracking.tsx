@@ -243,7 +243,6 @@ export default function FixTracking() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Fix Tracking</h2>
         <p className="text-gray-600">Track issue resolution status with filters, details, and pagination</p>
       </div>
 

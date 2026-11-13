@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { usePageHeader } from '../components/pageHeader';
 import { Zap, BarChart3, History, Search, Play, CheckCircle, XCircle, Clock } from 'lucide-react';
 import AssistantList from './assistants/AssistantList';
 import { parseProductParam, useProducts } from './assistants/api';
@@ -93,6 +94,10 @@ export default function SkillsView() {
   const severityParam = searchParams.get('severity') || 'all';
   const passedParam = searchParams.get('passed') || 'all';
   const pageParam = Number(searchParams.get('page') || '1');
+
+  // Sub-views get their own title under a "Skills" crumb; the QA checks list keeps the nav title.
+  const subTitle = mode === 'repo' ? 'Repo skills' : activeTab === 'stats' ? 'Statistics' : activeTab === 'logs' ? 'Execution logs' : null;
+  usePageHeader(subTitle ? { title: subTitle, crumbs: [{ label: 'Skills', to: '/skills' }] } : null);
 
   const [searchInput, setSearchInput] = useState(searchParam);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -281,7 +286,6 @@ export default function SkillsView() {
     <div className="min-w-0">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold text-gray-900">Skills</h2>
           <p className="text-gray-600">
             {mode === 'checks'
               ? 'QA checks the test runner applies to pages. Global checks apply to every product; a product can add its own.'

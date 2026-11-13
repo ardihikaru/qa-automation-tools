@@ -36,11 +36,14 @@ export default function UserChip() {
 
   return (
     <>
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-200 shadow-sm">
-        <span className="w-7 h-7 rounded-full bg-primary-600 text-white text-xs font-semibold flex items-center justify-center">
+      <div className="flex items-center gap-2 shrink-0 px-1.5 sm:px-3 py-1.5 rounded-full bg-white border border-gray-200 shadow-sm">
+        <span
+          className="w-7 h-7 rounded-full bg-primary-600 text-white text-xs font-semibold flex items-center justify-center"
+          title={`${user.fullName || user.username} (${user.role})`}
+        >
           {initials || '?'}
         </span>
-        <div className="flex flex-col leading-tight">
+        <div className="hidden sm:flex flex-col leading-tight">
           <span className="text-sm font-medium text-gray-900 truncate max-w-[12rem]" title={user.fullName || user.username}>
             {user.fullName || user.username}
           </span>

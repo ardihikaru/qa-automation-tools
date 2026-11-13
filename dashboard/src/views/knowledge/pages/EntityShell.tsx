@@ -8,7 +8,8 @@ import { coverageSentence } from '../coverage';
 import { AnnotationEditor } from '../EntityPanel';
 import { LocalBadge } from '../ui';
 import { Crumb, Crumbs, Fields, StatusBar } from './kit';
-import { PageCtx, baseCrumbs } from './data';
+import { PageCtx, baseCrumbs, topBarCrumbs } from './data';
+import { usePageHeader } from '../../../components/pageHeader';
 
 
 interface Props {
@@ -26,7 +27,7 @@ interface Props {
   details?: [string, ReactNode][];
   /** Knowledge view tab that holds this draft type, for the "Edit draft" link. */
   draftTab?: string;
-  /** The title already is the code (test cases): don't repeat it above. */
+  /** The title is the code (test cases): the top bar shows it, so no in-page heading. */
   codeIsTitle?: boolean;
   children: ReactNode;
 }
@@ -34,9 +35,16 @@ interface Props {
 export default function EntityShell({ ctx, entity: e, title, titleText, crumbs, coverage, meta, related, details, draftTab, codeIsTitle, children }: Props) {
   const removed = !!e.removed_at;
   const local = e.origin === 'local';
+  const trail = [...baseCrumbs(ctx), ...crumbs];
+  // Top bar: Products › product › Knowledge base › parents, titled with the code. Narrow
+  // screens only show the title there, so the full trail stays in the page below `lg`.
+  usePageHeader({
+    title: e.code,
+    titleHint: titleText && titleText !== e.code ? `${e.code} ${titleText}` : `${TYPE_LABEL[e.type]} ${e.code}`,
+    crumbs: topBarCrumbs(trail.slice(0, -1)),
+  });
   return (
     <div className="space-y-6">
-      <Crumbs items={[...baseCrumbs(ctx), ...crumbs]} />
 
       {removed && (
         <div role="status" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
@@ -45,14 +53,20 @@ export default function EntityShell({ ctx, entity: e, title, titleText, crumbs, 
       )}
 
       <header className="space-y-2 min-w-0">
+        <div className="lg:hidden">
+          <Crumbs items={trail} />
+        </div>
         <p className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
           <span>{TYPE_LABEL[e.type]}</span>
-          {!codeIsTitle && <span className={`font-mono ${removed ? 'line-through' : 'text-gray-700'}`}>{e.code}</span>}
+          <span className={`font-mono ${removed ? 'line-through' : 'text-gray-700'}`}>{e.code}</span>
           {local && <LocalBadge />}
         </p>
-        <h1 className={`text-2xl font-semibold leading-snug break-words ${removed ? 'line-through text-gray-400' : 'text-gray-900'}`} title={titleText}>
-          {title}
-        </h1>
+        {/* The top bar already shows the code; a page whose title is the code skips the heading. */}
+        {!codeIsTitle && (
+          <h2 className={`text-2xl font-semibold leading-snug break-words ${removed ? 'line-through text-gray-400' : 'text-gray-900'}`} title={titleText}>
+            {title}
+          </h2>
+        )}
         {coverage !== undefined && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <StatusBar coverage={coverage} className="w-48" />
