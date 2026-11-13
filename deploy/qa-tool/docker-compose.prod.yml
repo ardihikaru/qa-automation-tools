@@ -1,4 +1,4 @@
-# qa.mfardiansyah.id — production stack on app-host (WireGuard 10.8.0.9).
+# qa-tool.mfardiansyah.id — production stack on app-host (WireGuard 10.8.0.9).
 #
 #   browser ─TLS─> edge-host nginx (203.0.113.10) ─WG/HTTP─> 10.8.0.9:8140 dashboard(nginx)
 #                                                              ├─ /            SPA
