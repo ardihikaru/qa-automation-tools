@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Zap, BarChart3, History, Search, Play, CheckCircle, XCircle, Clock } from 'lucide-react';
+import AssistantList from './assistants/AssistantList';
+import { parseProductParam, useProducts } from './assistants/api';
+import { ProductSelect, Segmented } from './assistants/ui';
 
 interface Skill {
   id: number;
@@ -12,6 +15,8 @@ interface Skill {
   is_builtin: boolean;
   is_active: boolean;
   created_at: string;
+  /** null = global (applies to every product). */
+  product_id?: number | null;
 }
 
 interface SkillStats {
@@ -69,8 +74,19 @@ function SkillsSkeleton() {
   );
 }
 
+type SkillsMode = 'checks' | 'repo';
+
 export default function SkillsView() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { products, error: productsError } = useProducts();
+
+  // `?view=repo` shows the skills synced from automation repos; anything else shows the QA checks.
+  const mode: SkillsMode = searchParams.get('view') === 'repo' ? 'repo' : 'checks';
+  // `?product=`: '' = all, 'global' = global QA checks only, or a product id.
+  const productRaw = searchParams.get('product') ?? '';
+  const productId = parseProductParam(productRaw);
+  const productParam = productRaw === 'global' ? 'global' : productId ? String(productId) : '';
+  const productName = (id: number | null | undefined) => products.find((p) => p.id === id)?.name ?? `Product #${id}`;
 
   const activeTab = (searchParams.get('tab') as 'skills' | 'stats' | 'logs') || 'skills';
   const searchParam = searchParams.get('search') || '';
@@ -89,12 +105,16 @@ export default function SkillsView() {
   const [loadingSkills, setLoadingSkills] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  // Only the latest skills request may write state, so a slow reply never overwrites a newer filter.
+  const skillsSeq = useRef(0);
 
   useEffect(() => {
     setSearchInput(searchParam);
   }, [searchParam]);
 
   useEffect(() => {
+    if (mode === 'repo') return;
     if (activeTab === 'skills') {
       fetchSkills();
     } else if (activeTab === 'stats') {
@@ -102,7 +122,8 @@ export default function SkillsView() {
     } else {
       fetchLogs();
     }
-  }, [activeTab, searchParam, severityParam, passedParam, pageParam]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, activeTab, searchParam, severityParam, passedParam, pageParam, productParam]);
 
   const updateParams = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -114,17 +135,25 @@ export default function SkillsView() {
   };
 
   const fetchSkills = async () => {
+    const seq = ++skillsSeq.current;
     try {
       setLoadingSkills(true);
+      setSkillsError(null);
       const params = new URLSearchParams();
       params.set('page', String(Math.max(1, pageParam)));
       params.set('limit', String(DEFAULT_LIMIT));
       if (searchParam.trim()) params.set('search', searchParam.trim());
       if (severityParam !== 'all') params.set('severity', severityParam);
+      if (productParam) params.set('product_id', productParam);
       params.set('sort_by', 'name_desc');
 
-      const res = await fetch(`/api/skills?${params.toString()}`);
+      const res = await fetch(`/api/skills?${params.toString()}`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `Could not load QA checks (${res.status})`);
+      }
       const payload: SkillsResponse | Skill[] = await res.json();
+      if (seq !== skillsSeq.current) return;
 
       if (Array.isArray(payload)) {
         setSkills(payload);
@@ -141,11 +170,13 @@ export default function SkillsView() {
         });
       }
     } catch (error) {
+      if (seq !== skillsSeq.current) return;
       console.error('Failed to fetch skills:', error);
       setSkills([]);
       setSkillsPagination({ page: 1, limit: DEFAULT_LIMIT, total: 0, total_pages: 1 });
+      setSkillsError(error instanceof Error ? error.message : 'Could not load QA checks');
     } finally {
-      setLoadingSkills(false);
+      if (seq === skillsSeq.current) setLoadingSkills(false);
     }
   };
 
@@ -158,7 +189,7 @@ export default function SkillsView() {
       if (searchParam.trim()) params.set('search', searchParam.trim());
       params.set('sort_by', 'total_runs_desc');
 
-      const res = await fetch(`/api/skills/stats?${params.toString()}`);
+      const res = await fetch(`/api/skills/stats?${params.toString()}`, { credentials: 'include' });
       const payload: SkillStatsResponse | SkillStats[] = await res.json();
       if (Array.isArray(payload)) {
         setSkillStats(payload);
@@ -192,7 +223,7 @@ export default function SkillsView() {
       if (passedParam === 'passed') params.set('passed', 'true');
       if (passedParam === 'failed') params.set('passed', 'false');
       if (searchParam.trim()) params.set('search', searchParam.trim());
-      const res = await fetch(`/api/skills/logs?${params.toString()}`);
+      const res = await fetch(`/api/skills/logs?${params.toString()}`, { credentials: 'include' });
       const payload: SkillLogsResponse | SkillLog[] = await res.json();
       if (Array.isArray(payload)) {
         setSkillLogs(payload);
@@ -225,13 +256,60 @@ export default function SkillsView() {
     updateParams({ tab, page: '1' });
   };
 
+  const setMode = (m: SkillsMode) => {
+    // Each view keeps its own search and paging; the product filter carries over.
+    const next = new URLSearchParams();
+    if (m === 'repo') next.set('view', 'repo');
+    if (productId) next.set('product', String(productId));
+    else if (m === 'checks' && productParam === 'global') next.set('product', 'global');
+    setSearchParams(next);
+  };
+
+  const setProduct = (v: string) => updateParams({ product: v, page: '' });
+
+  const productSelect = (
+    <ProductSelect
+      value={mode === 'repo' && productParam === 'global' ? '' : productParam}
+      onChange={setProduct}
+      products={products}
+      failed={productsError}
+      extra={mode === 'checks' ? [{ value: 'global', label: 'Global checks only' }] : undefined}
+    />
+  );
+
   return (
-    <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Skill Execution UI</h2>
-        <p className="text-gray-600">Server-driven skills table with URL-synced query state</p>
+    <div className="min-w-0">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold text-gray-900">Skills</h2>
+          <p className="text-gray-600">
+            {mode === 'checks'
+              ? 'QA checks the test runner applies to pages. Global checks apply to every product; a product can add its own.'
+              : 'Claude skills defined in each product\u2019s automation repo (.claude/skills), refreshed by the product sync.'}
+          </p>
+        </div>
+        <Segmented<SkillsMode>
+          label="Skill source"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'checks', label: 'QA checks' },
+            { value: 'repo', label: 'Repo skills' },
+          ]}
+        />
       </div>
 
+      {mode === 'repo' ? (
+        <AssistantList
+          kinds={['skill']}
+          one="skill"
+          plural="skills"
+          productId={productId}
+          productName={productId ? productName(productId) : undefined}
+          toolbar={productSelect}
+        />
+      ) : (
+      <>
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('skills')} className={`px-4 py-2 rounded-lg flex items-center gap-2 ${activeTab === 'skills' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}><Zap className="w-4 h-4" />Skills</button>
         <button onClick={() => setTab('stats')} className={`px-4 py-2 rounded-lg flex items-center gap-2 ${activeTab === 'stats' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}><BarChart3 className="w-4 h-4" />Statistics</button>
@@ -240,6 +318,7 @@ export default function SkillsView() {
 
       <div className="card mb-6 p-4">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          {activeTab === 'skills' && <div className="md:col-span-5">{productSelect}</div>}
           <div className="md:col-span-2 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -277,8 +356,18 @@ export default function SkillsView() {
       {activeTab === 'skills' && (
         <div className="card overflow-hidden">
           <div className="card-header">
-            <h3 className="font-semibold">Skills ({skillsPagination.total})</h3>
+            <h3 className="font-semibold">
+              QA checks <span className="tabular-nums text-gray-500 font-normal">{skillsPagination.total}</span>
+            </h3>
           </div>
+          {skillsError && (
+            <div role="alert" className="mx-4 mt-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-start justify-between gap-3 break-words">
+              <span className="min-w-0">{skillsError}</span>
+              <button type="button" className="text-red-700 underline shrink-0" onClick={() => void fetchSkills()}>
+                Retry
+              </button>
+            </div>
+          )}
           {loadingSkills ? (
             <div className="p-4"><SkillsSkeleton /></div>
           ) : (
@@ -288,6 +377,7 @@ export default function SkillsView() {
                   <thead className="bg-gray-50 border-b">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Applies to</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Type</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Severity</th>
                       <th className="px-4 py-3 text-left text-xs text-gray-500 uppercase">Status</th>
@@ -296,13 +386,36 @@ export default function SkillsView() {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {skills.length === 0 ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">No skills found</td></tr>
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                          {skillsError
+                            ? 'QA checks could not be loaded.'
+                            : searchParam || severityParam !== 'all'
+                              ? 'No QA checks match these filters.'
+                              : productParam === 'global'
+                                ? 'There are no global QA checks yet.'
+                                : productId
+                                  ? `No QA checks apply to ${productName(productId)} yet.`
+                                  : 'There are no QA checks yet.'}
+                        </td>
+                      </tr>
                     ) : (
                       skills.map((skill) => (
                         <tr key={skill.id}>
                           <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900">{skill.name || 'Unnamed skill'}</div>
-                            <div className="text-xs text-gray-500">{skill.description || 'No description'}</div>
+                            <div className="font-medium text-gray-900 break-words">{skill.name || 'Unnamed skill'}</div>
+                            <div className="text-xs text-gray-500 break-words">{skill.description || 'No description'}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {skill.product_id ? (
+                              <span className="badge bg-indigo-50 text-indigo-700 max-w-[14rem] truncate" title={productName(skill.product_id)}>
+                                {productName(skill.product_id)}
+                              </span>
+                            ) : (
+                              <span className="badge bg-gray-100 text-gray-700" title="Applies to every product">
+                                Global
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-700">{skill.check_type || 'unknown'}</td>
                           <td className="px-4 py-3 text-sm text-gray-700">{skill.severity || 'unknown'}</td>
@@ -442,6 +555,8 @@ export default function SkillsView() {
             </>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

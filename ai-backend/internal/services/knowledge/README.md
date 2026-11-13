@@ -7,6 +7,7 @@ Product knowledge base (spec: [PRODUCT_KNOWLEDGE_SYNC.md](../../../../docs/desig
 - `Format` (`catalog.go`): `Name()`, `Version()`, `Parse(files) (*Snapshot, []Problem, error)`; `Lookup`, `Names`, `Enums`. Registered: `test-catalog-v1` (`sut.go`), a port of `automation-test-sut/scripts/test-catalog.mjs` at `521618a` (duplicates last-wins, unknown-status rows skipped, out-of-heading features kept).
 - `Syncer` (`sync.go`): `NewSyncer(db, pool, ai)`, `Start(ctx, productID, trigger, userID)`, `FailOrphanedSyncs`, `StartScheduler(ctx, interval)`. Errors: `ErrProductNotFound`, `ErrNotConfigured`, `ErrUnknownFormat`, `ErrNoAutomation`, `ErrUnavailable`, `ErrRunning{SyncID}`.
 - Queries (`query.go`): `Summary`, `Tree`, `Syncs`, `Sync`, `Epics`, `Stories`, `TestCases`, `Entity`, `PutAnnotation`, `DeleteAnnotation`, `SaveDraft`, `DeleteDraft`, `ValidFormat`. Errors: `ErrNotFound`, `*InputError` (400), `*ConflictError` (409).
+- Coverage (`coverage.go`): `CoverageBy`, `Features`, `Modules`. Assistant files (`assistants.go`): `ParseAssistants`, `KeepForSync`; `Assistants` (query.go) lists them per product or across products.
 - Storage (`store.go`): `apply` (diff + batched upsert + soft delete + link-set diff), `countActive`, `summarizeProblems`.
 
 ## Invariants

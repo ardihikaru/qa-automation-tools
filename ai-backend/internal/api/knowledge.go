@@ -22,6 +22,7 @@ var entityPaths = map[string]string{
 	"epics":      knowledge.TypeEpic,
 	"stories":    knowledge.TypeStory,
 	"test-cases": knowledge.TypeTestCase,
+	"assistants": knowledge.TypeAssistant,
 }
 
 func userID(req *http.Request) string {
@@ -285,6 +286,10 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 	case knowledge.TypeFeature:
 		out, err := r.kb.Features(ctx, pid, f)
 		respond(w, out, err)
+	case knowledge.TypeAssistant:
+		out, err := r.kb.Assistants(ctx, knowledge.AssistantFilter{ProductID: pid, Kind: q.Get("kind"), Q: f.Q,
+			IncludeRemoved: f.IncludeRemoved, Page: f.Page, PageSize: f.PageSize})
+		respond(w, out, err)
 	case knowledge.TypeModule:
 		out, err := r.kb.Modules(ctx, pid, f.IncludeRemoved)
 		respond(w, map[string]any{"modules": out}, err)
@@ -292,4 +297,23 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 		// Parts and sub-modules are browsed through the tree.
 		writeJSONError(w, http.StatusNotFound, "use knowledge/tree")
 	}
+}
+
+// handleAssistants serves GET /api/assistants: the synced agents, skills, rules, commands and
+// instructions of every product, filtered by product_id, kind (comma-separated) and q.
+func (r *Router) handleAssistants(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if r.kb == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "knowledge base not available")
+		return
+	}
+	q := req.URL.Query()
+	out, err := r.kb.Assistants(req.Context(), knowledge.AssistantFilter{
+		ProductID: intParam(req, "product_id"), Kind: q.Get("kind"), Q: q.Get("q"),
+		Page: intParam(req, "page"), PageSize: intParam(req, "page_size"),
+	})
+	respond(w, out, err)
 }

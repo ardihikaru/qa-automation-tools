@@ -41,7 +41,7 @@ type fakeRepo struct {
 	gate  chan struct{}
 }
 
-func (r *fakeRepo) read(ctx context.Context, _ int, _, _, _ string, _ int64) (string, map[string][]byte, error) {
+func (r *fakeRepo) read(ctx context.Context, _ int, _, _ string, _ func(string) bool, _ int64) (string, map[string][]byte, error) {
 	if r.gate != nil {
 		<-r.gate
 	}
@@ -122,7 +122,7 @@ func TestSyncLifecycle(t *testing.T) {
 	ctx := context.Background()
 	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
-	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic})
+	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic, ".claude/agents/x.md": "---\nname: x\n---\nhi\n", "CLAUDE.md": "# P\n"})
 	fai := &fakeAI{}
 	s := &Syncer{DB: d, AI: fai, ReadTree: repo.read, syncTimeout: time.Minute, aiTimeout: time.Minute}
 
@@ -132,7 +132,7 @@ func TestSyncLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := waitSync(t, d, id)
-	if r.status != "succeeded" || r.aiStatus != "done" || r.diff.Total["added"] != 1+1+1+2+1+2+2 {
+	if r.status != "succeeded" || r.aiStatus != "done" || r.diff.Total["added"] != 1+1+1+2+1+2+2+2 || r.counts.Agents != 1 || r.counts.Instructions != 1 {
 		t.Fatalf("first: %+v", r)
 	}
 	if r.counts.TestCases != 2 || r.counts.Automated != 1 || r.counts.FeaturesWithStories != 2 {
@@ -166,7 +166,7 @@ func TestSyncLifecycle(t *testing.T) {
 	})
 	id, _ = s.Start(ctx, pid, TriggerSchedule, "")
 	r = waitSync(t, d, id)
-	if r.status != "succeeded" || r.diff.Total["removed"] != 2 || r.diff.Total["updated"] != 0 || r.diff.Total["added"] != 0 {
+	if r.status != "succeeded" || r.diff.Total["removed"] != 4 || len(r.diff.ByType["assistant"]["removed"]) != 2 || r.diff.Total["updated"] != 0 || r.diff.Total["added"] != 0 {
 		t.Fatalf("remove: %+v", r.diff)
 	}
 	var line int

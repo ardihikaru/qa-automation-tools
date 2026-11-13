@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/qa-automation/ai-backend/internal/auth"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 )
 
@@ -62,8 +65,12 @@ func TestKnowledgeAPI(t *testing.T) {
 	r := newDBRouter(t)
 	golden := loadGolden(t)
 	sy := knowledge.NewSyncer(r.db, nil, nil)
-	sy.ReadTree = func(context.Context, int, string, string, string, int64) (string, map[string][]byte, error) {
-		return "521618a000000000000000000000000000000000", golden, nil
+	sy.ReadTree = func(context.Context, int, string, string, func(string) bool, int64) (string, map[string][]byte, error) {
+		files := map[string][]byte{".claude/agents/e2e-test-engineer.md": []byte("---\nname: e2e-test-engineer\ndescription: Writes E2E specs.\n---\nBody\n"), "AGENTS.md": []byte("# Guide\n")}
+		for k, v := range golden {
+			files[k] = v
+		}
+		return "521618a000000000000000000000000000000000", files, nil
 	}
 	r.SetKnowledge(sy)
 	p := createSUT(t, r)
@@ -167,6 +174,29 @@ func TestKnowledgeAPI(t *testing.T) {
 	stCov := kcall(t, r, "Viewer", http.MethodGet, base+"/stories?coverage=full,partial&page_size=500", nil, http.StatusOK)
 	if stCov["total"].(float64) < 1 {
 		t.Fatalf("stories with automation: %v", stCov["total"])
+	}
+
+	// Assistant files: per product and across products.
+	al := kcall(t, r, "Viewer", http.MethodGet, base+"/assistants?kind=agent", nil, http.StatusOK)
+	if al["total"] != float64(1) || al["kinds"].(map[string]any)["instructions"] != float64(1) {
+		t.Fatalf("assistants: %v", al)
+	}
+	agent := al["items"].([]any)[0].(map[string]any)
+	if _, hasBody := agent["body"]; hasBody || agent["source_url"] == nil || agent["product_name"] != "SUT" {
+		t.Fatalf("assistant item: %v", agent)
+	}
+	ad := kcall(t, r, "Viewer", http.MethodGet, base+"/assistants/"+agent["code"].(string), nil, http.StatusOK)
+	if ad["body"] != "Body\n" {
+		t.Fatalf("assistant detail: %v", ad)
+	}
+	kcall(t, r, "QA", http.MethodPut, base+"/annotations/assistant/"+agent["code"].(string), map[string]any{"note": "ok"}, http.StatusOK)
+	kcall(t, r, "Viewer", http.MethodGet, base+"/assistants?kind=bogus", nil, http.StatusBadRequest)
+	creq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/assistants?product_id=%d&kind=agent,instructions", p.ID), nil)
+	creq = creq.WithContext(auth.SetUser(creq.Context(), &auth.User{Role: "Viewer"}))
+	crec := httptest.NewRecorder()
+	r.handleAssistants(crec, creq)
+	if crec.Code != http.StatusOK || !strings.Contains(crec.Body.String(), `"total":2`) {
+		t.Fatalf("cross-product assistants: %d %s", crec.Code, crec.Body.String())
 	}
 
 	// Annotations.
