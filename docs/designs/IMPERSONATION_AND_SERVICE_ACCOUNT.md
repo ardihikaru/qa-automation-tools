@@ -333,7 +333,7 @@ Follow-ups:
 *   Removing `applyCORS` reflect mode.
 
 ## Implementation notes (2026-11-13)
-*   **Time zones.** The DSN uses `loc=Local`, so the driver writes Go timestamps in the host's local zone. `ValidateSession` therefore compares `active_impersonations.expires_at` against a Go-supplied `now`, not `UTC_TIMESTAMP()`, so the check holds on any host time zone. The existing `sessions.expires_at > UTC_TIMESTAMP()` check has the same latent skew on non-UTC hosts; it was left unchanged and is a follow-up.
+*   **Time zones.** The DSN used `loc=Local`, so on a non-UTC host Go timestamps were stored in local time while SQL compared them with `UTC_TIMESTAMP()`. On a UTC+7 host, sessions outlived their TTL by 7 h. The fix (2026-11-13, `fix/session-timezone`) is `db.NormalizeDSN`, which pins every connection to UTC (`loc=UTC`, session `time_zone='+00:00'`). Production (container and MySQL both UTC) was unaffected.
 *   **Verification.**
     *   Unit tests: `internal/auth`, `internal/seed`, `internal/api`.
     *   `impersonation_integration_test.go` against a disposable `mysql:8.0` container.
