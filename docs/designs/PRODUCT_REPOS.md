@@ -136,9 +136,9 @@ SELECT r.id, p.branch, REPLACE(p.branch, '/', '--'), 1
 FROM product_repos r JOIN products p ON p.id = r.product_id
 WHERE r.is_main = 1 AND p.branch <> ''
   AND NOT EXISTS (SELECT 1 FROM product_repo_branches b WHERE b.repo_id = r.id)
-ON DUPLICATE KEY UPDATE branch = branch;
+ON DUPLICATE KEY UPDATE product_repo_branches.branch = product_repo_branches.branch;
 ```
-The `NOT EXISTS` guards make a re-run a no-op even after users edit branches; `ON DUPLICATE KEY UPDATE x = x` is a no-op instead of `INSERT IGNORE` so that real errors (data truncation, FK) still abort and are visible.
+The `NOT EXISTS` guards make a re-run a no-op even after users edit branches; `ON DUPLICATE KEY UPDATE <table>.x = <table>.x` (qualified, because the SELECT side also has a `branch` column) is a no-op instead of `INSERT IGNORE` so that real errors (data truncation, FK) still abort and are visible.
 
 **Conflicts are reported, not fatal.** A legacy product is skipped by entry 4 if its `root_dir` has a segment ending in `.branches` (any case: the MySQL regexp is case-insensitive under the `_ci` collation) or equals an existing repo's `root_dir`. Pre-API overlap rules already prevent nested `root_dir`s between products (`rootDirOverlap`, `products.go:92-99`). Operators run this **pre-flight query before migrating** (also placed in `ai-backend/internal/db/README.md`) and fix rows first:
 ```sql
@@ -154,6 +154,8 @@ SELECT p.id, p.name FROM products p WHERE NOT EXISTS (SELECT 1 FROM product_repo
 **Deploy order.** Run `go run -mod=mod ./cmd/databasemigration` **before** starting the new binary (the old binary ignores the extra tables; the new binary needs them). After the new binary is live, run the migration once more to pick up products created by the old binary in the window (idempotent).
 
 **Mandatory pre-implementation step (blocks the implementation PR).** (1) Run `SELECT VERSION()` on the db-host MySQL (read-only; the schema work is not done there). (2) Run entries 1 to 5 twice on a **scratch** MySQL 8 instance of the same minor version, never the shared `qa_automation` schema. (3) Record the version, the result (error numbers if any) and the final accepted DDL in this spec before implementation starts. If error 3104 or any DDL error occurs, the DDL here is amended and re-reviewed. Items previously listed as assumptions (generated-column unique index, the 3104 restriction, `ON DUPLICATE KEY UPDATE x = x`, regexp escaping in the Go raw string) are verification outcomes of this step, not beliefs.
+
+**DDL verification result (2026-11-13).** db-host runs MySQL Community Server 8.0.33. Entries 1 to 5 were run twice on a scratch `mysql:8.0.33` container (local Docker, never `qa_automation`): no error 3104; both runs idempotent, including with legacy rows present. Confirmed: a second main or central repo per product gives 1062 on `uq_product_repos_main` / `_central`; a second default branch gives 1062 on `uq_product_repo_branch_default`; `a/b` and `a--b` collide on `uq_product_repo_branch_slug`; `Main` and `main` coexist (`utf8mb4_bin`); deleting a product cascades to its repos and branches; a legacy product with a `.branches` segment in `root_dir` is skipped by entry 4 without aborting. **One defect found and fixed:** entry 5 originally used `ON DUPLICATE KEY UPDATE branch = branch`, which fails with error 1052 (ambiguous column) because the SELECT also exposes `branch`; the DDL above now qualifies the target column. Still to verify in Go: the regexp escaping inside the migration raw string.
 
 ### Legacy compatibility and rollback
 The legacy columns `products.repo_url`, `root_dir`, `branch`, `playwright_accessible`, `last_verified_at`, `verify_report` and `uq_products_root_dir` are kept (not dropped, not made nullable) for at least one release.
