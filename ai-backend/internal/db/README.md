@@ -35,15 +35,10 @@ referenced by any Go code.
   `ai_cache`, `embedding_cache`, `learning_cache`, `skills`, `skill_logs`,
   `learned_skills`, `raw_issues`, `issue_suggestions`, `request_logs`,
   `flow_outcomes`, `job_runs`, `goal_events`, `navigation_edges`,
-<<<<<<< HEAD
   `action_sequences`, `context_cache`, `users`, `sessions`, `products`, `product_settings`,
-  `product_repos`, `product_repo_branches`.
+  `product_repos`, `product_repo_branches`, `active_impersonations`, `impersonation_audit` (append-only; never purge).
 - `connection.go:DB.WithTx(ctx, fn func(*sql.Tx) error)` - commits on nil, rolls back otherwise, and retries the whole
   function up to 3 times on MySQL error 1213 (deadlock) or 1205 (lock wait timeout); `IsRetryableTxError` is the predicate.
-=======
-  `action_sequences`, `context_cache`, `users`, `sessions`, `products`,
-  `active_impersonations`, `impersonation_audit` (append-only; never purge).
->>>>>>> origin/main
 
 ## Invariants
 
