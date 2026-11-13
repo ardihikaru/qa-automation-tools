@@ -730,6 +730,14 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		r.handleCostEfficiency(w, req)
 	case "/api/cost/by-feature":
 		r.handleCostByFeature(w, req)
+	case "/api/cost/by-model":
+		r.handleCostByModel(w, req)
+	case "/api/cost/recent":
+		r.handleCostRecent(w, req)
+	case "/api/cost/filters":
+		r.handleCostFilters(w, req)
+	case "/api/cost/gateway":
+		r.handleCostGateway(w, req)
 
 	// Analytics endpoints
 	case "/api/analytics":
@@ -1720,185 +1728,6 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 	// Return empty array instead of null if no results
 	if results == nil {
 		results = []SearchResult{}
-	}
-
-	json.NewEncoder(w).Encode(results)
-}
-
-// handleCostOverview handles /api/cost/overview
-func (r *Router) handleCostOverview(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var overview models.CostOverview
-	var totalRequests int64
-	var totalTokens int64
-	var inputTokens int64
-	var outputTokens int64
-	var totalCost float64
-	var cacheHits int64
-	var totalCount int64
-
-	db := r.getDB()
-	if db == nil {
-		http.Error(w, "Database not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	err := db.QueryRow(req.Context(), `
-		SELECT
-			COUNT(*),
-			COALESCE(SUM(input_tokens + output_tokens), 0),
-			COALESCE(SUM(input_tokens), 0),
-			COALESCE(SUM(output_tokens), 0),
-			COALESCE(SUM(cost_estimate), 0),
-			COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0),
-			COUNT(*)
-		FROM request_logs
-	`).Scan(
-		&totalRequests, &totalTokens, &inputTokens, &outputTokens,
-		&totalCost, &cacheHits, &totalCount,
-	)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	overview.TotalRequests = int(totalRequests)
-	overview.TotalTokens = int(totalTokens)
-	overview.InputTokens = int(inputTokens)
-	overview.OutputTokens = int(outputTokens)
-	overview.TotalCost = totalCost
-	if totalCount > 0 {
-		overview.CacheHitRate = float64(cacheHits) / float64(totalCount)
-	} else {
-		overview.CacheHitRate = 0
-	}
-
-	json.NewEncoder(w).Encode(overview)
-}
-
-// handleCostTrend handles /api/cost/trend
-func (r *Router) handleCostTrend(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	db := r.getDB()
-	if db == nil {
-		http.Error(w, "Database not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	rows, err := db.Query(req.Context(), `
-		SELECT DATE(created_at) AS d, SUM(cost_estimate) AS cost
-		FROM request_logs
-		WHERE created_at > NOW() - INTERVAL 30 DAY
-		GROUP BY DATE(created_at)
-		ORDER BY d
-	`)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var trends []models.CostTrend
-	for rows.Next() {
-		var trend models.CostTrend
-		if err := rows.Scan(&trend.Date, &trend.Cost); err != nil {
-			continue
-		}
-		trends = append(trends, trend)
-	}
-
-	// Return empty array instead of null if no results
-	if trends == nil {
-		trends = []models.CostTrend{}
-	}
-
-	json.NewEncoder(w).Encode(trends)
-}
-
-// handleCostEfficiency handles /api/cost/efficiency
-func (r *Router) handleCostEfficiency(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var stats struct {
-		Hit  int `json:"hit"`
-		Miss int `json:"miss"`
-	}
-
-	db := r.getDB()
-	if db == nil {
-		http.Error(w, "Database not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	err := db.QueryRow(req.Context(), `
-		SELECT
-			COALESCE(SUM(CASE WHEN cache_hit = 1 THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN cache_hit = 0 THEN 1 ELSE 0 END), 0)
-		FROM request_logs
-	`).Scan(&stats.Hit, &stats.Miss)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(stats)
-}
-
-// handleCostByFeature handles /api/cost/by-feature
-func (r *Router) handleCostByFeature(w http.ResponseWriter, req *http.Request) {
-	if req.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	db := r.getDB()
-	if db == nil {
-		http.Error(w, "Database not available", http.StatusServiceUnavailable)
-		return
-	}
-
-	rows, err := db.Query(req.Context(), `
-		SELECT COALESCE(endpoint, 'unknown') as feature, SUM(cost_estimate) as cost
-		FROM request_logs
-		GROUP BY endpoint
-		ORDER BY cost DESC
-		LIMIT 20
-	`)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var results []models.CostByFeature
-	for rows.Next() {
-		var result models.CostByFeature
-		if err := rows.Scan(&result.Feature, &result.Cost); err != nil {
-			continue
-		}
-		results = append(results, result)
-	}
-
-	// Return empty array instead of null if no results
-	if results == nil {
-		results = []models.CostByFeature{}
 	}
 
 	json.NewEncoder(w).Encode(results)

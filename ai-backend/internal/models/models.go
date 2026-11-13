@@ -117,28 +117,6 @@ type LearningRecord struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// CostOverview represents cost analytics overview
-type CostOverview struct {
-	TotalRequests int     `json:"total_requests"`
-	TotalTokens   int     `json:"total_tokens"`
-	InputTokens   int     `json:"input_tokens"`
-	OutputTokens  int     `json:"output_tokens"`
-	TotalCost     float64 `json:"total_cost"`
-	CacheHitRate  float64 `json:"cache_hit_rate"`
-}
-
-// CostTrend represents daily cost trend
-type CostTrend struct {
-	Date string  `json:"date"`
-	Cost float64 `json:"cost"`
-}
-
-// CostByFeature represents cost breakdown by feature
-type CostByFeature struct {
-	Feature string  `json:"feature"`
-	Cost    float64 `json:"cost"`
-}
-
 // SkillLog represents a skill execution log
 type SkillLog struct {
 	ID        int       `json:"id"`

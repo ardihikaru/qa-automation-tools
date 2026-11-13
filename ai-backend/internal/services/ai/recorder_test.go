@@ -57,3 +57,18 @@ func TestChatMessagesRecordsFailureKeepingUsage(t *testing.T) {
 		t.Fatalf("lastUsage must not update on failure: %+v", got)
 	}
 }
+
+func TestParseGatewayCallsAnyKeyCase(t *testing.T) {
+	raw := []byte(`[{"TS":"2026-11-14T10:00:00Z","Vendor":"claude-v3","InputTokens":6,"OutputTokens":2,"CostUSD":0.5,"Status":"error","Error":"x","Fallback":true,"LatencyMS":5200},
+{"ts":"t","vendor":"v","input_tokens":1,"cost_usd":0.1,"latency_ms":7}]`)
+	got, err := ParseGatewayCalls(raw)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("%v %v", got, err)
+	}
+	if got[0].Vendor != "claude-v3" || got[0].InputTokens != 6 || got[0].CostUSD != 0.5 || !got[0].Fallback || got[0].LatencyMS != 5200 || got[0].Status != "error" {
+		t.Fatalf("go-field keys: %+v", got[0])
+	}
+	if got[1].InputTokens != 1 || got[1].LatencyMS != 7 {
+		t.Fatalf("snake keys: %+v", got[1])
+	}
+}
