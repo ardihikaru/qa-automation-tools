@@ -1,0 +1,10 @@
+# Cost by model / recent calls / gateway
+
+### GET /api/cost/by-model
+GET {{base_url}}/api/cost/by-model?from=2026-11-01&to=2026-11-30
+
+### GET /api/cost/recent - failed calls only
+GET {{base_url}}/api/cost/recent?status=error&limit=50
+
+### GET /api/cost/gateway - ai-manager usage for a month
+GET {{base_url}}/api/cost/gateway?month=2026-11
