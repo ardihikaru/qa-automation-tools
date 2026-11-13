@@ -96,6 +96,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 - `config.ts` exports `config`:
   - `backendUrl`: `QA_BACKEND_URL` env, default `http://localhost:8080`
   - `impersonator`, `impersonatorPassword`, `impersonationTarget`: `E2E_IMPERSONATOR_USERNAME`, `E2E_IMPERSONATOR_PASSWORD`, `E2E_TARGET_USERNAME`. Used only by `tests/api/impersonation.spec.ts`, which is skipped when they are unset. The impersonator must have role Admin or Service, and the target should be a QA/QC user. That spec, and `tests/dashboard/impersonation.spec.ts` (the picker, banner and Return flow in the UI), log in themselves. `E2E_SCREENSHOT_DIR` saves screenshots of each step. It keeps one `impersonation_audit` row per run, by design; this is an accepted exception to the clean-up rule.
+  - `tests/api/knowledge.spec.ts` (PRODUCT_KNOWLEDGE_SYNC.md) also logs in as the impersonator and reads the SUT knowledge base. Set `E2E_KB_SYNC_AS=<write-role username>` to impersonate that user and run one sync (adds one `kb_syncs` row, kept by design).
   - `dashboardUrl`: `QA_DASHBOARD_URL` env, default `http://localhost:3000`
   - `apiTimeout`: 10000
   - `pageTimeout`: 30000
