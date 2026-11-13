@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ExternalLink, Plus, Settings2, Trash2 } from 'lucide-react';
 import SubmitButton from '../components/SubmitButton';
 import Modal from '../components/Modal';
@@ -66,7 +67,19 @@ export default function ProductsView() {
   const [poolEnabled, setPoolEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  // `?product=<id>` opens that product's detail (the knowledge base links back this way).
+  const [params, setParams] = useSearchParams();
+  const [detailId, setDetailId] = useState<number | null>(() => {
+    const n = Number(params.get('product'));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  });
+  useEffect(() => {
+    if (params.has('product')) {
+      const n = new URLSearchParams(params);
+      n.delete('product');
+      setParams(n, { replace: true });
+    }
+  }, [params, setParams]);
   const [removing, setRemoving] = useState<number | null>(null);
   const [editing, setEditing] = useState<ProductForm | null>(null);
   const [saving, setSaving] = useState(false);
