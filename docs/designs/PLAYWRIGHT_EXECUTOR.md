@@ -124,7 +124,7 @@ This would need a service identity in the cookie-only auth (`auth.Require`), whi
     *   Docs: `README.md`, `CLAUDE.md`, `OBJECTIVES.md`, `docs/designs/SITEMAP.md`, `deploy/his-v3-qa/README.md`
     *   Package READMEs: `ai-backend/internal/api/README.md`, `ai-backend/internal/config/README.md`, `ai-backend/internal/services/ai/README.md`
     *   Deprecation notices in `playwright-qa/{README,CLAUDE}.md` and `playwright-docs/{README,CLAUDE}.md`
-    *   `.claude/rules/deploy-edge.md` and `.claude/skills/{qa-automation-elephant,deploy-his-v3-qa,ai-manager-gateway}/SKILL.md`
+    *   `.claude/rules/deploy-edge.md` and `.claude/skills/{qa-automation-elephant,deploy-qa-tool,ai-manager-gateway}/SKILL.md`
 
 ### Verification Plan
 
