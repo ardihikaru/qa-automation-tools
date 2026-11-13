@@ -299,6 +299,76 @@ var migrations = []string{
 		UNIQUE KEY uq_products_name (name),
 		UNIQUE KEY uq_products_root_dir (root_dir)
 	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// product_settings (PRODUCT_REPOS.md entry 1): per-product flags. A missing row means defaults (false).
+	`CREATE TABLE IF NOT EXISTS product_settings (
+  product_id INT PRIMARY KEY,
+  allow_non_automation_work TINYINT(1) NOT NULL DEFAULT 0,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_product_settings_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// product_repos (entry 2): the repos of a product. main_flag/central_flag are generated from the
+	// flags (not from product_id, which is in the CASCADE foreign key; MySQL error 3104) so that
+	// UNIQUE(product_id, flag) allows at most one main and one central repo per product.
+	`CREATE TABLE IF NOT EXISTS product_repos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  repo_url VARCHAR(300) NOT NULL,
+  root_dir VARCHAR(200) NOT NULL,
+  is_main TINYINT(1) NOT NULL DEFAULT 0,
+  is_central TINYINT(1) NOT NULL DEFAULT 0,
+  main_flag    TINYINT GENERATED ALWAYS AS (IF(is_main = 1, 1, NULL)) STORED,
+  central_flag TINYINT GENERATED ALWAYS AS (IF(is_central = 1, 1, NULL)) STORED,
+  playwright_accessible TINYINT(1) NOT NULL DEFAULT 0,
+  last_verified_at DATETIME NULL,
+  verify_report JSON NULL,
+  sync_report JSON NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_product_repos_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_product_repos_root_dir (root_dir),
+  UNIQUE KEY uq_product_repos_name (product_id, name),
+  UNIQUE KEY uq_product_repos_url (product_id, repo_url),
+  UNIQUE KEY uq_product_repos_main (product_id, main_flag),
+  UNIQUE KEY uq_product_repos_central (product_id, central_flag)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// product_repo_branches (entry 3): branches kept checked out per repo; one default at most.
+	// Binary collation: git refs are case-sensitive.
+	`CREATE TABLE IF NOT EXISTS product_repo_branches (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  repo_id INT NOT NULL,
+  branch VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  slug   VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  is_default TINYINT(1) NOT NULL DEFAULT 0,
+  default_flag TINYINT GENERATED ALWAYS AS (IF(is_default = 1, 1, NULL)) STORED,
+  CONSTRAINT fk_product_repo_branches_repo FOREIGN KEY (repo_id) REFERENCES product_repos(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_product_repo_branches (repo_id, branch),
+  UNIQUE KEY uq_product_repo_branch_slug (repo_id, slug),
+  UNIQUE KEY uq_product_repo_branch_default (repo_id, default_flag)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Backfill 1 (entry 4): one main repo per legacy product. Skips (does not abort on) products whose
+	// root_dir has a ".branches" segment or equals an existing repo's root_dir. Re-runs are no-ops.
+	`INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_central,
+                           playwright_accessible, last_verified_at, verify_report)
+SELECT p.id, 'main', p.repo_url, p.root_dir, 1, 0, p.playwright_accessible, p.last_verified_at, p.verify_report
+FROM products p
+WHERE NOT EXISTS (SELECT 1 FROM product_repos r WHERE r.product_id = p.id)
+  AND p.root_dir NOT REGEXP '(^|/)[^/]*\\.branches(/|$)'
+  AND NOT EXISTS (SELECT 1 FROM product_repos r2 WHERE r2.root_dir = p.root_dir)
+ON DUPLICATE KEY UPDATE product_id = product_id;`,
+
+	// Backfill 2 (entry 5): the legacy branch becomes the default and sole branch, only for main repos
+	// that have no branch rows yet.
+	`INSERT INTO product_repo_branches (repo_id, branch, slug, is_default)
+SELECT r.id, p.branch, REPLACE(p.branch, '/', '--'), 1
+FROM product_repos r JOIN products p ON p.id = r.product_id
+WHERE r.is_main = 1 AND p.branch <> ''
+  AND NOT EXISTS (SELECT 1 FROM product_repo_branches b WHERE b.repo_id = r.id)
+ON DUPLICATE KEY UPDATE product_repo_branches.branch = product_repo_branches.branch;`,
 }
 
 // RunMigrations executes all MySQL migrations sequentially.

@@ -3,6 +3,7 @@
 *   **Author:** ardihikaru (drafted by Claude)
 *   **Status:** Implemented on the owner's decisions of 2026-11-13 (see Decisions). Goldfish review run on 2026-11-13 (design + codebase-details reviewers); fixes are in PR #4 (see Review outcome).
 *   **Date:** 2026-11-13
+*   **Superseded in part by [PRODUCT_REPOS.md](PRODUCT_REPOS.md):** the data model (one repo per product), the routes and the verify flow are replaced by multi-repo products. The pool, locks, child environment, SSRF probe and role rules stay in force.
 
 ## Overview
 A "Products" master list in the dashboard. Each product records its repo link, main (staging) URL, whether Playwright can reach it, and the root dir of its checkout on rnd-v3-vpn. A **Verify** button checks all of that. A repo pool dir in this repo lets the system `gh repo clone` repos and switch branches.
