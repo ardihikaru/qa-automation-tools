@@ -1,10 +1,11 @@
 # Multi-repo products (main, central and sibling repos, multi-branch checkouts)
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Draft rev 2 (after three Goldfish reviews: design, codebase accuracy, implementation readiness). Awaiting re-review and owner approval. Not implemented.
+*   **Status:** Implemented and deployed (PR #13 `feat(products): multi-repo products ...`, follow-up PR #14 strict JSON). Amended by the automation-role draft below.
 *   **Date:** 2026-11-13
 *   **Builds on:** [PRODUCTS_MASTER_AND_REPO_POOL.md](PRODUCTS_MASTER_AND_REPO_POOL.md) (implemented, PR #4). Everything that spec says about the pool, locks, child environment, SSRF probe and roles stays in force unless this document says otherwise. On approval that spec gets a "superseded in part by PRODUCT_REPOS.md" note (data model, routes, verify).
-*   **Repo state:** `docs/designs/PRODUCT_REPOS.md` and its `SITEMAP.md` row already exist on branch `feat/product-repos` (status Draft); only the status flips on approval.
+*   **Amended by:** [PRODUCT_REPOS_AUTOMATION_ROLE.md](PRODUCT_REPOS_AUTOMATION_ROLE.md) (Draft). "Main" stays the AI agent's base workspace; a new per-product **automation** repo role (exactly one, may equal main) now holds the Playwright scripts, is the only PR source and the write-guard target (`repoWriteAllowed`: automation OR `allow_non_automation_work`), receives the Playwright verify check, and is what the product-level and legacy columns mirror. Existing products are backfilled with automation = main. Where this spec says the main repo holds the scripts or is the PR source (Overview, Invariants 1 and 7, Verify per repo, Write guard, Legacy compatibility), the amendment wins.
+*   **Repo state:** this spec and its `SITEMAP.md` row are on `main` (merged with PR #13).
 
 ## Overview
 A product today has exactly one repo: `products.repo_url`, `root_dir`, `branch` and the verify state live on the `products` row (`ai-backend/internal/db/migrations.go:286-301`, `ai-backend/internal/models/models.go:207-219`). Real products span several repos. HISv3, for example, has a **central repo** (`his-v3-ai`) that manages the other repos.
