@@ -57,7 +57,7 @@ export default function SettingsView() {
   }, [load]);
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">Configuration</h2>
@@ -128,9 +128,11 @@ export default function SettingsView() {
         <div className="card-header">
           <h3 className="text-lg font-semibold">How it works</h3>
         </div>
-        <div className="card-body">
-          <ArchitectureDiagram />
-          <ol className="mt-4 space-y-1 text-sm text-gray-700 list-decimal list-inside">
+        <div className="card-body grid gap-6 xl:grid-cols-3 items-start">
+          <div className="xl:col-span-2 min-w-0">
+            <ArchitectureDiagram />
+          </div>
+          <ol className="space-y-2 text-sm text-gray-700 list-decimal list-inside">
             <li>The dashboard calls the Go backend on same-origin <code>/api</code> (cookie auth).</li>
             <li>Run QA / Generate docs: the backend submits a run to <b>playwright-executor</b> and polls it.</li>
             <li>The executor drives Chromium against HISv3 staging (one run at a time, 2.5 GiB / 60% CPU cap).</li>
@@ -162,7 +164,7 @@ function Arrow({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: num
 function ArchitectureDiagram() {
   return (
     <div className="overflow-x-auto">
-      <svg viewBox="0 0 760 270" className="w-full min-w-[640px]" role="img" aria-label="System architecture">
+      <svg viewBox="0 0 760 270" className="w-full min-w-[640px] max-h-[420px]" role="img" aria-label="System architecture">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M0 0L10 5L0 10z" fill="#6b7280" />
