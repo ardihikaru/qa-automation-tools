@@ -13,6 +13,7 @@ import {
   Brain,
 } from 'lucide-react';
 import UserChip from './UserChip';
+import ImpersonationBanner from './ImpersonationBanner';
 import PageTransition from './PageTransition';
 import { LogoMark, ArchitectureIcon, ProductsIcon } from './icons';
 
@@ -84,6 +85,7 @@ export default function Layout({ children }: LayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col min-h-screen">
+        <ImpersonationBanner />
         <header className="flex items-center justify-between gap-3 p-4 bg-white border-b">
           <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />

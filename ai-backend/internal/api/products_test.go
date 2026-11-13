@@ -37,6 +37,7 @@ func TestProductRole(t *testing.T) {
 	cases := map[string][2]bool{
 		"Admin": {true, true}, "DevOps": {true, true}, "Developer": {true, true},
 		"QA": {false, true}, "QC": {false, true}, "UI/UX Designer": {false, false},
+		"Service": {false, false}, // rights only via impersonation
 	}
 	for role, want := range cases {
 		req := httptest.NewRequest(http.MethodGet, "/api/products", nil)

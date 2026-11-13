@@ -646,6 +646,15 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		case "/api/auth/change-password":
 			r.authHandlers.ChangePassword(w, req)
 			return
+		case "/api/auth/impersonate":
+			r.authHandlers.Impersonate(w, req)
+			return
+		case "/api/auth/impersonate/stop":
+			r.authHandlers.StopImpersonation(w, req)
+			return
+		case "/api/users":
+			r.authHandlers.ListUsers(w, req)
+			return
 		}
 	}
 
