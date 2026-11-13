@@ -16,6 +16,7 @@ Manages product repositories checked out under one **pool directory** (`REPO_POO
 - `(*Pool).ResolveWorktreeDir(rootDir, slug)`: `<pool>/<rootDir>.branches/<slug>`, confined to the pool; an existing `.branches` or slug directory must be a real directory (no symlink). `Slug(branch)` maps `/` to `--`; `ValidateSlug` caps it at 100 characters.
 - `(*Pool).SyncBranches(ctx, repoURL, rel, []BranchSpec, allowPush) ([]models.BranchResult, error)`: clone if absent, apply the push policy, `git worktree prune`, fetch with an explicit refspec, then default branch in the clone and every other listed branch in a worktree; removes worktrees of unlisted branches. Never resets, cleans or forces: dirty trees are `kept_dirty`, diverged branches `error`, absent remote branches `missing_remote`. An empty list stops after the fetch. The error return is only for whole-sync failures (input, `ErrBusy`, clone, fetch).
 - `(*Pool).SetPushPolicy(ctx, rel, allowPush)`: sets `remote.origin.pushurl=DISABLED` (shared by all worktrees) or unsets it. A guard, not a sandbox: an explicit `git push <url>` or any holder of `GH_TOKEN` can still push.
+- `(*Pool).ReadTree(ctx, repoID, repoURL, branch, prefix, maxBytes) (sha, files, error)` (`mirror.go`, PRODUCT_KNOWLEDGE_SYNC.md): fetches one branch (`--depth=1`, explicit refspec, URL from `repoURL`, never a clone's remote) into the sync-owned bare mirror `<pool>/.kb-mirrors/<repoID>.git` and returns the commit SHA and the raw bytes of every regular file under `prefix`, read with `ls-tree -z` + `cat-file --batch` (no filters, attributes or LFS). Every git call uses `--git-dir=<mirror>`, `GIT_CEILING_DIRECTORIES=<pool>`, hooks/gc/maintenance off. A mirror without `HEAD` is re-initialised; more than 20 packs trigger `gc --prune=now`. Lock key is the mirror path, so it never contends with clone/sync/verify.
 - `ErrBusy`: another operation is running for the same repo directory.
 
 ## Invariants
@@ -24,6 +25,7 @@ Manages product repositories checked out under one **pool directory** (`REPO_POO
 - Public operations take one non-reentrant lock per clone directory and call unexported `*Locked` helpers (`cloneLocked`, `checkoutLocked`, `verifyRepoLocked`, `setPushPolicyLocked`); `SyncBranches` takes it once. `VerifyRepo`/`Verify` take the same lock; if a clone/checkout holds it, the report has `Busy` and must not be stored.
 - A failed clone removes its partial target. `REPO_POOL_ALLOWED_OWNERS` (`Pool.AllowedOwners`) limits which GitHub owners can be cloned. Staging probes refuse loopback/link-local/unspecified/multicast addresses at dial time.
 - Every path is resolved inside the pool root before use.
+- `ReadTree` never touches a product clone, its worktrees, `.git` or remote config; `.kb-mirrors/` can be deleted at any time (the next sync recreates it). `relDirRe` forbids a leading `.` in every segment, so no `root_dir` can claim it. `runBytes` returns raw stdout (capped) and strips URL userinfo from error text.
 - At most one clone/checkout per directory at a time (`TryLock`).
 - `GH_TOKEN` is passed through the process environment (`gh auth git-credential` helper for `github.com`) and is never logged or returned.
 

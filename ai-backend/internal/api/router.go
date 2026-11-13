@@ -21,6 +21,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
@@ -40,6 +41,8 @@ type Router struct {
 
 	// Product repo pool (nil = clone/verify disabled). See products.go.
 	repoPool *repopool.Pool
+	// knowledge runs and serves product knowledge syncs (nil without a DB).
+	kb *knowledge.Syncer
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo

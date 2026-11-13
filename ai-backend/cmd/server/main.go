@@ -17,6 +17,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
@@ -91,6 +92,12 @@ func main() {
 	router.SetRepoPool(pool)
 	router.StartProductVerifier(context.Background(), time.Duration(cfg.Backend.Products.VerifyIntervalMinutes)*time.Minute)
 	router.FailOrphanedJobs(context.Background())
+	// Product knowledge base: sync of the automation repo's docs/ catalog (PRODUCT_KNOWLEDGE_SYNC.md).
+	if syncer := knowledge.NewSyncer(database, pool, aiService); syncer != nil {
+		router.SetKnowledge(syncer)
+		syncer.FailOrphanedSyncs(context.Background())
+		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
+	}
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs
