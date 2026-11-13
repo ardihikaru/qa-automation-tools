@@ -712,6 +712,8 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 	// Skill endpoints
 	case "/api/skills":
 		r.handleSkills(w, req)
+	case "/api/assistants":
+		r.handleAssistants(w, req)
 	case "/api/skills/logs":
 		r.handleSkillLogs(w, req)
 	case "/api/skills/stats":
@@ -1263,11 +1265,26 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 	}
 
 	sql := `
-		SELECT id, name, description, check_type, check_query, severity, is_builtin, is_active, created_at
+		SELECT id, name, description, check_type, check_query, severity, is_builtin, is_active, created_at, product_id
 		FROM skills
 		WHERE 1=1
 	`
 	args := []interface{}{}
+	// product_id=N: global skills plus that product's; product_id=global: global skills only.
+	productWhere, productArgs := "", []interface{}{}
+	switch pf := strings.TrimSpace(query.Get("product_id")); {
+	case pf == "global":
+		productWhere = " AND product_id IS NULL"
+	case pf != "":
+		pid, err := strconv.Atoi(pf)
+		if err != nil || pid <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "product_id must be a product id or global")
+			return
+		}
+		productWhere, productArgs = " AND (product_id IS NULL OR product_id = ?)", []interface{}{pid}
+	}
+	sql += productWhere
+	args = append(args, productArgs...)
 
 	if search != "" {
 		sql += " AND (name LIKE CONCAT('%', ?, '%') OR description LIKE CONCAT('%', ?, '%') OR check_query LIKE CONCAT('%', ?, '%'))"
@@ -1310,7 +1327,7 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 	for rows.Next() {
 		var skill models.Skill
 		if err := rows.Scan(&skill.ID, &skill.Name, &skill.Description, &skill.CheckType, &skill.CheckQuery,
-			&skill.Severity, &skill.IsBuiltin, &skill.IsActive, &skill.CreatedAt); err != nil {
+			&skill.Severity, &skill.IsBuiltin, &skill.IsActive, &skill.CreatedAt, &skill.ProductID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1321,8 +1338,8 @@ func (r *Router) handleSkills(w http.ResponseWriter, req *http.Request) {
 		skills = []models.Skill{}
 	}
 
-	countSQL := "SELECT COUNT(*) FROM skills WHERE 1=1"
-	countArgs := []interface{}{}
+	countSQL := "SELECT COUNT(*) FROM skills WHERE 1=1" + productWhere
+	countArgs := append([]interface{}{}, productArgs...)
 	if search != "" {
 		countSQL += " AND (name LIKE CONCAT('%', ?, '%') OR description LIKE CONCAT('%', ?, '%') OR check_query LIKE CONCAT('%', ?, '%'))"
 		countArgs = append(countArgs, search, search, search)

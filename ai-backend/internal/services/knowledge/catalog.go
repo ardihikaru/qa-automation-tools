@@ -16,10 +16,11 @@ const (
 	TypeEpic      = "epic"
 	TypeStory     = "story"
 	TypeTestCase  = "test_case"
+	TypeAssistant = "assistant"
 )
 
 // EntityTypes lists the entity types in dependency (sync) order.
-var EntityTypes = []string{TypePart, TypeModule, TypeSubmodule, TypeFeature, TypeEpic, TypeStory, TypeTestCase}
+var EntityTypes = []string{TypePart, TypeModule, TypeSubmodule, TypeFeature, TypeEpic, TypeStory, TypeTestCase, TypeAssistant}
 
 // Part is a top-level product area (one docs/modules/[A-D]-*.md file).
 type Part struct {
@@ -106,6 +107,8 @@ type Snapshot struct {
 	Epics      []Epic
 	Stories    []Story
 	TestCases  []TestCase
+	// Assistants are filled by the sync from ParseAssistants (not by a Format).
+	Assistants []Assistant
 }
 
 // Problem is a non-fatal parse finding.

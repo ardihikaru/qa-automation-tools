@@ -655,6 +655,42 @@ ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_set
   INDEX idx_ai_call_log_feature (feature, created_at),
   INDEX idx_ai_call_log_status (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// ---- PRODUCT_KNOWLEDGE_SYNC.md "Assistant files": agents, skills, rules, commands and
+	// CLAUDE.md/AGENTS.md of the automation repo, synced with the catalog.
+	`CREATE TABLE IF NOT EXISTS kb_assistants (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  kind ENUM('agent','skill','rule','command','instructions') NOT NULL,
+  name VARCHAR(300) NOT NULL DEFAULT '',
+  description VARCHAR(1000) NOT NULL DEFAULT '',
+  path VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',
+  frontmatter JSON NOT NULL,
+  body MEDIUMTEXT NULL,
+  origin ENUM('sync','local') NOT NULL DEFAULT 'sync',
+  content_hash CHAR(64) NOT NULL,
+  first_sync_id INT NULL,
+  changed_sync_id INT NULL,
+  removed_at DATETIME NULL,
+  removed_sync_id INT NULL,
+  source_file VARCHAR(300) NULL,
+  source_line INT NULL,
+  created_by CHAR(36) NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_kb_assistants_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_kb_assistants_code (product_id, code),
+  INDEX idx_kb_assistants_kind (product_id, kind)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+
+	// Annotations on assistant files.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'kb_annotations' AND column_name = 'entity_type' AND column_type LIKE '%assistant%'
+ALTER TABLE kb_annotations MODIFY entity_type ENUM('part','module','submodule','feature','epic','story','test_case','assistant') NOT NULL;`,
+
+	// QA check skills may belong to one product (NULL = global, shown for every product).
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'skills' AND column_name = 'product_id'
+ALTER TABLE skills ADD COLUMN product_id INT NULL, ADD INDEX idx_skills_product (product_id);`,
 }
 
 const skipIfPrefix = "-- skip-if:"
