@@ -691,6 +691,16 @@ ALTER TABLE kb_annotations MODIFY entity_type ENUM('part','module','submodule','
 	// QA check skills may belong to one product (NULL = global, shown for every product).
 	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'skills' AND column_name = 'product_id'
 ALTER TABLE skills ADD COLUMN product_id INT NULL, ADD INDEX idx_skills_product (product_id);`,
+
+	// GAOS_INTEGRATION.md: per-product "integrated with GAOS" settings and the last push outcome.
+	// One ALTER, so it is atomic; the guard tests its first column.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_settings' AND column_name = 'gaos_integrated'
+ALTER TABLE product_settings
+  ADD COLUMN gaos_integrated TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN gaos_product_id VARCHAR(40) NOT NULL DEFAULT '',
+  ADD COLUMN gaos_last_sync_at DATETIME NULL,
+  ADD COLUMN gaos_last_status VARCHAR(20) NOT NULL DEFAULT '',
+  ADD COLUMN gaos_last_note VARCHAR(300) NOT NULL DEFAULT '';`,
 }
 
 const skipIfPrefix = "-- skip-if:"

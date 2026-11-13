@@ -296,3 +296,36 @@ func TestUniqueKeyBackstopsAndCascade(t *testing.T) {
 		t.Fatalf("cascade must remove only product 1's branches, %d left", n)
 	}
 }
+
+// GAOS_INTEGRATION.md: the five product_settings columns exist with their defaults, a user's
+// value survives a re-run, and a row without a value reads the defaults.
+func TestMigrationsGAOSColumns(t *testing.T) {
+	d := testdb.New(t)
+	if _, err := d.SQL.Exec(`INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('g1','https://github.com/o/g1','https://s','o/g1','main')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.SQL.Exec(`INSERT INTO product_settings (product_id) SELECT id FROM products WHERE name='g1'`); err != nil {
+		t.Fatal(err)
+	}
+	read := func() (on bool, pid, status, note string, at sql.NullTime) {
+		t.Helper()
+		if err := d.SQL.QueryRow(`SELECT gaos_integrated, gaos_product_id, gaos_last_sync_at, gaos_last_status, gaos_last_note FROM product_settings`).Scan(&on, &pid, &at, &status, &note); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if on, pid, status, note, at := read(); on || pid != "" || status != "" || note != "" || at.Valid {
+		t.Fatalf("defaults wrong: %v %q %q %q %v", on, pid, status, note, at)
+	}
+	if _, err := d.SQL.Exec(`UPDATE product_settings SET gaos_integrated=1, gaos_product_id='p-6', gaos_last_status='ok'`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := db.RunMigrations(d.SQL); err != nil {
+			t.Fatalf("re-run %d: %v", i+1, err)
+		}
+	}
+	if on, pid, status, _, _ := read(); !on || pid != "p-6" || status != "ok" {
+		t.Fatalf("re-run must keep the values, got %v %q %q", on, pid, status)
+	}
+}
