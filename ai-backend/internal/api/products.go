@@ -17,6 +17,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/auth"
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
+	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 )
 
@@ -197,18 +198,21 @@ func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, err
 		return products, nil
 	}
 	flags := map[int]bool{}
-	frows, err := q.QueryContext(ctx, `SELECT product_id, allow_non_automation_work FROM product_settings`)
+	formats := map[int]string{}
+	frows, err := q.QueryContext(ctx, `SELECT product_id, allow_non_automation_work, COALESCE(knowledge_format, '') FROM product_settings`)
 	if err != nil {
 		return nil, err
 	}
 	for frows.Next() {
 		var pid int
 		var on bool
-		if err := frows.Scan(&pid, &on); err != nil {
+		var kf string
+		if err := frows.Scan(&pid, &on, &kf); err != nil {
 			frows.Close()
 			return nil, err
 		}
 		flags[pid] = on
+		formats[pid] = kf
 	}
 	frows.Close()
 	where, rargs := `1=1`, []any{}
@@ -225,6 +229,7 @@ func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, err
 	}
 	for i := range products {
 		products[i].AllowNonAutomationWork = flags[products[i].ID]
+		products[i].KnowledgeFormat = formats[products[i].ID]
 		rs := byProduct[products[i].ID]
 		if rs == nil {
 			rs = []models.ProductRepo{}
@@ -499,6 +504,9 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 	case parts[1] == "repos":
 		r.handleProductRepos(w, req, d, id, parts[2:], canManage, canVerify)
 
+	case parts[1] == "knowledge":
+		r.handleKnowledge(w, req, id, parts[2:], canVerify)
+
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
 	}
@@ -613,6 +621,8 @@ type productUpdateBody struct {
 	Name       *string `json:"name"`
 	StagingURL *string `json:"staging_url"`
 	Allow      *bool   `json:"allow_non_automation_work"`
+	// KnowledgeFormat: "" turns the knowledge sync off; otherwise a registered format (Admin/DevOps only).
+	KnowledgeFormat *string `json:"knowledge_format"`
 	// Legacy flat repo fields are accepted for old clients and ignored (see updateProduct).
 	LegacyRepoURL string `json:"repo_url"`
 	LegacyRootDir string `json:"root_dir"`
@@ -658,6 +668,25 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE products SET name=?, staging_url=? WHERE id=?`, cur.Name, cur.StagingURL, id); err != nil {
 			return err
+		}
+		if body.KnowledgeFormat != nil {
+			var curFormat sql.NullString
+			err := tx.QueryRowContext(ctx, `SELECT knowledge_format FROM product_settings WHERE product_id = ?`, id).Scan(&curFormat)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if !curFormat.Valid || curFormat.String != *body.KnowledgeFormat {
+				if !toggle {
+					return &apiError{http.StatusForbidden, "only Admin and DevOps can change knowledge_format"}
+				}
+				if !knowledge.ValidFormat(*body.KnowledgeFormat) {
+					return badRequest("knowledge_format must be empty or one of: " + strings.Join(knowledge.Names(), ", "))
+				}
+				if _, err := tx.ExecContext(ctx, `INSERT INTO product_settings (product_id, knowledge_format) VALUES (?, ?)
+				ON DUPLICATE KEY UPDATE knowledge_format = VALUES(knowledge_format)`, id, *body.KnowledgeFormat); err != nil {
+					return err
+				}
+			}
 		}
 		if flagChanged {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO product_settings (product_id, allow_non_automation_work) VALUES (?, ?)
