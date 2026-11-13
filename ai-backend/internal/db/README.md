@@ -35,8 +35,15 @@ referenced by any Go code.
   `ai_cache`, `embedding_cache`, `learning_cache`, `skills`, `skill_logs`,
   `learned_skills`, `raw_issues`, `issue_suggestions`, `request_logs`,
   `flow_outcomes`, `job_runs`, `goal_events`, `navigation_edges`,
+<<<<<<< HEAD
+  `action_sequences`, `context_cache`, `users`, `sessions`, `products`, `product_settings`,
+  `product_repos`, `product_repo_branches`.
+- `connection.go:DB.WithTx(ctx, fn func(*sql.Tx) error)` - commits on nil, rolls back otherwise, and retries the whole
+  function up to 3 times on MySQL error 1213 (deadlock) or 1205 (lock wait timeout); `IsRetryableTxError` is the predicate.
+=======
   `action_sequences`, `context_cache`, `users`, `sessions`, `products`,
   `active_impersonations`, `impersonation_audit` (append-only; never purge).
+>>>>>>> origin/main
 
 ## Invariants
 
@@ -57,6 +64,24 @@ referenced by any Go code.
   returns `migration <index> failed` with the first non-empty SQL line
   (`migrations.go:summarize`). Earlier statements are not rolled back.
 - All tables use `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci`.
+
+## Product repos tables (PRODUCT_REPOS.md)
+
+`product_settings` (flag `allow_non_automation_work`, missing row = false), `product_repos` (one row per repo; `main_flag`/`central_flag` are stored generated columns so `UNIQUE(product_id, flag)` allows at most one main and one central repo per product) and `product_repo_branches` (binary-collation `branch` and `slug`; at most one default per repo via `default_flag`). Migration entries 4 and 5 back-fill one main repo and its branch per legacy product; they skip products whose `root_dir` has a `.branches` segment or repeats a repo's `root_dir`, and every re-run is a no-op. The legacy `products` columns are kept (mirrored from the main repo) for rollback.
+
+**Pre-flight** (run before migrating; fix rows first):
+```sql
+SELECT id, name, root_dir FROM products WHERE root_dir REGEXP '(^|/)[^/]*\\.branches(/|$)';
+SELECT a.id, b.id FROM products a JOIN products b ON a.id < b.id
+ AND (b.root_dir LIKE CONCAT(a.root_dir,'/%') OR a.root_dir LIKE CONCAT(b.root_dir,'/%'));
+```
+**Post-flight** (expected: zero rows):
+```sql
+SELECT p.id, p.name FROM products p WHERE NOT EXISTS (SELECT 1 FROM product_repos r WHERE r.product_id = p.id);
+```
+**Deploy order:** run `go run -mod=mod ./cmd/databasemigration` before starting the new binary (the old binary ignores the new tables), then once more after the new binary is live to pick up products the old binary created in the window.
+
+**Tests:** `internal/testdb` gives DB-backed tests a scratch schema from `QA_TEST_MYSQL_DSN` (tests skip when empty; a DSN naming `qa_automation` is refused).
 
 ## Side Effects
 

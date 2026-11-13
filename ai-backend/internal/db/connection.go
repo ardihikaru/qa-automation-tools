@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -130,4 +131,39 @@ func (db *DB) Close() {
 		return
 	}
 	_ = db.SQL.Close()
+}
+
+// txMaxAttempts bounds WithTx retries on deadlock / lock wait timeout.
+const txMaxAttempts = 3
+
+// IsRetryableTxError reports MySQL error 1213 (deadlock) or 1205 (lock wait timeout).
+func IsRetryableTxError(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && (me.Number == 1213 || me.Number == 1205)
+}
+
+// WithTx runs fn in a transaction: commit on nil, rollback otherwise. The whole function is
+// retried (up to 3 attempts) when MySQL reports a deadlock (1213) or lock wait timeout (1205),
+// so fn must be safe to run again (no side effects outside the transaction).
+func (db *DB) WithTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	var err error
+	for attempt := 1; attempt <= txMaxAttempts; attempt++ {
+		err = db.runTx(ctx, fn)
+		if err == nil || !IsRetryableTxError(err) || ctx.Err() != nil {
+			return err
+		}
+	}
+	return err
+}
+
+func (db *DB) runTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := db.SQL.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
