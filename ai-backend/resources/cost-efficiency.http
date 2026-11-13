@@ -1,16 +1,16 @@
 # Cost Efficiency API Endpoints
 
-### GET /api/cost/efficiency - Get cache hit/miss stats
-GET {{base_url}}/api/cost/efficiency
+### GET /api/cost/efficiency - Get call success/error/fallback counts
+GET {{base_url}}/api/cost/efficiency?from=2026-11-01
 
 > {%
   client.test("Cost efficiency returns 200", function() {
     expect(response.status).to.equal(200);
   });
   
-  client.test("Response contains hit and miss counts", function() {
+  client.test("Response contains call counts", function() {
     var body = JSON.parse(response.body);
-    expect(body).to.have.property("hit");
-    expect(body).to.have.property("miss");
+    expect(body).to.have.property("calls");
+    expect(body).to.have.property("errors");
   });
 %}

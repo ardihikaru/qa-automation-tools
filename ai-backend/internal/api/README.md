@@ -58,7 +58,13 @@ Product and repo request bodies (create, update, repo add/update, branches) are 
 | `/api/cost/overview` | GET | `handleCostOverview` |
 | `/api/cost/trend` | GET | `handleCostTrend` |
 | `/api/cost/efficiency` | GET | `handleCostEfficiency` |
-| `/api/cost/by-feature` | GET | `handleCostByFeature` |
+| `/api/cost/by-feature` | GET | `handleCostByFeature` (`cost.go`) |
+| `/api/cost/by-model` | GET | `handleCostByModel` |
+| `/api/cost/recent` | GET (`limit`≤200, `offset`) | `handleCostRecent` |
+| `/api/cost/filters` | GET | `handleCostFilters` (distinct feature/provider/model) |
+| `/api/cost/gateway` | GET (`month=YYYY-MM\|all`) | `handleCostGateway` (ai-manager usage + local totals) |
+
+All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`YYYY-MM-DD`, UTC, inclusive, default last 30 days, max 366) plus optional `feature`, `provider`, `model`, `status=ok|error`. Day buckets are UTC. `/trend` is zero-filled. `/gateway` answers 200 with `available:false` and an `error` when ai-manager is unreachable or not the active provider.
 | `/api/analytics` | GET | `handleAnalytics` |
 | `/api/learning` | GET, POST, DELETE (`?id=`) | `handleLearning` |
 | `/api/learning/navigation` | GET, POST | `handleLearningNavigation` |
@@ -115,7 +121,7 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
 ## Side Effects
 
-- MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `flows`, `roles`, `raw_issues`, `issue_suggestions`, `skills`, `skill_logs`, `learning_cache`, `request_logs` (cost endpoints), `ai_cache`, `embedding_cache`, `goal_events`, `navigation_edges`, `action_sequences`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
+- MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `flows`, `roles`, `raw_issues`, `issue_suggestions`, `skills`, `skill_logs`, `learning_cache`, `ai_call_log` (cost endpoints; written by `ai.SQLRecorder`), `ai_cache`, `embedding_cache`, `goal_events`, `navigation_edges`, `action_sequences`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
 - `auth_handlers.go`: `Login` inserts into `sessions` (via `auth.CreateSession`) and sets the HttpOnly, SameSite=Lax cookie (`auth_helpers.go:setSessionCookie`). `Logout` deletes the session row and expires the cookie. `ChangePassword` runs `UPDATE users SET password_hash = ?, must_change_pw = 0`.
 - Products: clone/sync write under `REPO_POOL_DIR` (worktrees in `<root_dir>.branches/<slug>`); tables `products`, `product_settings`, `product_repos`, `product_repo_branches`; verify makes one outbound GET to `staging_url`.
 - LLM call: `POST /api/issues` calls `aiService.ClassifyIssue` when the category is empty and the service is non-nil, then updates `raw_issues.category`. `/health` calls `aiService.Health`. Both go through the `services/ai` ChatProvider.

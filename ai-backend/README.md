@@ -49,7 +49,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 - `/api/issues`, `/api/issues/status`, `/api/issues/notes`
 - `/api/skills`, `/api/skills/logs`, `/api/skills/stats`
 - `/api/search?q=`
-- `/api/cost/overview`, `/api/cost/trend`, `/api/cost/efficiency`, `/api/cost/by-feature`
+- `/api/cost/{overview,trend,efficiency,by-feature,by-model,recent,filters,gateway}`
 - `/api/analytics`
 - `/api/learning`, `/api/learning/{navigation,sequences,context,stats}`
 - `/api/ai-cache`, `/api/embedding-cache`, `/api/goal-events`

@@ -394,7 +394,7 @@ Only `/health` and `/api/auth/login` are public. When the backend has a DB, ever
 | `/api/issues/status`, `/api/issues/notes` | POST | Update fix status and notes |
 | `/api/skills`, `/api/skills/logs`, `/api/skills/stats` | GET (+POST logs) | Skills |
 | `/api/search?q=` | GET | Search learning cache |
-| `/api/cost/overview`, `/trend`, `/efficiency`, `/by-feature` | GET | Cost analytics |
+| `/api/cost/overview`, `/trend`, `/efficiency`, `/by-feature`, `/by-model`, `/recent`, `/filters`, `/gateway` | GET | Cost analytics (AI call ledger + ai-manager usage) |
 | `/api/analytics` | GET | Usage analytics |
 | `/api/learning` (+ `/navigation`, `/sequences`, `/context`, `/stats`) | GET, POST, DELETE | Learning records |
 | `/api/ai-cache`, `/api/embedding-cache`, `/api/goal-events` | GET, POST, DELETE | Caches and goal events |
