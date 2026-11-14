@@ -89,6 +89,7 @@ type ProductsConfig struct {
 	VerifyIntervalMinutes int // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
 	// KnowledgeSyncIntervalMinutes is KB_SYNC_INTERVAL_MINUTES: scheduled knowledge sync, 0 disables (PRODUCT_KNOWLEDGE_SYNC.md).
 	KnowledgeSyncIntervalMinutes int
+	PoolOwner                    string // REPO_POOL_OWNER: uid:gid given to everything the pool creates (the executor's host user)
 	AllowedOwners                string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
 }
 
@@ -340,6 +341,7 @@ func LoadConfig() *Config {
 				PoolHostDir:                  getEnvString("REPO_POOL_HOST_DIR", ""),
 				VerifyIntervalMinutes:        getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
 				KnowledgeSyncIntervalMinutes: getEnvInt("KB_SYNC_INTERVAL_MINUTES", 360),
+				PoolOwner:                    getEnvString("REPO_POOL_OWNER", ""),
 				AllowedOwners:                getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
 			},
 			GAOS: GAOSConfig{

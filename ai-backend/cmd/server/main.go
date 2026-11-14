@@ -89,6 +89,9 @@ func main() {
 	})
 	pool := repopool.New(cfg.Backend.Products.PoolDir)
 	if pool != nil {
+		if spec := cfg.Backend.Products.PoolOwner; spec != "" && !pool.SetOwner(spec) {
+			log.Printf("   REPO_POOL_OWNER is invalid (want uid:gid); ownership left alone")
+		}
 		for _, o := range strings.Split(cfg.Backend.Products.AllowedOwners, ",") {
 			if o = strings.ToLower(strings.TrimSpace(o)); o != "" {
 				pool.AllowedOwners = append(pool.AllowedOwners, o)
