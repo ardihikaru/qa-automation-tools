@@ -176,7 +176,7 @@ func Validate(f GeneratedFile, o ValidateOptions) error {
 	dir := path.Dir(f.Path)
 	for _, spec := range ImportSpecs(c) {
 		switch {
-		case spec == "@playwright/test", o.AllowedImports[spec]:
+		case spec == "@playwright/test", spec == "@config/targets", o.AllowedImports[spec]:
 		case strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../"):
 			if strings.HasPrefix(path.Join(dir, spec), "..") {
 				return fmt.Errorf("import %q leaves the repo", spec)
