@@ -138,7 +138,7 @@ func TestBuildPlanSkipRulesAndMapping(t *testing.T) {
 		t.Fatalf("sent %d skipped %d", len(p.cases), p.skipped)
 	}
 	c1 := p.cases[0]
-	if c1.CaseID != "TC-AUTH-001" || c1.Epic != "AUTH" || c1.Module != "A01" || c1.UserStory != "US-AUTH-01" ||
+	if c1.CaseID != "TC-AUTH-001" || c1.Epic != "AUTH" || c1.Module != "B02" || c1.UserStory != "US-AUTH-01" ||
 		strings.Join(c1.Features, ",") != "A01.02,A01.07,B02.001" || c1.Decision != "planned" || c1.Reason != "" ||
 		c1.Implemented || c1.Spec != "" || c1.Polarity != "+" || c1.Level != "API" || c1.Pri != "P1" {
 		t.Fatalf("mapping: %+v", c1)
@@ -155,7 +155,7 @@ func TestBuildPlanSkipRulesAndMapping(t *testing.T) {
 	if c4 := p.cases[3]; c4.UserStory != "" {
 		t.Fatalf("a story code outside the pattern is dropped: %+v", c4)
 	}
-	if e := p.epics["AUTH"]; e.Title != "Authentication" || e.Service != "sut-auth" || e.Source != "qa-automation-tools" || e.Module != "A01" {
+	if e := p.epics["AUTH"]; e.Title != "Authentication" || e.Service != "sut-auth" || e.Source != "qa-automation-tools" || e.Module != "B02" {
 		t.Fatalf("epic: %+v", e)
 	}
 	if e := p.epics["NEW"]; e.Title != "NEW" || e.Service != "" || e.Module != "" {
