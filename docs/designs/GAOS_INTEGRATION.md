@@ -55,7 +55,7 @@ Base URL `GAOS_API_URL` (e.g. `https://gaos.sismedika.com/api/v1`), header `Auth
 6.  **Config is validated once, at startup, and reported as a boolean.** An invalid value is logged (without the token) and treated as "not configured".
 7.  **Epic `source`** is the constant `qa-automation-tools` (GAOS's contract names the field but not its meaning; the constant cannot be rejected as a path). Owner may change it.
 8.  **Epic `module`** is the module that occurs most among the epic's sent cases' modules (ties: the smallest code), or empty.
-9.  **Case `module`** is the `module_code` of the case's first feature (lowest feature code), where features come from the case's story (`kb_story_features`); empty when there is none or it does not match the pattern.
+9.  **Case `module`** is the **greatest** `module_code` among the case's features (changed 2026-11-14 from "first feature by code": GAOS's seed holds the greatest code for all 57 multi-module HISv3 cases, and the other 1,022 cases have one module, so the two catalogs now agree on module), where features come from the case's story (`kb_story_features`); empty when there is none or it does not match the pattern.
 
 ## Design
 
