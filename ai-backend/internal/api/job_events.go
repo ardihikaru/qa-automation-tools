@@ -119,6 +119,14 @@ func (r *Router) handleJobEvents(w http.ResponseWriter, req *http.Request, jobID
 	} else if rep, ok := job.Result["summary"].(map[string]interface{}); ok {
 		out["report"] = rep
 	}
+	if vd, ok := job.Result["verdict"].(map[string]interface{}); ok {
+		if res, _ := vd["result"].(string); res != "" {
+			out["outcome"] = res
+		}
+		if sr, _ := vd["skip_reason"].(string); sr != "" {
+			out["skip_reason"] = sr
+		}
+	}
 	if a, err := (&caseauto.ApprovalStore{DB: d}).Latest(ctx, jobID); err == nil && a != nil {
 		out["approval"] = map[string]any{"status": a.Status, "gaos_created": a.GaosCreated, "answer_text": a.Text, "answered_by": a.AnsweredBy, "external_id": a.ExternalID}
 	}

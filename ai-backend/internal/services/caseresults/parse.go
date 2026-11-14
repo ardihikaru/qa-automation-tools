@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,9 @@ type Report struct {
 	StartedAt time.Time
 	Results   map[string]string // case code -> pass|fail|skipped
 	Tests     int               // tests seen (with or without a case id)
+	// SkipReasons: code -> skip annotation descriptions of its skipped tests (test.skip(cond, reason),
+	// testInfo.skip, test.fixme), in report order, without duplicates.
+	SkipReasons map[string][]string
 }
 
 // pwSuite mirrors the part of Playwright's JSON reporter output we read.
@@ -31,7 +35,11 @@ type pwSuite struct {
 	Specs []struct {
 		Title string `json:"title"`
 		Tests []struct {
-			Status string `json:"status"` // expected | unexpected | flaky | skipped
+			Status      string `json:"status"` // expected | unexpected | flaky | skipped
+			Annotations []struct {
+				Type        string `json:"type"`
+				Description string `json:"description"`
+			} `json:"annotations"`
 		} `json:"tests"`
 	} `json:"specs"`
 	Suites []pwSuite `json:"suites"`
@@ -59,7 +67,7 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 	if len(pr.Suites) == 0 {
 		return nil, ErrNotReport
 	}
-	rep := &Report{StartedAt: now, Results: map[string]string{}}
+	rep := &Report{StartedAt: now, Results: map[string]string{}, SkipReasons: map[string][]string{}}
 	if t, err := time.Parse(time.RFC3339, pr.Stats.StartTime); err == nil && !t.After(now) {
 		rep.StartedAt = t
 	}
@@ -75,6 +83,14 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 				}
 				for _, c := range codes {
 					rep.Results[c] = merge(rep.Results[c], res)
+					if res != Skipped {
+						continue
+					}
+					for _, a := range t.Annotations {
+						if (a.Type == "skip" || a.Type == "fixme") && a.Description != "" && !contains(rep.SkipReasons[c], a.Description) {
+							rep.SkipReasons[c] = append(rep.SkipReasons[c], a.Description)
+						}
+					}
 				}
 			}
 		}
@@ -99,3 +115,27 @@ func merge(old, next string) string {
 	}
 	return Skipped
 }
+
+func contains(l []string, s string) bool {
+	for _, x := range l {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// SkipReason is the reason(s) the tests of code were skipped, joined with "; " and clipped to max bytes.
+// Empty when the report gave none. Callers redact it before storing it.
+func (r *Report) SkipReason(code string, max int) string {
+	s := strings.Join(r.SkipReasons[code], "; ")
+	if len(s) > max {
+		s = strings.ToValidUTF8(s[:max], "") + "..."
+	}
+	return s
+}
+
+var harnessRe = regexp.MustCompile(`(?i)staging db|credential|harness|seed`)
+
+// HarnessHint is true when a skip reason points at the e2e harness prerequisites (staging DB credential, seed).
+func HarnessHint(reason string) bool { return harnessRe.MatchString(reason) }

@@ -245,7 +245,8 @@ func executorEnvFile(pid int) string { return fmt.Sprintf("automation-%d.env", p
 
 func (r *Router) listCaseJobs(w http.ResponseWriter, req *http.Request, d *db.DB, pid int, code string) {
 	rows, err := d.Query(req.Context(), `SELECT id, type, status, COALESCE(error, ''), created_at, started_at, completed_at,
-		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.pr_url')), ''), COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.branch')), '')
+		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.pr_url')), ''), COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.branch')), ''),
+		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(result, '$.verdict.result')), '')
 		FROM job_runs WHERE type IN ('case_run','case_create')
 		AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.case_code')) = ? AND CAST(JSON_EXTRACT(payload, '$.product_id') AS UNSIGNED) = ?
 		ORDER BY created_at DESC LIMIT 10`, code, pid)
@@ -265,12 +266,13 @@ func (r *Router) listCaseJobs(w http.ResponseWriter, req *http.Request, d *db.DB
 		CompletedAt *time.Time `json:"completed_at,omitempty"`
 		PRURL       string     `json:"pr_url,omitempty"`
 		Branch      string     `json:"branch,omitempty"`
+		Outcome     string     `json:"outcome,omitempty"` // case_run verdict: pass|fail|skipped|none
 	}
 	out := []item{}
 	for rows.Next() {
 		var it item
 		var st, ct sql.NullTime
-		if err := rows.Scan(&it.ID, &it.Type, &it.Status, &it.Error, &it.CreatedAt, &st, &ct, &it.PRURL, &it.Branch); err != nil {
+		if err := rows.Scan(&it.ID, &it.Type, &it.Status, &it.Error, &it.CreatedAt, &st, &ct, &it.PRURL, &it.Branch, &it.Outcome); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -345,7 +347,17 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 	raw, _ := json.Marshal(result["report"])
 	delete(result, "report") // up to 2 MiB: the verdict and counts are kept, the raw report is not
 	result["summary"] = map[string]int{"passed": v.Passed, "failed": v.Failed, "skipped": v.Skipped}
-	result["verdict"] = map[string]interface{}{"pass": v.Pass, "message": v.Message}
+	verdict := map[string]interface{}{"pass": v.Pass, "message": v.Message, "result": v.Result}
+	result["verdict"] = verdict
+	skipReason := ""
+	if v.Result == caseresults.Skipped {
+		skipReason = caseauto.Clip(r.caseAuto.redact.Redact(v.SkipReason), 400)
+		verdict["message"] = caseauto.Clip(r.caseAuto.redact.Redact(v.Message), 500)
+		if skipReason != "" {
+			verdict["skip_reason"] = skipReason
+			result["skip_reason"] = skipReason
+		}
+	}
 	if v.Report == nil {
 		return errors.New(v.Message)
 	}
@@ -356,6 +368,12 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 	if d := r.getDB(); d != nil && pid > 0 {
 		rep, err := caseresults.Parse(bytes.NewReader(raw), time.Now().UTC())
 		if err == nil {
+			// A skip is absence of evidence: never stored, so it cannot replace a pass/fail (CASE_RESULTS.md, Skipped runs).
+			for c, res := range rep.Results {
+				if res == caseresults.Skipped {
+					delete(rep.Results, c)
+				}
+			}
 			out, err := caseresults.Save(ctx, d, pid, rep, jobID, "case-run")
 			if err != nil {
 				log.Printf("job %s: saving the case result: %v", jobID, err)
@@ -363,6 +381,19 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 				r.notifyResultsStored(pid) // wired to gaossync.Trigger
 			}
 		}
+	}
+	if v.Result == caseresults.Skipped {
+		msg := "skipped: " + skipReason
+		if skipReason == "" {
+			msg = "skipped: the report gives no reason"
+		}
+		if caseresults.HarnessHint(skipReason) {
+			msg += " (hint: the HISv3 e2e harness prerequisites, e.g. the staging DB credential file, are missing on the executor host; no result was stored)"
+		} else {
+			msg += " (no result was stored)"
+		}
+		r.addJobEvent(jobID, "warn", caseauto.StepDone, msg)
+		return nil
 	}
 	level := "info"
 	if !v.Pass {
