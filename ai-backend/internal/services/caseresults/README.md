@@ -1,7 +1,7 @@
 # services/caseresults
 
 ## Overview
-Per-case automated results (spec: [CASE_RESULTS.md](../../../../docs/designs/CASE_RESULTS.md)). It reads a Playwright JSON report, maps each spec to the `TC-XXX-NNN` codes in its title, and stores the latest result of every case of a product in `kb_case_results`. GAOS reads them through `GET /api/v1/gaos/results`.
+Per-case automated results (spec: [CASE_RESULTS.md](../../../../docs/designs/CASE_RESULTS.md)). It reads a Playwright JSON report, maps each spec to the `TC-XXX-NNN` codes in its title, and stores the latest result of every case of a product in `kb_case_results`. GAOS reads them through `GET /api/v1/gaos/results`, and `gaossync` pushes them with the cases; an upload that stored at least one result starts that push through `Router.SetOnResultsStored` (this package knows nothing about it).
 
 ## Interface
 - `Parse(r io.Reader, now time.Time) (*Report, error)` (`parse.go`): `Report{StartedAt, Results map[code]pass|fail|skipped, Tests}`. `ErrNotReport` when the JSON has no suites. Playwright statuses: `expected` and `flaky` are pass, `unexpected` is fail, `skipped` is skipped; several tests for one code merge as fail over pass over skipped. A start time in the future is replaced by `now`.

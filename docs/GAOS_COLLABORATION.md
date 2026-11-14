@@ -18,7 +18,7 @@ Every test case has two halves and each half has one writer, so the two flows ne
 | Half | Fields | Owner |
 |---|---|---|
 | Planning | case id, epic, module, features, user story, scenario, polarity, level, priority, **decision** (planned, blocked, manual-only, wont) and reason | **GAOS**, once the case exists. The QA tools may *create* a case there, never change one. |
-| Automation | `implemented`, `spec` (script path), and, when they exist, the last result, its time and a run reference | **The QA tools.** Today they hold no per-case run records, so only `implemented` and `spec` travel. |
+| Automation | `implemented`, `spec` (script path), and, when they exist, the last result, its time and a run reference | **The QA tools.** `implemented` and `spec` come from the synced catalog; `result`, `runAt` and `runRef` from the stored Playwright runs (`kb_case_results`, CASE_RESULTS.md). |
 
 In the QA tools the synced test cases (`kb_test_cases`, read from the automation repository) stay **read-only**. What GAOS
 decides is kept apart, in the table `gaos_decisions`; nothing GAOS sends ever writes a `kb_*` row.
@@ -36,7 +36,16 @@ decides is kept apart, in the table `gaos_decisions`; nothing GAOS sends ever wr
      `implemented` and `spec`. A case that exists in GAOS with different planning fields comes back `exists-differs` and
      is **not changed** (informational, not a failure). A case in an epic GAOS has not seen creates the epic and one new
      **Blocked** card on the product's board (the design gate holds it until an operator releases it).
-   * `POST {GAOS_API_URL}/products/{id}/qa/results`: the script facts (`implemented`, `spec`) of every case the push sent.
+   * `POST {GAOS_API_URL}/products/{id}/qa/results`: the script facts (`implemented`, `spec`) of every case the push sent,
+     and, for a case with a stored run, `result` (`pass`, `fail`, `skipped`), `runAt` (unix **seconds**, an integer) and
+     `runRef` (only when printable ASCII and at most 120 bytes; otherwise left out). A case with no stored run carries no
+     run fields. GAOS answers `stale` for a run older than the one it holds: that is counted (`results_stale`, and the
+     note says so) and is **not** a failure. Any other refusal (`future`, `bad-result`, `bad-run-ref`, `run-incomplete`,
+     `unknown-case`...) makes the push `partial`.
+   * **An upload starts a push.** When a results upload (the CI route or the dashboard card) stores at least one result and
+     the product is flagged, the same push starts in the background, coalesced with any push already running. An upload that
+     stored nothing (the same run sent again) starts none, and an upload never waits for or fails on the push. So a CI run
+     reaches GAOS without anyone pressing "Pull".
 5. **What is sent:** cases whose status is `planned` or `automated` with a code like `TC-AUTH-001`. **What is skipped
    and counted:** `blocked`, `manual-only` and `wont` cases (the QA side may not park or retire a case in GAOS) and local
    drafts (codes starting `L-`).
@@ -66,7 +75,7 @@ GAOS pulls script facts. Answer: `{"product":"p-6","items":[{"caseId","implement
 * `implemented:true` plus `spec` only when the case is automated and the path is usable (relative, ASCII, at most 240
   bytes); otherwise `implemented:false` and no `spec`. A case removed from the repository is a **tombstone**: it is sent as
   `implemented:false` with no script (GAOS clears the script fact; the case itself stays there).
-* `result`, `runAt` and `runRef` are never sent: there are no per-case run records.
+* `result`, `runAt` (unix seconds) and `runRef` are added for a case with a stored run (CASE_RESULTS.md). This pull remains the way GAOS fetches on its own schedule; the push above delivers the same facts without waiting for it.
 * The cursor `next` is `<unix>:<id>` over the case row's `(updated_at, id)`, always present (`0:0` at the start), so a case
   changed by a knowledge sync is sent again. Rows younger than 60 seconds are held back so a sync in progress is not
   skipped. An empty `after` starts over and heals anything missed.
@@ -134,7 +143,7 @@ overlap (GAOS allows one write at a time per token).
 
 ## Not built yet
 
-Real per-case results (`result`, `runAt`, `runRef`: needs a mapping from Playwright runs to case ids), and a "withdraw a
+A "withdraw a
 case" call (a case is retired in GAOS with decision `wont`). Converging the `exists-differs` cases is a follow-up that starts
 from the GAOS decisions view.
 

@@ -37,6 +37,13 @@ type catalog struct {
 	cases    []catCaseT
 	features map[string][]storyFeature // story code -> its features, ordered by feature code
 	epics    map[string]catEpic
+	results  map[string]storedRun // case code -> its latest stored run (kb_case_results)
+}
+
+// storedRun is one kb_case_results row; runAt is unix seconds.
+type storedRun struct {
+	result, runRef string
+	runAt          int64
 }
 
 type storyFeature struct{ code, module string }
@@ -48,7 +55,7 @@ func (s *Syncer) readCatalog(ctx context.Context, productID int) (*catalog, erro
 		return nil, err
 	}
 	defer tx.Rollback()
-	cat := &catalog{features: map[string][]storyFeature{}, epics: map[string]catEpic{}}
+	cat := &catalog{features: map[string][]storyFeature{}, epics: map[string]catEpic{}, results: map[string]storedRun{}}
 
 	rows, err := tx.QueryContext(ctx, `SELECT code, epic_code, COALESCE(story_code,''), COALESCE(scenario,''), polarity, level, priority, status, spec_paths
 FROM kb_test_cases WHERE product_id = ? AND removed_at IS NULL ORDER BY code`, productID)
@@ -106,7 +113,27 @@ WHERE sf.product_id = ? ORDER BY sf.feature_code`, productID)
 		cat.epics[code] = e
 	}
 	erows.Close()
-	return cat, erows.Err()
+	if err := erows.Err(); err != nil {
+		return nil, err
+	}
+
+	// run_at is a UTC DATETIME: the difference from the epoch is independent of the session time zone.
+	rrows, err := tx.QueryContext(ctx, `SELECT case_code, result, TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', run_at), run_ref
+FROM kb_case_results WHERE product_id = ?`, productID)
+	if err != nil {
+		return nil, err
+	}
+	for rrows.Next() {
+		var code string
+		var r storedRun
+		if err := rrows.Scan(&code, &r.result, &r.runAt, &r.runRef); err != nil {
+			rrows.Close()
+			return nil, err
+		}
+		cat.results[code] = r
+	}
+	rrows.Close()
+	return cat, rrows.Err()
 }
 
 type caseItem struct {
@@ -139,10 +166,41 @@ type casesBody struct {
 	Cases  []caseItem `json:"cases"`
 }
 
+// resultItem carries the implementation state and, when a run is stored for the case, the run
+// record. GAOS wants result and runAt together (runAt in unix SECONDS), runRef only with runAt.
 type resultItem struct {
 	CaseID      string `json:"caseId"`
 	Implemented bool   `json:"implemented"`
 	Spec        string `json:"spec"`
+	Result      string `json:"result,omitempty"`
+	RunAt       int64  `json:"runAt,omitempty"`
+	RunRef      string `json:"runRef,omitempty"`
+}
+
+var runResults = map[string]bool{"pass": true, "fail": true, "skipped": true}
+
+const maxRunRef = 120
+
+// withRun adds the stored run to the item. A run that GAOS could not take whole (unknown result,
+// no timestamp) is left out; a runRef that is not printable ASCII or is too long is dropped alone.
+func (it resultItem) withRun(r storedRun, ok bool) resultItem {
+	if !ok || !runResults[r.result] || r.runAt <= 0 {
+		return it
+	}
+	it.Result, it.RunAt = r.result, r.runAt
+	if ref := r.runRef; ref != "" && len(ref) <= maxRunRef && printableASCII(ref) {
+		it.RunRef = ref
+	}
+	return it
+}
+
+func printableASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 type resultsBody struct {

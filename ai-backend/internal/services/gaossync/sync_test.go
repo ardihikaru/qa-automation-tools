@@ -672,3 +672,152 @@ func TestGaosResponsesAsServed(t *testing.T) {
 		t.Fatalf("a deferred card: %+v, want ok with 1 deferred", res)
 	}
 }
+
+func seedRun(t *testing.T, d *db.DB, pid int, code, result, at, ref string) {
+	t.Helper()
+	exec(t, d, `INSERT INTO kb_case_results (product_id, case_code, result, run_at, run_ref, source) VALUES (?,?,?,?,?, 'ci')`, pid, code, result, at, ref)
+}
+
+func resultItems(t *testing.T, f *fakeGAOS) map[string]map[string]any {
+	t.Helper()
+	reqs := f.requests()
+	out := map[string]map[string]any{}
+	for _, it := range reqs[len(reqs)-1].items() {
+		m := it.(map[string]any)
+		out[m["caseId"].(string)] = m
+	}
+	return out
+}
+
+func TestPushCarriesTheStoredRun(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedProduct(t, d, true)
+	seedEpic(t, d, pid, "AUTH", "Authentication")
+	for _, c := range []string{"TC-AUTH-001", "TC-AUTH-002", "TC-AUTH-003", "TC-AUTH-004", "TC-AUTH-005"} {
+		seedCase(t, d, pid, c, "AUTH", "", "planned")
+	}
+	seedCase(t, d, pid, "TC-AUTH-006", "AUTH", "", "blocked") // skipped: no results item even with a stored run
+	seedRun(t, d, pid, "TC-AUTH-001", "pass", "2026-11-14 10:00:00", "ci-77")
+	seedRun(t, d, pid, "TC-AUTH-002", "fail", "2026-11-14 10:00:00", "run-é")                     // not ASCII
+	seedRun(t, d, pid, "TC-AUTH-003", "skipped", "2026-11-14 10:00:00", strings.Repeat("x", 120)) // the longest GAOS takes
+	seedRun(t, d, pid, "TC-AUTH-004", "pass", "2026-11-14 10:00:00", "")
+	seedRun(t, d, pid, "TC-AUTH-006", "pass", "2026-11-14 10:00:00", "ci")
+
+	if res := startAndWait(t, s, pid); res.Status != "ok" || res.ResultsApplied != 5 {
+		t.Fatalf("%+v", res)
+	}
+	items := resultItems(t, f)
+	if len(items) != 5 {
+		t.Fatalf("items: %v", items)
+	}
+	const wantAt = float64(1794650400) // 2026-11-14T10:00:00Z in unix SECONDS
+	a := items["TC-AUTH-001"]
+	if a["result"] != "pass" || a["runAt"] != wantAt || a["runRef"] != "ci-77" {
+		t.Fatalf("pass item: %v", a)
+	}
+	if i := items["TC-AUTH-002"]; i["result"] != "fail" || i["runAt"] != wantAt {
+		t.Fatalf("fail item: %v", i)
+	} else if _, has := i["runRef"]; has {
+		t.Fatalf("a non-ASCII runRef must be omitted: %v", i)
+	}
+	if i := items["TC-AUTH-003"]; i["result"] != "skipped" || i["runAt"] != wantAt || i["runRef"] != strings.Repeat("x", 120) {
+		t.Fatalf("skipped item: %v", i)
+	}
+	// kb_case_results.run_ref is VARCHAR(120), so an over-long ref cannot be stored; the guard is unit-tested.
+	long := resultItem{CaseID: "x"}.withRun(storedRun{result: "pass", runAt: 5, runRef: strings.Repeat("x", 121)}, true)
+	if long.Result != "pass" || long.RunAt != 5 || long.RunRef != "" {
+		t.Fatalf("an over-long runRef must be dropped alone: %+v", long)
+	}
+	if bad := (resultItem{CaseID: "x"}).withRun(storedRun{result: "weird", runAt: 5}, true); bad.Result != "" || bad.RunAt != 0 {
+		t.Fatalf("an unknown result sends no run fields: %+v", bad)
+	}
+	if _, has := items["TC-AUTH-004"]["runRef"]; has {
+		t.Fatalf("an empty runRef must be omitted: %v", items["TC-AUTH-004"])
+	}
+	// No stored run: the fields are absent, not empty.
+	for _, k := range []string{"result", "runAt", "runRef"} {
+		if _, has := items["TC-AUTH-005"][k]; has {
+			t.Fatalf("TC-AUTH-005 must not carry %s: %v", k, items["TC-AUTH-005"])
+		}
+	}
+	// runAt travels as an integer on the wire.
+	raw, _ := json.Marshal(resultItem{CaseID: "x"}.withRun(storedRun{result: "pass", runAt: 1794650400}, true))
+	if !strings.Contains(string(raw), `"runAt":1794650400}`) {
+		t.Fatalf("wire: %s", raw)
+	}
+}
+
+func TestStaleIsInformationalOtherRejectionsArePartial(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedProduct(t, d, true)
+	seedEpic(t, d, pid, "AUTH", "Authentication")
+	seedCase(t, d, pid, "TC-AUTH-001", "AUTH", "", "planned")
+	seedCase(t, d, pid, "TC-AUTH-002", "AUTH", "", "planned")
+	seedRun(t, d, pid, "TC-AUTH-001", "pass", "2026-11-14 10:00:00", "a")
+	seedRun(t, d, pid, "TC-AUTH-002", "pass", "2026-11-14 10:00:00", "b")
+	answer := func(rej string) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.respond = func(n int, r recorded) (int, map[string]string, string) {
+			if strings.HasSuffix(r.path, "/qa/results") {
+				return 200, nil, `{"applied":0,"unchanged":0,"rejected":[` + rej + `],"catHead":1700}`
+			}
+			return 200, nil, defaultAnswer(r)
+		}
+	}
+	answer(`{"caseId":"TC-AUTH-001","reason":"stale"},{"caseId":"TC-AUTH-002","reason":"stale"}`)
+	res := startAndWait(t, s, pid)
+	if res.Status != "ok" || res.ResultsStale != 2 || res.Rejected != 0 || len(res.RejectedSample) != 0 || !strings.Contains(res.Note, "2 results older") {
+		t.Fatalf("stale must be informational: %+v", res)
+	}
+	answer(`{"caseId":"TC-AUTH-001","reason":"stale"},{"caseId":"TC-AUTH-002","reason":"future"}`)
+	res = startAndWait(t, s, pid)
+	if res.Status != "partial" || res.ResultsStale != 1 || res.Rejected != 1 || res.RejectedSample[0].Reason != "future" {
+		t.Fatalf("a real rejection: %+v", res)
+	}
+}
+
+// The exact bodies GAOS serves today (captured live): the results answer with a catHead integer,
+// and the stale one.
+func TestGaosResultsBodiesAsServedToday(t *testing.T) {
+	for name, body := range map[string]string{
+		"cases":   `{"created":0,"unchanged":0,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`,
+		"results": `{"applied":68,"unchanged":0,"rejected":[],"catHead":1700}`,
+		"stale":   `{"applied":0,"unchanged":0,"rejected":[{"caseId":"TC-CHMGMT-010","reason":"stale"}],"catHead":1700}`,
+	} {
+		if name == "cases" {
+			var cr casesResponse
+			if err := json.Unmarshal([]byte(body), &cr); err != nil || cr.check(1) != nil || rawString(cr.CatHead, "") != "1700" {
+				t.Fatalf("%s: %v %v", name, err, cr.check(1))
+			}
+			continue
+		}
+		var rr resultsResponse
+		if err := json.Unmarshal([]byte(body), &rr); err != nil || rr.check(1) != nil || rawString(rr.CatHead, "") != "1700" {
+			t.Fatalf("%s did not decode: %v %v", name, err, rr.check(1))
+		}
+	}
+	var rr resultsResponse
+	_ = json.Unmarshal([]byte(`{"applied":68,"unchanged":0,"rejected":[],"catHead":1700}`), &rr)
+	if *rr.Applied != 68 {
+		t.Fatalf("applied %d", *rr.Applied)
+	}
+	// And end to end: the stale body as served keeps the push ok.
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedProduct(t, d, true)
+	seedEpic(t, d, pid, "AUTH", "Authentication")
+	seedCase(t, d, pid, "TC-AUTH-001", "AUTH", "", "planned")
+	seedRun(t, d, pid, "TC-AUTH-001", "pass", "2026-11-14 10:00:00", "a")
+	f.respond = func(n int, r recorded) (int, map[string]string, string) {
+		if strings.HasSuffix(r.path, "/qa/results") {
+			return 200, nil, `{"applied":0,"unchanged":0,"rejected":[{"caseId":"TC-AUTH-001","reason":"stale"}],"catHead":1700}`
+		}
+		return 200, nil, `{"created":0,"unchanged":1,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`
+	}
+	if res := startAndWait(t, s, pid); res.Status != "ok" || res.ResultsStale != 1 || res.CatHead != "1700" {
+		t.Fatalf("%+v", res)
+	}
+}
