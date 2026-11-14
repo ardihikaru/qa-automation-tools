@@ -60,7 +60,9 @@ the flag on) first records "a push is owed" on the product in the database, and 
 ends `ok` or `partial`. If the QA tool restarts in between, or GAOS is down or answers `401`/`5xx` so the push `failed`, a
 sweeper (5 seconds after start, then every minute) sends it again, waiting longer after each failure (30 seconds per failed
 attempt, at most 10 minutes). Sending again is harmless: GAOS answers `unchanged` and `stale` for what it already holds.
-A product that is switched off stops being retried.
+A product that is switched off stops being retried. The record is written before an upload's answer is returned, and even
+if the QA tool is killed at the worst instant (after the results are stored and before the record exists), the sweeper
+notices on the next start that the product's results or cases are newer than its last push and sends it.
 
 A push also runs when the flag is switched on, and on demand: `POST /api/products/{id}/gaos/sync` (Admin or DevOps), the
 **Sync to GAOS now** button. It waits up to 280 seconds and answers `200` with the result, or `202` if the push is still
