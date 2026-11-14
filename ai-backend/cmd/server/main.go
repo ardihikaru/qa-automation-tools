@@ -104,6 +104,14 @@ func main() {
 			router.SetGAOS(gaos)
 			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
 			log.Printf("   GAOS integration: configured=%v", gaos.Configured())
+			if tok := cfg.Backend.GAOS.InboundToken; tok != "" {
+				if len(tok) < 37 || !strings.HasPrefix(tok, "gaos_") || tok == cfg.Backend.GAOS.APIToken {
+					log.Printf("   GAOS inbound: GAOS_INBOUND_TOKEN is invalid (needs gaos_ prefix, 37+ chars, differ from GAOS_API_TOKEN); disabled")
+				} else {
+					router.SetGAOSInboundToken(tok)
+				}
+			}
+			log.Printf("   GAOS inbound: enabled=%v", router.GAOSInboundEnabled())
 		}
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
