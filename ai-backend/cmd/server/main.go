@@ -112,6 +112,14 @@ func main() {
 				}
 			}
 			log.Printf("   GAOS inbound: enabled=%v", router.GAOSInboundEnabled())
+			if tok := cfg.Backend.GAOS.ResultsToken; tok != "" {
+				if len(tok) < 32 || tok == cfg.Backend.GAOS.APIToken || tok == cfg.Backend.GAOS.InboundToken {
+					log.Printf("   Results ingest: RESULTS_INGEST_TOKEN is invalid (32+ chars, differ from the GAOS tokens); disabled")
+				} else {
+					router.SetResultsIngestToken(tok)
+				}
+			}
+			log.Printf("   Results ingest: enabled=%v", router.ResultsIngestEnabled())
 		}
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)

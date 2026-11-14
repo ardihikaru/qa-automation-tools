@@ -6,6 +6,7 @@ import SubmitButton from '../../components/SubmitButton';
 import RepoCard, { BranchesField, RepoAction } from './RepoCard';
 import KnowledgeCard from '../knowledge/KnowledgeCard';
 import GaosCard from './GaosCard';
+import CaseResultsCard from './CaseResultsCard';
 import {
   ApiError,
   BranchDraft,
@@ -410,6 +411,8 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       <KnowledgeCard product={product} canWrite={canVerify} canSetFormat={canToggle} onProductChange={onChange} />
 
       <GaosCard product={product} gaosConfigured={gaosConfigured} canToggle={canToggle} onChange={onChange} />
+
+      <CaseResultsCard product={product} />
 
       {editRepo && (
         <Modal title={`Edit repo: ${editRepo.repo.name}`} onClose={() => busyKey === null && setEditRepo(null)}>

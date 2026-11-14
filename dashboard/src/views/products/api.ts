@@ -121,6 +121,17 @@ export class ApiError extends Error {
   }
 }
 
+export interface CaseResultsSummary {
+  tests: number;
+  cases: number;
+  run_ref: string;
+  run_at: string;
+  stored: number;
+  stale: number;
+  unmatched: string[];
+  unmatched_count: number;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',

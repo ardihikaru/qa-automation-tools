@@ -48,6 +48,8 @@ type Router struct {
 	gaos *gaossync.Syncer
 	// gaosInboundToken guards /api/v1/gaos/* (GAOS_INBOUND.md); empty = disabled.
 	gaosInboundToken string
+	// resultsToken guards POST /api/v1/results/playwright (CASE_RESULTS.md); empty = disabled.
+	resultsToken string
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
@@ -579,6 +581,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// GAOS inbound: bearer token instead of the session cookie (GAOS_INBOUND.md).
 	if IsGAOSInboundPath(req.URL.Path) {
 		r.serveGAOSInbound(w, req)
+		return
+	}
+	// CI test results: bearer token as well (CASE_RESULTS.md).
+	if IsResultsIngestPath(req.URL.Path) {
+		r.serveResultsIngest(w, req)
 		return
 	}
 
