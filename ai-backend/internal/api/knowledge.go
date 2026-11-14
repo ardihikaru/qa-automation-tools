@@ -270,7 +270,7 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 		Q: q.Get("q"), Automated: q.Get("automated"), IncludeRemoved: boolParam(req, "include_removed"),
 		Page: intParam(req, "page"), PageSize: intParam(req, "page_size"),
 		Part: q.Get("part"), Module: q.Get("module"), Submodule: q.Get("submodule"),
-		Release: q.Get("release"), Coverage: q.Get("coverage"),
+		Release: q.Get("release"), Coverage: q.Get("coverage"), Sort: q.Get("sort"),
 	}
 	ctx := req.Context()
 	switch et {

@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bot, Search, StickyNote } from 'lucide-react';
 import { Enums, Epic, Page, TestCase, entityHref, listTestCases } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Loading, Pagination, PeekButton, RemovedBadge } from './ui';
+import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
+import { Paging, useClampPage, useResetOnChange } from './paging';
 
-const PAGE_SIZE = 50;
 
 interface Props {
   pid: number;
+  paging: Paging;
   enums: Enums;
   epics: Epic[];
   refreshKey: number;
@@ -20,7 +21,7 @@ interface Props {
 
 const flat = (s: string) => s.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
 
-export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, onOpen }: Props) {
+export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, selected, onOpen }: Props) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [level, setLevel] = useState('');
@@ -30,14 +31,15 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
   const [origin, setOrigin] = useState('');
   const [tag, setTag] = useState('');
   const [includeRemoved, setIncludeRemoved] = useState(false);
-  const [page, setPage] = useState(1);
+  const { page, size } = paging;
   const q = useDebounced(query.trim(), 300);
   const t = useDebounced(tag.trim(), 300);
 
-  useEffect(() => setPage(1), [q, status, level, priority, epic, automated, origin, t, includeRemoved]);
+  useResetOnChange(JSON.stringify([q, status, level, priority, epic, automated, origin, t, includeRemoved]), () => paging.setPage(1, true));
 
-  const filter = { q, status, level, priority, epic, automated, origin, tag: t, include_removed: includeRemoved, page, page_size: PAGE_SIZE };
+  const filter = { q, status, level, priority, epic, automated, origin, tag: t, include_removed: includeRemoved, page, page_size: size };
   const { data, loading, error, reload } = useLoad<Page<TestCase>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listTestCases(pid, filter, s));
+  useClampPage(paging, data?.total);
   const filtered = !!(q || status || level || priority || epic || automated || origin || t);
 
   const enumSelect = (label: string, value: string, set: (v: string) => void, opts: string[]) => (
@@ -88,7 +90,7 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
       </div>
 
       {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
-      {loading && !data && <Loading />}
+      {loading && !data && <SkeletonRows rows={size} label="Loading test cases" />}
       {data && data.items.length === 0 && <Empty>{filtered ? 'No test cases match these filters.' : 'No test cases yet.'}</Empty>}
 
       {data && data.items.length > 0 && (
@@ -158,7 +160,7 @@ export default function TestCasesTab({ pid, enums, epics, refreshKey, selected, 
           </table>
         </div>
       )}
-      {data && data.total > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} disabled={loading} />}
+      {data && data.total > 0 && <Pagination page={page} pageSize={size} total={data.total} onPage={paging.setPage} onPageSize={paging.setSize} noun="Test cases" disabled={loading} />}
     </div>
   );
 }

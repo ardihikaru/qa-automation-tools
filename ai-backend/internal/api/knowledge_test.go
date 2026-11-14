@@ -163,6 +163,22 @@ func TestKnowledgeAPI(t *testing.T) {
 		t.Fatalf("features: module A01 %v, untested %v", feats["total"], untested["total"])
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/features?coverage=meh", nil, http.StatusBadRequest)
+	firstFeat := kcall(t, r, "Viewer", http.MethodGet, base+"/features?page_size=1", nil, http.StatusOK)["items"].([]any)[0].(map[string]any)
+	if firstFeat["coverage"].(map[string]any)["test_cases"].(float64) == 0 {
+		t.Fatalf("default sort must put tested features first: %v", firstFeat["code"])
+	}
+	kcall(t, r, "Viewer", http.MethodGet, base+"/features?sort=bogus", nil, http.StatusBadRequest)
+	fd := kcall(t, r, "Viewer", http.MethodGet, base+"/features/A01.07", nil, http.StatusOK)
+	cases := 0
+	for _, st := range fd["stories"].([]any) {
+		cases += len(st.(map[string]any)["test_cases"].([]any))
+		if st.(map[string]any)["coverage"] == nil {
+			t.Fatal("story coverage missing")
+		}
+	}
+	if cases == 0 || fd["coverage"].(map[string]any)["test_cases"].(float64) == 0 {
+		t.Fatalf("feature detail cases: %d %v", cases, fd["coverage"])
+	}
 	modTC := kcall(t, r, "Viewer", http.MethodGet, base+"/test-cases?module=A01&automated=0&page_size=5", nil, http.StatusOK)
 	if modTC["total"].(float64) < 1 {
 		t.Fatalf("test cases of A01 not automated: %v", modTC["total"])

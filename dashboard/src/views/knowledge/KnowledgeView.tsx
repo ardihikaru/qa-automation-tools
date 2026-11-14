@@ -29,6 +29,7 @@ import SyncsTab from './SyncsTab';
 import { ErrorNote, Loading, RelTime, ShaLink, SyncStatusChip } from './ui';
 import { useKnowledgeSync } from './useKnowledgeSync';
 import SyncButton from './SyncButton';
+import { DEFAULT_PAGE_SIZE, Paging, parsePage, parseSize } from './paging';
 
 const TABS = [
   { id: 'modules', label: 'Modules' },
@@ -121,11 +122,56 @@ export default function KnowledgeView() {
     return () => ac.abort();
   }, [needFeatures, features, pid, validId]);
 
+  // Paging: `?size=` is shared by every tab; `?page=` belongs to the open tab. Other tabs keep
+  // their page here and get it back in the URL when they are opened again.
+  const size = parseSize(params.get('size'));
+  const urlPage = parsePage(params.get('page'));
+  const tabPages = useRef<Partial<Record<TabId, number>>>({});
+
   const setTab = (t: TabId) => {
+    if (t === tab) return;
+    tabPages.current[tab] = urlPage;
+    const back = tabPages.current[t] ?? 1;
+    delete tabPages.current[t];
     const n = new URLSearchParams(params);
     n.set('tab', t);
+    if (back > 1) n.set('page', String(back));
+    else n.delete('page');
     setParams(n, { replace: true });
   };
+
+  const pagingFor = (t: TabId): Paging => ({
+    page: t === tab ? urlPage : tabPages.current[t] ?? 1,
+    size,
+    setPage: (p, replace = false) => {
+      if (t !== tab) {
+        tabPages.current[t] = p;
+        return;
+      }
+      setParams(
+        (cur) => {
+          const n = new URLSearchParams(cur);
+          if (p > 1) n.set('page', String(p));
+          else n.delete('page');
+          return n;
+        },
+        { replace },
+      );
+    },
+    setSize: (s) => {
+      tabPages.current = {};
+      setParams(
+        (cur) => {
+          const n = new URLSearchParams(cur);
+          if (s === DEFAULT_PAGE_SIZE) n.delete('size');
+          else n.set('size', String(s));
+          n.delete('page');
+          return n;
+        },
+        { replace: true },
+      );
+    },
+  });
 
   const open = useCallback(
     (t: Target) => {
@@ -295,17 +341,17 @@ export default function KnowledgeView() {
             {TABS.map((t) =>
               visited.has(t.id) ? (
                 <div key={t.id} role="tabpanel" id={`kb-panel-${t.id}`} aria-labelledby={`kb-tab-${t.id}`} hidden={t.id !== tab} className="kb-tab-enter">
-                  {t.id === 'modules' && <ModulesTab pid={pid} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />}
+                  {t.id === 'modules' && <ModulesTab pid={pid} paging={pagingFor('modules')} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />}
                   {t.id === 'features' && (
-                    <FeaturesTab pid={pid} releases={summary.enums.release ?? []} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />
+                    <FeaturesTab pid={pid} paging={pagingFor('features')} releases={summary.enums.release ?? []} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />
                   )}
                   {t.id === 'stories' && (
-                    <StoriesTab pid={pid} epics={epics} features={featureOptions} refreshKey={refreshKey} selected={target?.type === 'story' ? selectedCode : null} onOpen={open} />
+                    <StoriesTab pid={pid} paging={pagingFor('stories')} epics={epics} features={featureOptions} refreshKey={refreshKey} selected={target?.type === 'story' ? selectedCode : null} onOpen={open} />
                   )}
                   {t.id === 'test-cases' && (
-                    <TestCasesTab pid={pid} enums={summary.enums} epics={epics} refreshKey={refreshKey} selected={target?.type === 'test_case' ? selectedCode : null} onOpen={open} />
+                    <TestCasesTab pid={pid} paging={pagingFor('test-cases')} enums={summary.enums} epics={epics} refreshKey={refreshKey} selected={target?.type === 'test_case' ? selectedCode : null} onOpen={open} />
                   )}
-                  {t.id === 'syncs' && <SyncsTab pid={pid} refreshKey={refreshKey} onOpen={open} />}
+                  {t.id === 'syncs' && <SyncsTab pid={pid} paging={pagingFor('syncs')} refreshKey={refreshKey} onOpen={open} />}
                 </div>
               ) : null,
             )}

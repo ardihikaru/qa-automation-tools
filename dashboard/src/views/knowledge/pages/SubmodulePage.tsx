@@ -4,6 +4,7 @@ import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
 import { CoverageRow, CoverageSection } from './kit';
 import { PageCtx, TreeIndex, crumbTo, useScopeCases } from './data';
+import UntestedPanel from './Untested';
 
 export default function SubmodulePage({ ctx, e, index }: { ctx: PageCtx; e: SubmoduleDetail; index: TreeIndex | null }) {
   const { pid } = ctx;
@@ -27,11 +28,26 @@ export default function SubmodulePage({ ctx, e, index }: { ctx: PageCtx; e: Subm
         ['Features', <span className="tabular-nums">{features.length}</span>],
       ]}
     >
-      <CaseGridSection pid={pid} cases={g.cases} loading={g.loading} error={g.error} onRetry={g.reload} empty="No test cases cover this sub-module yet." />
+      {e.coverage?.test_cases === 0 ? (
+        <UntestedPanel
+          pid={pid}
+          e={e}
+          index={index}
+          what={`None of the ${features.length === 1 ? 'one feature' : `${features.length} features`} in this sub-module has test cases yet.`}
+          todo={(catalog, sync) => (
+            <>
+              Link user stories with test cases to its features in {catalog}, then {sync}.
+            </>
+          )}
+        />
+      ) : (
+        <CaseGridSection pid={pid} cases={g.cases} loading={g.loading} error={g.error} onRetry={g.reload} empty="No test cases cover this sub-module yet." />
+      )}
       <CoverageSection
         id="kb-features"
         title="Features"
         items={features}
+        noun="features"
         empty="No features in this sub-module."
         render={(f) => (
           <CoverageRow
