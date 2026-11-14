@@ -746,7 +746,7 @@ ALTER TABLE product_settings
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   job_id VARCHAR(64) NOT NULL,
   seq INT NOT NULL,
-  `+"`at`"+` DATETIME(3) NOT NULL,
+  ` + "`at`" + ` DATETIME(3) NOT NULL,
   level VARCHAR(8) NOT NULL,
   step VARCHAR(32) NOT NULL,
   message VARCHAR(1000) NOT NULL,
