@@ -525,3 +525,63 @@ export function errorText(e: unknown, fallback = 'Request failed'): string {
 export const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 
 export const pct = (n: number) => `${Math.round(n)}%`;
+
+// ---- case automation (docs/designs/CASE_AUTOMATION.md section 5) ----
+
+export type JobStatus = 'queued' | 'pending' | 'running' | 'completed' | 'failed' | string;
+export const isTerminalJob = (s: string | undefined) => s === 'completed' || s === 'failed';
+
+export interface JobEvent {
+  seq: number;
+  at?: string;
+  level?: string;
+  step?: string;
+  message?: string;
+}
+export type ApprovalDecision = 'approve' | 'reject' | 'changes';
+export interface JobApproval {
+  status?: string;
+  gaos_created?: boolean;
+  answer_text?: string;
+}
+export interface JobReport {
+  passed?: number;
+  failed?: number;
+  skipped?: number;
+}
+/** Answer of GET /api/jobs/{id}/events. Everything but `events` may be missing. */
+export interface JobEvents {
+  events: JobEvent[];
+  status?: JobStatus;
+  phase?: string;
+  approval?: JobApproval | null;
+  pr_url?: string;
+  // Optional extras the backend may add; the view degrades without them.
+  case_code?: string;
+  branch?: string;
+  type?: string;
+  product_id?: number;
+  spec?: { path?: string; content?: string } | null;
+  report?: JobReport | null;
+}
+/** One row of GET .../test-cases/{code}/jobs. */
+export interface CaseJob {
+  id: number | string;
+  type?: string;
+  status: JobStatus;
+  phase?: string;
+  branch?: string;
+  pr_url?: string;
+  created_at?: string;
+}
+
+const caseUrl = (pid: number, code: string) => `${kb(pid)}/test-cases/${enc(code)}`;
+
+export const runCase = (pid: number, code: string) => api<{ job_id: number | string }>(`${caseUrl(pid, code)}/run`, { method: 'POST' });
+export const createAutomation = (pid: number, code: string) => api<{ job_id: number | string }>(`${caseUrl(pid, code)}/create-automation`, { method: 'POST' });
+export const listCaseJobs = (pid: number, code: string, signal?: AbortSignal) =>
+  api<{ jobs?: CaseJob[] } | CaseJob[]>(`${caseUrl(pid, code)}/jobs`, { signal }).then((r) => (Array.isArray(r) ? r : (r?.jobs ?? [])));
+export const getJobEvents = (jobId: number | string, since: number, signal?: AbortSignal) =>
+  api<JobEvents>(`/api/jobs/${enc(String(jobId))}/events?since=${since}`, { signal }).then((r) => ({ ...r, events: Array.isArray(r?.events) ? r.events : [] }));
+export const answerApproval = (jobId: number | string, decision: ApprovalDecision, text?: string) =>
+  api<unknown>(`/api/jobs/${enc(String(jobId))}/approval`, json('POST', { decision, ...(text ? { text } : {}) }));
