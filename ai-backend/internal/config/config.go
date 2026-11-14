@@ -62,6 +62,9 @@ type BackendConfig struct {
 type GAOSConfig struct {
 	APIURL   string // GAOS_API_URL, e.g. https://gaos.sismedika.com/api/v1
 	APIToken string // GAOS_API_TOKEN (QA bearer, gaos_...); never logged
+	// WebURL is the public GAOS web app the /products badge links to (GAOS_WEB_URL, e.g.
+	// https://gaos.sismedika.com/app/). Optional; empty derives it from an https APIURL.
+	WebURL string
 	// InboundToken is the bearer GAOS presents to /api/v1/gaos/* (GAOS_INBOUND_TOKEN); never logged.
 	InboundToken string
 	// ResultsToken is the bearer CI presents to POST /api/v1/results/playwright (RESULTS_INGEST_TOKEN); never logged.
@@ -338,6 +341,7 @@ func LoadConfig() *Config {
 			GAOS: GAOSConfig{
 				APIURL:       getEnvString("GAOS_API_URL", ""),
 				APIToken:     getEnvString("GAOS_API_TOKEN", ""),
+				WebURL:       getEnvString("GAOS_WEB_URL", ""),
 				InboundToken: getEnvString("GAOS_INBOUND_TOKEN", ""),
 				ResultsToken: getEnvString("RESULTS_INGEST_TOKEN", ""),
 			},

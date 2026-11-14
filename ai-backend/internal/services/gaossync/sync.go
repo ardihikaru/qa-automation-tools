@@ -89,6 +89,7 @@ type Syncer struct {
 	db         *db.DB
 	cl         *client
 	configured bool
+	webURL     string // GAOS_WEB_URL (link.go)
 
 	budget time.Duration
 
