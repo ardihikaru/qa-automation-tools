@@ -92,6 +92,11 @@ var hints = map[int]string{
 // 429 is retried after Retry-After; every other non-200 is a Failure. step names the request
 // in failure notes ("cases batch 2/9").
 func (c *client) post(ctx context.Context, path, step string, body, out any) *Failure {
+	return c.postOK(ctx, path, step, body, out, http.StatusOK)
+}
+
+// postOK is post that also accepts the extra success statuses (the Inbox answers 201 on create).
+func (c *client) postOK(ctx context.Context, path, step string, body, out any, okExtra ...int) *Failure {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return &Failure{Note: "could not encode " + step}
@@ -102,8 +107,12 @@ func (c *client) post(ctx context.Context, path, step string, body, out any) *Fa
 			f.Note = step + ": " + f.Note
 			return f
 		}
+		isOK := status == http.StatusOK
+		for _, o := range okExtra {
+			isOK = isOK || status == o
+		}
 		switch {
-		case status == http.StatusOK:
+		case isOK:
 			if err := json.Unmarshal(data, out); err != nil {
 				return &Failure{Note: step + ": GAOS answered 200 with an unreadable body"}
 			}

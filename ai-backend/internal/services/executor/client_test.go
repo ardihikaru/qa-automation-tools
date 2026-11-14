@@ -119,3 +119,39 @@ func TestHealthCachedAndUnreachable(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// Wait sends `since` and hands each update only the events it has not seen (an executor that
+// ignores `since` and resends everything must not produce duplicates).
+func TestWaitAsksForNewEventsOnly(t *testing.T) {
+	var sinces []string
+	var polls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sinces = append(sinces, r.URL.Query().Get("since"))
+		switch polls.Add(1) {
+		case 1:
+			_, _ = w.Write([]byte(`{"id":"r","status":"running","events":[{"n":1,"level":"info","step":"run","message":"a"},{"n":2,"message":"b"}]}`))
+		case 2:
+			// A server that ignores since: n 1 and 2 again, plus 3.
+			_, _ = w.Write([]byte(`{"id":"r","status":"running","events":[{"n":1,"message":"a"},{"n":2,"message":"b"},{"n":3,"message":"c"}]}`))
+		default:
+			_, _ = w.Write([]byte(`{"id":"r","status":"completed","events":[{"n":4,"message":"d"}]}`))
+		}
+	}))
+	defer srv.Close()
+	c := New(Config{URL: srv.URL, Token: token})
+	var seen []int
+	final, err := c.Wait(context.Background(), "r", time.Millisecond, func(r *Run) {
+		for _, e := range r.Events {
+			seen = append(seen, e.N)
+		}
+	})
+	if err != nil || final.Status != StatusCompleted {
+		t.Fatalf("%+v %v", final, err)
+	}
+	if b, _ := json.Marshal(seen); string(b) != "[1,2,3,4]" {
+		t.Fatalf("events seen %s", b)
+	}
+	if strings.Join(sinces, "|") != "|2|3" {
+		t.Fatalf("since params %q", strings.Join(sinces, "|"))
+	}
+}
