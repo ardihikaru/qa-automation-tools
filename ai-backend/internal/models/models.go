@@ -198,10 +198,22 @@ type Product struct {
 	AllowNonAutomationWork bool `json:"allow_non_automation_work"`
 	// KnowledgeFormat is product_settings.knowledge_format ("" = not set or sync off; PRODUCT_KNOWLEDGE_SYNC.md).
 	KnowledgeFormat string `json:"knowledge_format"`
+	// GAOS is the product_settings GAOS integration (GAOS_INTEGRATION.md).
+	GAOS GAOSSettings `json:"gaos"`
 	// Repos lists the product's repos (main first). The legacy fields above mirror the automation repo.
 	Repos     []ProductRepo `json:"repos"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
+}
+
+// GAOSSettings is a product's GAOS integration state (the server-wide "configured" flag is
+// gaos_configured on the products list).
+type GAOSSettings struct {
+	Integrated bool       `json:"integrated"`
+	ProductID  string     `json:"product_id"`
+	LastSyncAt *time.Time `json:"last_sync_at"`
+	LastStatus string     `json:"last_status"`
+	LastNote   string     `json:"last_note"`
 }
 
 // ProductRepo is one repository of a product (main, automation, central or sibling; see PRODUCT_REPOS.md and PRODUCT_REPOS_AUTOMATION_ROLE.md).

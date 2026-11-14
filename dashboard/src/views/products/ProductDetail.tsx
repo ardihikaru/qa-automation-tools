@@ -5,6 +5,7 @@ import Modal from '../../components/Modal';
 import SubmitButton from '../../components/SubmitButton';
 import RepoCard, { BranchesField, RepoAction } from './RepoCard';
 import KnowledgeCard from '../knowledge/KnowledgeCard';
+import GaosCard from './GaosCard';
 import {
   ApiError,
   BranchDraft,
@@ -29,6 +30,8 @@ interface Props {
   canVerify: boolean;
   /** Admin and DevOps only; the server enforces it too. */
   canToggle: boolean;
+  /** The server can push to GAOS (`gaos_configured` of the products list). */
+  gaosConfigured: boolean;
   onChange: (p: Product) => void;
 }
 
@@ -62,7 +65,7 @@ function describe(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-export default function ProductDetail({ product, poolEnabled, canManage, canVerify, canToggle, onChange }: Props) {
+export default function ProductDetail({ product, poolEnabled, canManage, canVerify, canToggle, gaosConfigured, onChange }: Props) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const inflight = useRef(false); // synchronous guard against rapid double clicks
   const reloadTimer = useRef<number | undefined>(undefined);
@@ -405,6 +408,8 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
       </div>
 
       <KnowledgeCard product={product} canWrite={canVerify} canSetFormat={canToggle} onProductChange={onChange} />
+
+      <GaosCard product={product} gaosConfigured={gaosConfigured} canToggle={canToggle} onChange={onChange} />
 
       {editRepo && (
         <Modal title={`Edit repo: ${editRepo.repo.name}`} onClose={() => busyKey === null && setEditRepo(null)}>
