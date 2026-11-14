@@ -55,6 +55,26 @@ func (s *EventStore) Add(ctx context.Context, jobID, level, step, message string
 	return err
 }
 
+// Progress is what a job's event log says about how far a case_create got.
+type Progress struct {
+	LastStep    string // step of the newest event; "" = no events
+	PushReached bool   // an event has step push or pr: the branch may be on the remote and a PR may exist
+}
+
+// Progress reads the job's events (indexed queries, no message text).
+func (s *EventStore) Progress(ctx context.Context, jobID string) (Progress, error) {
+	var p Progress
+	var last sql.NullString
+	var pushed int
+	err := s.DB.QueryRow(ctx, "SELECT (SELECT step FROM job_events WHERE job_id = ? ORDER BY seq DESC LIMIT 1), "+
+		"EXISTS (SELECT 1 FROM job_events WHERE job_id = ? AND step IN (?, ?))", jobID, jobID, StepPush, StepPR).Scan(&last, &pushed)
+	if err != nil {
+		return p, err
+	}
+	p.LastStep, p.PushReached = last.String, pushed == 1
+	return p, nil
+}
+
 // List returns the events with seq > since, oldest first (at most limit).
 func (s *EventStore) List(ctx context.Context, jobID string, since, limit int) ([]Event, error) {
 	if limit <= 0 || limit > 1000 {

@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/qa-automation/ai-backend/internal/api"
@@ -27,8 +29,8 @@ import (
 func main() {
 	// Load configuration from .env file
 	cfg := config.LoadConfig()
-	// The server's context: the background loops that must stop with it. There is no graceful
-	// shutdown (ListenAndServe ends in log.Fatal), so the process exit is what stops them today.
+	// The server's context: the background loops that must stop with it (cancelled after the
+	// SIGTERM drain below, or by the process exit).
 	serverCtx, stopServer := context.WithCancel(context.Background())
 	defer stopServer()
 
@@ -142,6 +144,7 @@ func main() {
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
 	}
 	router.ResumeCaseApprovals(context.Background()) // an open approval survives a restart (CASE_AUTOMATION.md)
+	router.ResumeOrphanedJobs(context.Background())  // other case_run/case_create jobs are retried (max 2), not failed
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs
@@ -192,7 +195,26 @@ func main() {
 
 	// Start server
 	log.Printf("🚀 Server starting on %s...", addr)
-	log.Fatal(http.ListenAndServe(addr, router))
+	srv := &http.Server{Addr: addr, Handler: router}
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stopSignals()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		log.Fatal(err)
+	case <-sigCtx.Done():
+	}
+	// Graceful drain: refuse new case jobs, let in-flight HTTP finish (at most DrainTimeout).
+	// Running case jobs are not awaited: the next start retries them (ResumeOrphanedJobs).
+	log.Printf("shutting down: draining in-flight requests (max %s)", api.DrainTimeout)
+	router.BeginDrain()
+	shutCtx, cancel := context.WithTimeout(context.Background(), api.DrainTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutCtx); err != nil {
+		log.Printf("shutdown: %v", err)
+	}
+	stopServer()
 }
 
 func getEnv(key, fallback string) string {
