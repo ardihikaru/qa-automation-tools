@@ -80,6 +80,9 @@ func IsAuthAllowList(method, path string) bool {
 	switch path {
 	case "/health", "/api/auth/login":
 		return true
+	case "/api/v1/gaos/results", "/api/v1/gaos/catalog":
+		// Bearer-token routes (GAOS_INBOUND.md); the handler enforces the token, fail-closed.
+		return true
 	}
 	return false
 }

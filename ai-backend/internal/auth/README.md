@@ -16,7 +16,7 @@ wires them up only when the database connects.
 - `context.go:SetUser(ctx, *User) context.Context` and `context.go:GetUser(ctx) (*User, bool)`.
 - `middleware.go:Config{DB *sql.DB, CookieName string}`.
 - `middleware.go:Require(c Config) func(http.Handler) http.Handler`: session-enforcing middleware.
-- `middleware.go:IsAuthAllowList(method, path string) bool`: returns true for `OPTIONS` requests, `/health`, and `/api/auth/login`.
+- `middleware.go:IsAuthAllowList(method, path string) bool`: returns true for `OPTIONS` requests, `/health`, `/api/auth/login`, and the two bearer routes `/api/v1/gaos/results` and `/api/v1/gaos/catalog` (the handler enforces the token; GAOS_INBOUND.md).
 - `password.go:Hash(plain string) (string, error)`, `password.go:Check(hash, plain string) error`, `password.go:ErrInvalidCredentials`.
 - `session.go:CreateSession(ctx, db, userID, ttl) (token string, expires time.Time, err error)`.
 - `session.go:ValidateSession(ctx, db, token) (*User, error)`, `session.go:ErrSessionInvalid`.

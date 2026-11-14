@@ -62,6 +62,8 @@ type BackendConfig struct {
 type GAOSConfig struct {
 	APIURL   string // GAOS_API_URL, e.g. https://gaos.sismedika.com/api/v1
 	APIToken string // GAOS_API_TOKEN (QA bearer, gaos_...); never logged
+	// InboundToken is the bearer GAOS presents to /api/v1/gaos/* (GAOS_INBOUND_TOKEN); never logged.
+	InboundToken string
 }
 
 // ExecutorConfig points at playwright-executor (systemd service on rnd-v3).
@@ -332,8 +334,9 @@ func LoadConfig() *Config {
 				AllowedOwners:                getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
 			},
 			GAOS: GAOSConfig{
-				APIURL:   getEnvString("GAOS_API_URL", ""),
-				APIToken: getEnvString("GAOS_API_TOKEN", ""),
+				APIURL:       getEnvString("GAOS_API_URL", ""),
+				APIToken:     getEnvString("GAOS_API_TOKEN", ""),
+				InboundToken: getEnvString("GAOS_INBOUND_TOKEN", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),
