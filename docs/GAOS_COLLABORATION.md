@@ -55,6 +55,13 @@ decides is kept apart, in the table `gaos_decisions`; nothing GAOS sends ever wr
    exists-differs 79), skipped 554*) is stored on the product and shown in its GAOS card. Notes never contain a URL, a token
    or a response body.
 
+**A push that is owed survives a restart and a GAOS outage.** Every automatic trigger (an upload, a catalog sync, switching
+the flag on) first records "a push is owed" on the product in the database, and the record is cleared only when a push
+ends `ok` or `partial`. If the QA tool restarts in between, or GAOS is down or answers `401`/`5xx` so the push `failed`, a
+sweeper (5 seconds after start, then every minute) sends it again, waiting longer after each failure (30 seconds per failed
+attempt, at most 10 minutes). Sending again is harmless: GAOS answers `unchanged` and `stale` for what it already holds.
+A product that is switched off stops being retried.
+
 A push also runs when the flag is switched on, and on demand: `POST /api/products/{id}/gaos/sync` (Admin or DevOps), the
 **Sync to GAOS now** button. It waits up to 280 seconds and answers `200` with the result, or `202` if the push is still
 running; a second request while one runs answers `409`.

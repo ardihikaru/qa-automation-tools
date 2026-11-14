@@ -317,7 +317,12 @@ func TestMigrationsGAOSColumns(t *testing.T) {
 	if on, pid, status, note, at := read(); on || pid != "" || status != "" || note != "" || at.Valid {
 		t.Fatalf("defaults wrong: %v %q %q %q %v", on, pid, status, note, at)
 	}
-	if _, err := d.SQL.Exec(`UPDATE product_settings SET gaos_integrated=1, gaos_product_id='p-6', gaos_last_status='ok'`); err != nil {
+	var req sql.NullTime
+	var attempts int
+	if err := d.SQL.QueryRow(`SELECT gaos_push_requested_at, gaos_push_attempts FROM product_settings`).Scan(&req, &attempts); err != nil || req.Valid || attempts != 0 {
+		t.Fatalf("outbox defaults wrong: %v %v %d", err, req, attempts)
+	}
+	if _, err := d.SQL.Exec(`UPDATE product_settings SET gaos_integrated=1, gaos_product_id='p-6', gaos_last_status='ok', gaos_push_requested_at=UTC_TIMESTAMP(6), gaos_push_attempts=3`); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
@@ -327,5 +332,8 @@ func TestMigrationsGAOSColumns(t *testing.T) {
 	}
 	if on, pid, status, _, _ := read(); !on || pid != "p-6" || status != "ok" {
 		t.Fatalf("re-run must keep the values, got %v %q %q", on, pid, status)
+	}
+	if err := d.SQL.QueryRow(`SELECT gaos_push_requested_at, gaos_push_attempts FROM product_settings`).Scan(&req, &attempts); err != nil || !req.Valid || attempts != 3 {
+		t.Fatalf("re-run must keep the outbox marker: %v %v %d", err, req, attempts)
 	}
 }

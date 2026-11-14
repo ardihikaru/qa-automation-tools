@@ -122,6 +122,7 @@ Concurrent racing is covered by the unique key: the loser of a promotion race ge
 - `product_settings.knowledge_format`: `NULL` never set, `''` off. Added by a guarded ALTER; a one-time guarded seed sets HISv3 to `hisv3-test-catalog-v1` while no product has a value.
 
 - `product_settings.gaos_integrated`, `gaos_product_id`, `gaos_last_sync_at`, `gaos_last_status` (`ok`/`failed`/`partial`), `gaos_last_note` (GAOS_INTEGRATION.md): one guarded ALTER, so a re-run is a no-op and user values survive; a missing settings row reads the defaults (off, empty).
+- `product_settings.gaos_push_requested_at` (`DATETIME(6) NULL`, the durable "a push is owed" marker; `NULL` = nothing owed) and `gaos_push_attempts` (`INT NOT NULL DEFAULT 0`, failed passes since the marker was set) (GAOS_INTEGRATION.md, "Durable delivery"): one guarded ALTER (guard on the first column).
 - `kb_assistants` (agents, skills, rules, commands, instructions; same entity semantics); `kb_annotations.entity_type` includes `assistant`; `skills.product_id` (NULL = global QA check). All three later changes are guarded (`-- skip-if:`).
 
 **Tests:** `internal/testdb` gives DB-backed tests a scratch schema from `QA_TEST_MYSQL_DSN` (tests skip when empty; a DSN naming `qa_automation` is refused).
