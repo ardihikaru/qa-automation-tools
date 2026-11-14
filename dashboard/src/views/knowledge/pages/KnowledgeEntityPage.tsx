@@ -23,10 +23,11 @@ import {
   knowledgeHref,
   typeFromPath,
 } from '../api';
-import { ErrorNote, Loading } from '../ui';
+import { ErrorNote } from '../ui';
 import { Crumbs } from './kit';
 import { PageCtx, baseCrumbs, topBarCrumbs, useTreeIndex } from './data';
 import { usePageHeader } from '../../../components/pageHeader';
+import { EntitySkeleton } from './EntityShell';
 import PartPage from './PartPage';
 import ModulePage from './ModulePage';
 import SubmodulePage from './SubmodulePage';
@@ -116,17 +117,12 @@ export default function KnowledgeEntityPage() {
     );
   }
   if (!entity || entity.type !== type || entity.code !== code) {
-    return (
-      <div className="space-y-4">
-        {crumbsRow}
-        <Loading />
-      </div>
-    );
+    return type ? <EntitySkeleton type={type} code={code} crumbs={crumbsRow} /> : null;
   }
 
   switch (entity.type) {
     case 'part':
-      return <PartPage ctx={ctx} e={entity as PartDetail} />;
+      return <PartPage ctx={ctx} e={entity as PartDetail} index={index} />;
     case 'module':
       return <ModulePage ctx={ctx} e={entity as ModuleDetail} index={index} />;
     case 'submodule':

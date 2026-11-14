@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, RefreshCw } from 'lucide-react';
 import { DiffKind, EntityType, SyncRow, TYPE_LABEL, duration, errorText, getSync, isEntityType, listSyncs } from './api';
 import { useLoad } from './hooks';
-import { AiStatusNote, AiSummaryText, DiffTotals, Empty, ErrorNote, Loading, ProblemsList, RelTime, ShaLink, SyncStatusChip } from './ui';
+import { AiStatusNote, AiSummaryText, DiffTotals, Empty, ErrorNote, Loading, Pagination, ProblemsList, RelTime, ShaLink, SkeletonRows, SyncStatusChip } from './ui';
+import { Paging, useClampPage } from './paging';
 import { Target } from './EntityPanel';
 
 interface Props {
   pid: number;
+  paging: Paging;
   refreshKey: number;
   onOpen: (t: Target) => void;
 }
@@ -90,11 +92,15 @@ function SyncDetail({ pid, row, onOpen }: { pid: number; row: SyncRow; onOpen: (
   );
 }
 
-export default function SyncsTab({ pid, refreshKey, onOpen }: Props) {
+export default function SyncsTab({ pid, paging, refreshKey, onOpen }: Props) {
   const [tick, setTick] = useState(0);
   const { data, loading, error, reload } = useLoad<SyncRow[]>(`${pid}:${refreshKey}:${tick}`, (s) => listSyncs(pid, 50, s));
   const [open, setOpen] = useState<number | null>(null);
   const live = data?.some((s) => s.status === 'running' || s.ai_status === 'pending');
+  // The API returns the latest 50 at once; page through them here.
+  const { page, size } = paging;
+  useClampPage(paging, data?.length);
+  const rows = data?.slice((page - 1) * size, page * size) ?? [];
 
   // Refresh the history every 5 s while a sync is running or summarising.
   useEffect(() => {
@@ -112,12 +118,12 @@ export default function SyncsTab({ pid, refreshKey, onOpen }: Props) {
         </button>
       </div>
       {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
-      {loading && !data && <Loading />}
+      {loading && !data && <SkeletonRows rows={size} label="Loading syncs" />}
       {data && data.length === 0 && <Empty>No syncs yet.</Empty>}
       {data && data.length > 0 && (
         <div className="card overflow-hidden">
           <ul className="divide-y divide-gray-100">
-            {data.map((s) => {
+            {rows.map((s) => {
               const isOpen = open === s.id;
               return (
                 <li key={s.id}>
@@ -154,6 +160,7 @@ export default function SyncsTab({ pid, refreshKey, onOpen }: Props) {
           </ul>
         </div>
       )}
+      {data && data.length > 0 && <Pagination page={page} pageSize={size} total={data.length} onPage={paging.setPage} onPageSize={paging.setSize} noun="Syncs" />}
     </div>
   );
 }

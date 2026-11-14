@@ -3,10 +3,11 @@
 import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Lock, Pencil } from 'lucide-react';
-import { Coverage, EntityBase, TYPE_LABEL, knowledgeHref } from '../api';
+import { Coverage, EntityBase, EntityType, TYPE_LABEL, knowledgeHref } from '../api';
 import { coverageSentence } from '../coverage';
 import { AnnotationEditor } from '../EntityPanel';
-import { LocalBadge } from '../ui';
+import { LocalBadge, Skeleton, SkeletonRows } from '../ui';
+import { CaseGridSkeleton } from './CaseGrid';
 import { Crumb, Crumbs, Fields, StatusBar } from './kit';
 import { PageCtx, baseCrumbs, topBarCrumbs } from './data';
 import { usePageHeader } from '../../../components/pageHeader';
@@ -113,6 +114,54 @@ export default function EntityShell({ ctx, entity: e, title, titleText, crumbs, 
             <h2 className="text-base font-semibold text-gray-900">Notes and tags</h2>
             <AnnotationEditor key={`${e.type}:${e.code}`} pid={ctx.pid} type={e.type} code={e.code} annotation={e.annotation} canWrite={ctx.canWrite} onSaved={ctx.onAnnotation} />
           </section>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What a detail page looks like before its entity arrives: the real type and code from the URL,
+ * then placeholders in the same places as the loaded page, so nothing jumps when it lands.
+ */
+export function EntitySkeleton({ type, code, crumbs }: { type: EntityType; code: string; crumbs: ReactNode }) {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <header className="space-y-2 min-w-0">
+        {crumbs}
+        <p className="flex flex-wrap items-center gap-2 text-sm text-gray-500">
+          <span>{TYPE_LABEL[type]}</span>
+          <span className="font-mono text-gray-700 break-all">{code}</span>
+        </p>
+        {type !== 'test_case' && <Skeleton className="h-7 w-full max-w-xl" />}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1">
+          <Skeleton className="h-2 w-48" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+        <div className="flex items-center gap-4 min-h-8">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-3 w-56" />
+        </div>
+      </header>
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem] items-start border-t border-gray-200 pt-6">
+        <div className="min-w-0 space-y-8">
+          <section className="space-y-3">
+            <Skeleton className="h-4 w-28" />
+            <CaseGridSkeleton rows={3} />
+          </section>
+          <section className="space-y-3">
+            <Skeleton className="h-4 w-32" />
+            <SkeletonRows rows={4} label={`Loading ${TYPE_LABEL[type].toLowerCase()} ${code}`} />
+          </section>
+        </div>
+        <aside className="min-w-0 space-y-3 xl:border-l xl:border-gray-200 xl:pl-6" aria-hidden="true">
+          <Skeleton className="h-4 w-20" />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className={`h-3 ${i % 2 ? 'w-24' : 'w-36'}`} />
+            </div>
+          ))}
         </aside>
       </div>
     </div>
