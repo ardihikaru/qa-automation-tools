@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, StickyNote } from 'lucide-react';
 import { Coverage, EntityType, TestCase, entityHref } from '../api';
 import { CASE_STATUSES, CHILD_FILTERS, ChildFilter, coverageSentence, excerpt, matchesFilter, statusLabel } from '../coverage';
-import { LocalBadge } from '../ui';
+import { HideUntestedToggle, LocalBadge, UntestedRunButton } from '../ui';
+import { UNTESTED_RUN, isTested, testedFirst } from '../paging';
 import { InlineCode } from '../EntityPanel';
 
 // ---------------------------------------------------------------- status vocabulary
@@ -135,34 +136,64 @@ export function FilterChips({ value, onChange, counts, label }: { value: ChildFi
   );
 }
 
-/** A list section whose rows can be filtered by coverage state. */
+/**
+ * A list section whose rows can be filtered by coverage state. Tested rows come first; a long
+ * run of untested rows folds into one "+ N … without test cases" line, and "Hide untested"
+ * drops them. A section with nothing tested shows just that folded line.
+ */
 export function CoverageSection<T extends { code: string; coverage?: Coverage }>({
   id,
   title,
   items,
   empty,
+  noun,
   render,
 }: {
   id: string;
   title: string;
   items: T[];
   empty: ReactNode;
+  /** Plural noun for the folded line ("features"). */
+  noun: string;
   render: (item: T) => ReactNode;
 }) {
   const [filter, setFilter] = useState<ChildFilter>('all');
+  const [hide, setHide] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
+  const ordered = testedFirst(items, (i) => isTested(i.coverage));
+  const untested = items.filter((i) => !isTested(i.coverage)).length;
+  const mixed = untested > 0 && untested < items.length;
   const counts = Object.fromEntries(CHILD_FILTERS.map((f) => [f.id, items.filter((i) => matchesFilter(i.coverage, f.id)).length])) as Record<ChildFilter, number>;
-  const shown = items.filter((i) => matchesFilter(i.coverage, filter));
+  const matching = ordered.filter((i) => matchesFilter(i.coverage, filter) && !(hide && mixed && !isTested(i.coverage)));
+  const runLen = matching.filter((i) => !isTested(i.coverage)).length;
+  // Only fold when the user has not asked for untested rows explicitly.
+  const folded = filter !== 'untested' && !unfolded && runLen > UNTESTED_RUN;
+  const shown = folded ? matching.filter((i) => isTested(i.coverage)) : matching;
   return (
     <section aria-labelledby={id} className="space-y-3">
       <SectionHead id={id} title={title} count={items.length}>
-        {items.length > 0 && <FilterChips value={filter} onChange={setFilter} counts={counts} label={`Filter ${title.toLowerCase()}`} />}
+        {mixed && (
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <HideUntestedToggle checked={hide} onChange={setHide} hidden={untested} />
+            <FilterChips value={filter} onChange={setFilter} counts={counts} label={`Filter ${title.toLowerCase()}`} />
+          </span>
+        )}
       </SectionHead>
       {items.length === 0 ? (
         <p className="text-sm text-gray-500">{empty}</p>
-      ) : shown.length === 0 ? (
+      ) : matching.length === 0 ? (
         <p className="text-sm text-gray-500 rounded-lg border border-dashed border-gray-300 px-3 py-4">Nothing in this view.</p>
       ) : (
-        <ul className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">{shown.map((i) => <li key={i.code}>{render(i)}</li>)}</ul>
+        <ul className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
+          {shown.map((i) => (
+            <li key={i.code}>{render(i)}</li>
+          ))}
+          {folded && (
+            <li>
+              <UntestedRunButton count={runLen} noun={noun} onClick={() => setUnfolded(true)} />
+            </li>
+          )}
+        </ul>
       )}
     </section>
   );

@@ -5,7 +5,7 @@ import { KeyboardEvent, ReactNode, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TestCase, entityHref } from '../api';
 import { CASE_STATUSES, excerpt, statusLabel, statusRank } from '../coverage';
-import { ErrorNote, Loading } from '../ui';
+import { ErrorNote, Skeleton } from '../ui';
 import { SectionHead, StatusSwatch } from './kit';
 
 interface Props {
@@ -60,6 +60,24 @@ export function Legend({ cases }: { cases: TestCase[] }) {
   );
 }
 
+/** Placeholder rows of squares while the test cases load (static under reduced motion). */
+export function CaseGridSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div role="status" aria-label="Loading test cases" className="grid gap-x-10 gap-y-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,28rem),1fr))]">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="grid grid-cols-1 sm:grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1 items-start">
+          <Skeleton className="h-2.5 w-20 mt-px" />
+          <span className="flex flex-wrap gap-[2px]">
+            {Array.from({ length: 8 + ((i * 7) % 13) }, (_, k) => (
+              <span key={k} className="kb-skel block w-[11px] h-[11px] rounded-[2px] bg-gray-200" />
+            ))}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function CaseGrid({ pid, cases, loading, error, onRetry, storyText, empty }: Props) {
   const groups = useMemo(() => (cases ? group(cases) : []), [cases]);
   const flat = useMemo(() => groups.flatMap((g) => g.cases), [groups]);
@@ -69,7 +87,7 @@ export default function CaseGrid({ pid, cases, loading, error, onRetry, storyTex
   const cells = useRef<(HTMLAnchorElement | null)[]>([]);
 
   if (error) return <ErrorNote onRetry={onRetry}>{error}</ErrorNote>;
-  if (loading || !cases) return <Loading label="Loading test cases…" />;
+  if (loading || !cases) return <CaseGridSkeleton />;
   if (flat.length === 0) return <p className="text-sm text-gray-600 rounded-lg border border-dashed border-gray-300 px-4 py-6">{empty}</p>;
 
   const activeIdx = Math.min(active, flat.length - 1);

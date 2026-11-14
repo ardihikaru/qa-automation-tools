@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { FeatureItem, ModuleItem, Page, listFeatures, listModules } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { Empty, ErrorNote, Loading, Pagination, PeekButton, ReleaseChip } from './ui';
+import { Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, ReleaseChip } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 import { CoverageRow } from './pages/kit';
-
-const PAGE_SIZE = 50;
+import { Paging, useClampPage, useResetOnChange } from './paging';
 
 const COVERAGE_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Any coverage' },
@@ -20,25 +19,28 @@ const COVERAGE_OPTIONS: { value: string; label: string }[] = [
 
 interface Props {
   pid: number;
+  paging: Paging;
   releases: string[];
   refreshKey: number;
   selected: string | null;
   onOpen: (t: Target) => void;
 }
 
-export default function FeaturesTab({ pid, releases, refreshKey, selected, onOpen }: Props) {
+export default function FeaturesTab({ pid, paging, releases, refreshKey, selected, onOpen }: Props) {
   const [query, setQuery] = useState('');
   const [module, setModule] = useState('');
   const [release, setRelease] = useState('');
   const [coverage, setCoverage] = useState('');
-  const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<'tested' | 'code'>('tested');
+  const { page, size } = paging;
   const q = useDebounced(query.trim(), 300);
 
-  useEffect(() => setPage(1), [q, module, release, coverage]);
+  useResetOnChange(JSON.stringify([q, module, release, coverage, sort]), () => paging.setPage(1, true));
 
   const modules = useLoad<ModuleItem[]>(`${pid}:modules:${refreshKey}`, (s) => listModules(pid, false, s));
-  const filter = { q, module, release, coverage, page, page_size: PAGE_SIZE };
+  const filter = { q, module, release, coverage, sort, page, page_size: size };
   const { data, loading, error, reload } = useLoad<Page<FeatureItem>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listFeatures(pid, filter, s));
+  useClampPage(paging, data?.total);
   const filtered = !!(q || module || release || coverage);
 
   return (
@@ -71,10 +73,14 @@ export default function FeaturesTab({ pid, releases, refreshKey, selected, onOpe
             </option>
           ))}
         </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value as 'tested' | 'code')} aria-label="Sort" className={selectCls}>
+          <option value="tested">Tested first</option>
+          <option value="code">By code</option>
+        </select>
       </div>
 
       {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
-      {loading && !data && <Loading />}
+      {loading && !data && <SkeletonRows rows={size} label="Loading features" />}
       {data && data.items.length === 0 && <Empty>{filtered ? 'No features match these filters.' : 'No features yet. Run a sync from the product page.'}</Empty>}
 
       {data && data.items.length > 0 && (
@@ -106,7 +112,7 @@ export default function FeaturesTab({ pid, releases, refreshKey, selected, onOpe
           ))}
         </ul>
       )}
-      {data && data.total > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} disabled={loading} />}
+      {data && data.total > 0 && <Pagination page={page} pageSize={size} total={data.total} onPage={paging.setPage} onPageSize={paging.setSize} noun="Features" disabled={loading} />}
     </div>
   );
 }

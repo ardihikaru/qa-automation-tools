@@ -407,6 +407,8 @@ export const listTestCases = (pid: number, f: TestCaseFilter, signal?: AbortSign
 
 export interface FeatureFilter extends ScopeFilter {
   release?: string;
+  /** "tested" (server default: features with test cases first) or "code". */
+  sort?: 'tested' | 'code';
   /** Comma-separated coverage states. */
   coverage?: string;
   q?: string;

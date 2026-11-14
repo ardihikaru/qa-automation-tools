@@ -83,6 +83,7 @@ export default function TestCasePage({ ctx, e }: { ctx: PageCtx; e: TestCaseDeta
         id="kb-features"
         title="Features"
         items={features}
+        noun="features"
         empty="Its story is not linked to a feature."
         render={(f) => <CoverageRow pid={pid} type="feature" code={f.code} name={f.name} origin={f.origin} removed={!!f.removed_at} coverage={f.coverage} />}
       />
