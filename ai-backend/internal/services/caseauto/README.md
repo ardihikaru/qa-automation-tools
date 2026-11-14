@@ -23,3 +23,9 @@ Events and approvals in MySQL; LLM calls; through the adapters: git worktree, ex
 
 ## Verification
 `go test -mod=mod ./internal/services/caseauto/`: table-driven validation and redaction, and the machine against fakes (happy path, repair loop, repair budget, refused replies, reject, expiry, changes rounds, GAOS door and outage, push/PR failures, resume). `store_integration_test.go` needs `QA_TEST_MYSQL_DSN`.
+
+
+## Generation guards (added after the first live runs)
+
+- The prompt carries the repo's fixture declarations (`src/fixtures/api.fixtures.ts`, `web.fixtures.ts`); `Validate` rejects a test callback that destructures a fixture not declared there (`ValidateOptions.Fixtures`, `FixtureNames`), so the model cannot guess one from a naming pattern.
+- A run that died while loading the automation repo's configuration (`Invalid configuration for TEST_ENV`, missing module) fails the job at once (`envFailure`) instead of spending repair rounds: an LLM rewrite cannot fix the host's environment.
