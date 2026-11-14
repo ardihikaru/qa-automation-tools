@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,7 +48,8 @@ type CaseAutomationConfig struct {
 type caseAuto struct {
 	hostPool string
 	redact   *caseauto.Redactor
-	mu       sync.Mutex // serialises "is a job active?" + enqueue
+	mu       sync.Mutex  // serialises "is a job active?" + enqueue
+	draining atomic.Bool // set at SIGTERM: new case jobs are refused (BeginDrain)
 }
 
 // SetCaseAutomation configures run / create-automation. Without PoolHostDir both answer 503.
@@ -157,6 +159,11 @@ func (r *Router) handleCaseAction(w http.ResponseWriter, req *http.Request, pid 
 	}
 	if !canVerify {
 		writeJSONError(w, http.StatusForbidden, "your role cannot run or create automation")
+		return
+	}
+	if r.caseAuto.draining.Load() {
+		w.Header().Set("Retry-After", "30")
+		writeJSONError(w, http.StatusServiceUnavailable, "the server is restarting; try again in a moment")
 		return
 	}
 	if r.executor == nil || r.repoPool == nil || r.caseAuto.hostPool == "" {

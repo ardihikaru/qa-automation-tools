@@ -9,6 +9,28 @@ import (
 )
 
 // Skipped unless QA_TEST_MYSQL_DSN points at a scratch MySQL server.
+func TestEventProgress(t *testing.T) {
+	d := testdb.New(t)
+	ctx := context.Background()
+	es := &EventStore{DB: d, Redact: NewRedactor()}
+	if p, err := es.Progress(ctx, "j"); err != nil || p.LastStep != "" || p.PushReached {
+		t.Fatalf("empty: %+v %v", p, err)
+	}
+	_ = es.Add(ctx, "j", "info", StepPrepare, "a")
+	_ = es.Add(ctx, "j", "info", StepRun, "b")
+	if p, _ := es.Progress(ctx, "j"); p.LastStep != StepRun || p.PushReached {
+		t.Fatalf("run: %+v", p)
+	}
+	_ = es.Add(ctx, "j", "info", StepPR, "c")
+	_ = es.Add(ctx, "j", "warn", StepRun, "d")
+	if p, _ := es.Progress(ctx, "j"); p.LastStep != StepRun || !p.PushReached {
+		t.Fatalf("pr: %+v", p)
+	}
+	if p, _ := es.Progress(ctx, "other"); p.PushReached {
+		t.Fatalf("other job: %+v", p)
+	}
+}
+
 func TestStoresAgainstMySQL(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
