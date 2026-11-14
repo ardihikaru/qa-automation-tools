@@ -55,6 +55,13 @@ type BackendConfig struct {
 	Security SecurityConfig `yaml:"security"`
 	Executor ExecutorConfig `yaml:"-"`
 	Products ProductsConfig `yaml:"-"`
+	GAOS     GAOSConfig     `yaml:"-"`
+}
+
+// GAOSConfig points at the GAOS REST API (GAOS_INTEGRATION.md). Env only; unset = not configured.
+type GAOSConfig struct {
+	APIURL   string // GAOS_API_URL, e.g. https://gaos.sismedika.com/api/v1
+	APIToken string // GAOS_API_TOKEN (QA bearer, gaos_...); never logged
 }
 
 // ExecutorConfig points at playwright-executor (systemd service on rnd-v3).
@@ -323,6 +330,10 @@ func LoadConfig() *Config {
 				VerifyIntervalMinutes:        getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
 				KnowledgeSyncIntervalMinutes: getEnvInt("KB_SYNC_INTERVAL_MINUTES", 360),
 				AllowedOwners:                getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),
+			},
+			GAOS: GAOSConfig{
+				APIURL:   getEnvString("GAOS_API_URL", ""),
+				APIToken: getEnvString("GAOS_API_TOKEN", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),

@@ -32,6 +32,12 @@ type Syncer struct {
 	AI       Summarizer
 	ReadTree TreeReader
 
+	// OnSucceeded is called with the product id after a sync committed (GAOS_INTEGRATION.md). It
+	// must return at once and never fail the sync. OnUnchanged is called when a scheduled sync is
+	// skipped because the commit did not move. Both are set at startup, before StartScheduler.
+	OnSucceeded func(productID int)
+	OnUnchanged func(productID int)
+
 	syncTimeout time.Duration
 	aiTimeout   time.Duration
 }
@@ -230,6 +236,7 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 	if trigger == TriggerSchedule && sameCommit {
 		terminal = true
 		s.finish(id, "skipped", "", sha)
+		s.notify(s.OnUnchanged, t.productID)
 		return
 	}
 
@@ -296,6 +303,7 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 	log.Printf("knowledge: sync %d (product %d) succeeded at %.7s: +%d ~%d -%d ↺%d", id, t.productID, sha,
 		diff.Total["added"], diff.Total["updated"], diff.Total["removed"], diff.Total["restored"])
 	_ = counts
+	s.notify(s.OnSucceeded, t.productID)
 	if aiPending {
 		prevSHA := ""
 		if hasPrev {
@@ -303,6 +311,19 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 		}
 		s.summarize(id, t, prevSHA, sha, snap, diff, len(problems))
 	}
+}
+
+// notify calls a hook; a panic in it is logged and never reaches the sync.
+func (s *Syncer) notify(hook func(int), productID int) {
+	if hook == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("knowledge: hook for product %d panicked: %v", productID, r)
+		}
+	}()
+	hook(productID)
 }
 
 const summarySystem = "You summarise changes to a product test catalog for QA engineers. Reply with 3–8 markdown bullets in English. No preamble."

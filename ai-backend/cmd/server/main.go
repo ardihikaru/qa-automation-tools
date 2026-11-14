@@ -17,6 +17,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
@@ -96,6 +97,14 @@ func main() {
 	// Product knowledge base: sync of the automation repo's docs/ catalog (PRODUCT_KNOWLEDGE_SYNC.md).
 	if syncer := knowledge.NewSyncer(database, pool, aiService); syncer != nil {
 		router.SetKnowledge(syncer)
+		// GAOS integration (GAOS_INTEGRATION.md): push flagged products' test cases after each sync.
+		// The hooks are set before the scheduler starts. Unset URL/token = never sends.
+		if database != nil {
+			gaos := gaossync.New(database, cfg.Backend.GAOS.APIURL, cfg.Backend.GAOS.APIToken)
+			router.SetGAOS(gaos)
+			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
+			log.Printf("   GAOS integration: configured=%v", gaos.Configured())
+		}
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
 	}
