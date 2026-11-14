@@ -427,9 +427,11 @@ type Filter struct {
 	Part, Module, Submodule string
 	// Release filters features; Coverage (comma-separated states) filters features and stories.
 	Release, Coverage string
-	Automated         string // "", "1", "0"
-	IncludeRemoved    bool
-	Page, PageSize    int
+	// Sort orders features: "tested" (default, items with test cases first) or "code".
+	Sort           string
+	Automated      string // "", "1", "0"
+	IncludeRemoved bool
+	Page, PageSize int
 }
 
 func likeArg(q string) string {
@@ -701,14 +703,17 @@ func (s *Syncer) Entity(ctx context.Context, pid int, et, code string) (Item, er
 		v, err = s.refs(ctx, pid, TypeSubmodule, "t.code = ?", it["submodule_code"])
 		set("submodule", v, err)
 		stories, err := s.list(ctx, pid, TypeStory, "t.code IN (SELECT story_code FROM kb_story_features WHERE product_id = t.product_id AND feature_code = ?)", []any{code}, "")
-		if err == nil {
+		if err == nil && len(stories) > 0 {
+			// One query for the cases of every story (was one per story).
+			var tcs []Item
+			tcs, err = s.list(ctx, pid, TypeTestCase, "t.removed_at IS NULL AND t.story_code IN (SELECT story_code FROM kb_story_features WHERE product_id = t.product_id AND feature_code = ?)", []any{code}, "")
+			byStory := map[string][]Item{}
+			for _, tc := range tcs {
+				sc, _ := tc["story_code"].(string)
+				byStory[sc] = append(byStory[sc], tc)
+			}
 			for _, st := range stories {
-				tcs, err2 := s.list(ctx, pid, TypeTestCase, "t.story_code = ? AND t.removed_at IS NULL", []any{st["code"]}, "")
-				if err2 != nil {
-					err = err2
-					break
-				}
-				st["test_cases"] = tcs
+				st["test_cases"] = orEmpty(byStory[st["code"].(string)])
 			}
 		}
 		set("stories", stories, err)
@@ -1136,7 +1141,7 @@ func (s *Syncer) entityCoverage(ctx context.Context, pid int, et, code string, i
 	case TypeSubmodule:
 		return child("features", "feature", Scope{Submodule: code})
 	case TypeFeature:
-		return child("stories", "story", Scope{})
+		return child("stories", "story", Scope{Feature: code})
 	case TypeEpic:
 		return child("stories", "story", Scope{Epic: code})
 	case TypeTestCase:

@@ -4,6 +4,7 @@ import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
 import { CoverageRow, CoverageSection } from './kit';
 import { PageCtx, TreeIndex, crumbTo, useScopeCases } from './data';
+import UntestedPanel from './Untested';
 
 export default function ModulePage({ ctx, e, index }: { ctx: PageCtx; e: ModuleDetail; index: TreeIndex | null }) {
   const { pid } = ctx;
@@ -27,12 +28,27 @@ export default function ModulePage({ ctx, e, index }: { ctx: PageCtx; e: ModuleD
         ['No sub-module', noSub > 0 && <span className="tabular-nums">{noSub}</span>],
       ]}
     >
-      <CaseGridSection pid={pid} cases={g.cases} loading={g.loading} error={g.error} onRetry={g.reload} empty="No test cases cover this module yet." />
+      {e.coverage?.test_cases === 0 ? (
+        <UntestedPanel
+          pid={pid}
+          e={e}
+          index={index}
+          what={`None of the ${features.length === 1 ? 'one feature' : `${features.length} features`} in this module has test cases yet.`}
+          todo={(catalog, sync) => (
+            <>
+              Link user stories with test cases to its features in {catalog}, then {sync}.
+            </>
+          )}
+        />
+      ) : (
+        <CaseGridSection pid={pid} cases={g.cases} loading={g.loading} error={g.error} onRetry={g.reload} empty="No test cases cover this module yet." />
+      )}
       {subs.length > 0 && (
         <CoverageSection
           id="kb-subs"
           title="Sub-modules"
           items={subs}
+          noun="sub-modules"
           empty="No sub-modules."
           render={(s) => <CoverageRow pid={pid} type="submodule" code={s.code} name={s.name} origin={s.origin} removed={!!s.removed_at} coverage={s.coverage} />}
         />
@@ -41,6 +57,7 @@ export default function ModulePage({ ctx, e, index }: { ctx: PageCtx; e: ModuleD
         id="kb-features"
         title="Features"
         items={features}
+        noun="features"
         empty="No features in this module."
         render={(f) => (
           <CoverageRow

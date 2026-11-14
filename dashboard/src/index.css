@@ -194,6 +194,37 @@ button:not(:disabled) {
   animation: kb-tab-enter 180ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
 }
 
+/* Loading placeholders: a slow, shallow opacity pulse (no shimmer sweep); static when the
+   user asks for less motion. */
+@keyframes kb-skel {
+  50% {
+    opacity: 0.55;
+  }
+}
+.kb-skel {
+  animation: kb-skel 1.6s ease-in-out infinite;
+}
+
+/* Top bar "…" crumb menu: scales from its trigger (top left), 150ms, interruptible. */
+.topbar-pop {
+  transform-origin: top left;
+  opacity: 0;
+  transform: scale(0.97);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    transform 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    visibility 0s linear 150ms;
+}
+.topbar-pop[data-open='true'] {
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+
 /* Disclosure caret: rotates on transform only. */
 .kb-caret {
   transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -222,6 +253,12 @@ button:not(:disabled) {
   }
   .kb-caret {
     transition: none;
+  }
+  .kb-skel {
+    animation: none;
+  }
+  .topbar-pop {
+    transform: none;
   }
 }
 

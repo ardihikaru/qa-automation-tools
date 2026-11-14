@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
-import { FeatureDetail, TestCase } from '../api';
+import { Link } from 'react-router-dom';
+import { FeatureDetail, TestCase, entityHref } from '../api';
 import { ReleaseChip } from '../ui';
 import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
 import { CaseRows, CoverageRow, CoverageSection } from './kit';
 import { PageCtx, TreeIndex, crumbTo } from './data';
+import UntestedPanel from './Untested';
 
 export default function FeaturePage({ ctx, e, index }: { ctx: PageCtx; e: FeatureDetail; index: TreeIndex | null }) {
   const { pid } = ctx;
@@ -43,37 +45,77 @@ export default function FeaturePage({ ctx, e, index }: { ctx: PageCtx; e: Featur
         ['Notes', e.notes],
       ]}
     >
-      <CaseGridSection
-        pid={pid}
-        cases={cases}
-        storyText={storyText}
-        empty={
-          stories.length === 0
-            ? 'No test cases cover this feature yet. Link a user story to it in the automation repo, then add test cases to that story.'
-            : 'No test cases cover this feature yet. Its stories are listed below; add test cases to them.'
-        }
-      />
-      <CoverageSection
-        id="kb-stories"
-        title="User stories"
-        items={stories}
-        empty="No user story references this feature yet."
-        render={(s) => {
-          const live = (s.test_cases ?? []).filter((c) => !c.removed_at);
-          return (
-            <div>
-              <CoverageRow pid={pid} type="story" code={s.code} name={s.text} origin={s.origin} removed={!!s.removed_at} coverage={s.coverage} noted={!!s.annotation} wrap />
-              {live.length > 0 ? (
-                <div className="ml-3 md:ml-8 mb-2 border-l border-gray-200">
-                  <CaseRows pid={pid} cases={live} />
+      {cases.length === 0 ? (
+        <UntestedPanel
+          pid={pid}
+          e={e}
+          index={index}
+          what={
+            stories.length === 0
+              ? 'No user story links to this feature, so nothing tests it yet.'
+              : `${stories.length === 1 ? 'One user story links' : `${stories.length} user stories link`} to this feature, but ${stories.length === 1 ? 'it has' : 'none has'} test cases yet.`
+          }
+          todo={(catalog, sync) =>
+            stories.length === 0 ? (
+              <>
+                To cover it, add a user story that lists <span className="font-mono text-[0.8125rem]">{e.code}</span> to {catalog} in the automation repo, give it test cases, then {sync}.
+              </>
+            ) : (
+              <>
+                Add test cases to {stories.length === 1 ? 'that story' : 'those stories'} in {catalog}, then {sync}.
+              </>
+            )
+          }
+          extra={
+            stories.length > 0 && (
+              <ul className="pt-1 space-y-1">
+                {stories.map((s) => (
+                  <li key={s.code} className="text-sm min-w-0 flex gap-2">
+                    <Link to={entityHref(pid, 'story', s.code)} className="font-mono text-xs text-primary-700 hover:underline shrink-0 pt-0.5">
+                      {s.code}
+                    </Link>
+                    <span className="text-gray-600 line-clamp-2 break-words" title={s.text}>
+                      {s.text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+          facts={
+            <p className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+              Release status <ReleaseChip status={e.release_status} asOf={e.status_as_of} />
+              {e.status_as_of && <span className="text-gray-500">as of {e.status_as_of}</span>}
+            </p>
+          }
+        />
+      ) : (
+        <>
+          <CaseGridSection pid={pid} cases={cases} storyText={storyText} empty="No test cases cover this feature yet." />
+          <CoverageSection
+            id="kb-stories"
+            title="User stories"
+            items={stories}
+            noun="user stories"
+            empty="No user story references this feature yet."
+            render={(s) => {
+              const live = (s.test_cases ?? []).filter((c) => !c.removed_at);
+              return (
+                <div>
+                  <CoverageRow pid={pid} type="story" code={s.code} name={s.text} origin={s.origin} removed={!!s.removed_at} coverage={s.coverage} noted={!!s.annotation} wrap />
+                  {live.length > 0 ? (
+                    <div className="ml-3 md:ml-8 mb-2 border-l border-gray-200">
+                      <CaseRows pid={pid} cases={live} />
+                    </div>
+                  ) : (
+                    <p className="ml-3 md:ml-8 mb-2 pl-3 text-xs text-gray-500 border-l border-gray-200">No test cases yet.</p>
+                  )}
                 </div>
-              ) : (
-                <p className="ml-3 md:ml-8 mb-2 pl-3 text-xs text-gray-500 border-l border-gray-200">No test cases yet.</p>
-              )}
-            </div>
-          );
-        }}
-      />
+              );
+            }}
+          />
+        </>
+      )}
     </EntityShell>
   );
 }

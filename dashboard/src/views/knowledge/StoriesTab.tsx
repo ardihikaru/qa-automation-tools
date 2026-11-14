@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, StickyNote } from 'lucide-react';
 import { Epic, Page, StoryItem, entityHref, listStories } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CodeLabel, Empty, ErrorNote, Loading, Pagination, PeekButton, RemovedBadge } from './ui';
+import { CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { CoverageCount, StatusBar } from './pages/kit';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
+import { Paging, useClampPage, useResetOnChange } from './paging';
 
-const PAGE_SIZE = 50;
 
 interface Props {
   pid: number;
+  paging: Paging;
   epics: Epic[];
   features: { code: string; name: string }[];
   refreshKey: number;
@@ -19,7 +20,7 @@ interface Props {
   onOpen: (t: Target) => void;
 }
 
-export default function StoriesTab({ pid, epics, features, refreshKey, selected, onOpen }: Props) {
+export default function StoriesTab({ pid, paging, epics, features, refreshKey, selected, onOpen }: Props) {
   const [query, setQuery] = useState('');
   const [epic, setEpic] = useState('');
   const [feature, setFeature] = useState('');
@@ -27,15 +28,16 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
   const [origin, setOrigin] = useState('');
   const [coverage, setCoverage] = useState('');
   const [includeRemoved, setIncludeRemoved] = useState(false);
-  const [page, setPage] = useState(1);
+  const { page, size } = paging;
   const q = useDebounced(query.trim(), 300);
   const f = useDebounced(feature.trim(), 300);
   const t = useDebounced(tag.trim(), 300);
 
-  useEffect(() => setPage(1), [q, epic, f, t, origin, coverage, includeRemoved]);
+  useResetOnChange(JSON.stringify([q, epic, f, t, origin, coverage, includeRemoved]), () => paging.setPage(1, true));
 
-  const filter = { q, epic, feature: f, tag: t, origin, coverage, include_removed: includeRemoved, page, page_size: PAGE_SIZE };
+  const filter = { q, epic, feature: f, tag: t, origin, coverage, include_removed: includeRemoved, page, page_size: size };
   const { data, loading, error, reload } = useLoad<Page<StoryItem>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listStories(pid, filter, s));
+  useClampPage(paging, data?.total);
   const filtered = !!(q || epic || f || t || origin || coverage);
 
   return (
@@ -81,7 +83,7 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
       </div>
 
       {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
-      {loading && !data && <Loading />}
+      {loading && !data && <SkeletonRows rows={size} label="Loading stories" />}
       {data && data.items.length === 0 && <Empty>{filtered ? 'No stories match these filters.' : 'No user stories yet.'}</Empty>}
 
       {data && data.items.length > 0 && (
@@ -125,7 +127,7 @@ export default function StoriesTab({ pid, epics, features, refreshKey, selected,
           </ul>
         </div>
       )}
-      {data && data.total > 0 && <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} disabled={loading} />}
+      {data && data.total > 0 && <Pagination page={page} pageSize={size} total={data.total} onPage={paging.setPage} onPageSize={paging.setSize} noun="Stories" disabled={loading} />}
     </div>
   );
 }

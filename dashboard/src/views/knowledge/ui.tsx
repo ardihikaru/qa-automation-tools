@@ -2,6 +2,8 @@
 import { ReactNode, useState } from 'react';
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2, PanelRight } from 'lucide-react';
 import { AiStatus, Diff, DiffKind, Problems, SyncStatus, absoluteTime, commitUrl, relativeTime, shortSha } from './api';
+import { PAGE_SIZES, pageCount, pageWindow } from './paging';
+import { selectCls } from './styles';
 
 const RELEASE_CLASS: Record<string, string> = {
   PROD: 'bg-green-100 text-green-800',
@@ -271,27 +273,128 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="text-sm text-gray-500 py-10 text-center">{children}</div>;
 }
 
-export function Pagination({ page, pageSize, total, onPage, disabled }: { page: number; pageSize: number; total: number; onPage: (p: number) => void; disabled?: boolean }) {
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(total, page * pageSize);
+/** "1–5 of 444", a page-size picker, prev/next and direct page jumps ("1 … 4 5 6 … 89"). */
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPage,
+  onPageSize,
+  disabled,
+  noun = 'items',
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPage: (p: number) => void;
+  onPageSize?: (s: number) => void;
+  disabled?: boolean;
+  /** Plural noun for the size picker label ("modules per page"). */
+  noun?: string;
+}) {
+  const pages = pageCount(total, pageSize);
+  const cur = Math.min(page, pages);
+  const from = total === 0 ? 0 : (cur - 1) * pageSize + 1;
+  const to = Math.min(total, cur * pageSize);
+  const btn = 'inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-md text-sm tabular-nums disabled:opacity-40 disabled:cursor-not-allowed';
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600">
-      <span className="tabular-nums">
-        {from}–{to} of {total}
-      </span>
-      <div className="flex items-center gap-2">
-        <button type="button" className="btn btn-secondary px-2 py-1 min-h-8 disabled:opacity-50" disabled={disabled || page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page">
-          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-        </button>
-        <span className="tabular-nums">
-          Page {page} of {pages}
+    <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm text-gray-600">
+      <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="tabular-nums" aria-live="polite">
+          {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
         </span>
-        <button type="button" className="btn btn-secondary px-2 py-1 min-h-8 disabled:opacity-50" disabled={disabled || page >= pages} onClick={() => onPage(page + 1)} aria-label="Next page">
-          <ChevronRight className="w-4 h-4" aria-hidden="true" />
-        </button>
-      </div>
+        {onPageSize && (
+          <label className="inline-flex items-center gap-2">
+            <select value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))} disabled={disabled} className={`${selectCls} h-8`} aria-label={`${noun} per page`}>
+              {PAGE_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <span className="text-gray-500">per page</span>
+          </label>
+        )}
+      </span>
+      {pages > 1 && (
+        <span className="flex items-center gap-1">
+          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur <= 1} onClick={() => onPage(cur - 1)} aria-label="Previous page">
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+          </button>
+          <span className="sm:hidden px-2 tabular-nums">
+            Page {cur} of {pages}
+          </span>
+          <ul className="hidden sm:flex items-center gap-1">
+            {pageWindow(cur, pages).map((p, i) =>
+              p === null ? (
+                <li key={`gap${i}`} aria-hidden="true" className="px-1 text-gray-400">
+                  …
+                </li>
+              ) : (
+                <li key={p}>
+                  <button
+                    type="button"
+                    className={`${btn} ${p === cur ? 'bg-primary-50 text-primary-800 font-medium' : 'hover:bg-gray-100'}`}
+                    aria-current={p === cur ? 'page' : undefined}
+                    aria-label={`Page ${p}`}
+                    disabled={disabled && p !== cur}
+                    onClick={() => p !== cur && onPage(p)}
+                  >
+                    {p}
+                  </button>
+                </li>
+              ),
+            )}
+          </ul>
+          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur >= pages} onClick={() => onPage(cur + 1)} aria-label="Next page">
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </span>
+      )}
+    </nav>
+  );
+}
+
+/** A quiet placeholder block. Static under reduced motion, otherwise a slow opacity pulse. */
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <span aria-hidden="true" className={`kb-skel block rounded bg-gray-200 ${className}`} />;
+}
+
+/** Placeholder rows for a list that is loading. */
+export function SkeletonRows({ rows = 5, label = 'Loading' }: { rows?: number; label?: string }) {
+  return (
+    <div role="status" aria-label={label} className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-4 px-3 py-3">
+          <Skeleton className="h-3 w-14" />
+          <Skeleton className={`h-3 ${i % 2 ? 'w-1/3' : 'w-1/2'}`} />
+          <Skeleton className="h-1.5 w-28 ml-auto hidden sm:block" />
+          <Skeleton className="h-3 w-20 hidden sm:block" />
+        </div>
+      ))}
     </div>
+  );
+}
+
+/** One quiet line standing in for a run of untested children; expands on click. */
+export function UntestedRunButton({ count, noun, onClick, className = '' }: { count: number; noun: string; onClick: () => void; className?: string }) {
+  return (
+    <button type="button" onClick={onClick} className={`kb-row w-full text-left text-sm text-gray-500 hover:text-gray-800 px-3 py-2 min-h-8 ${className}`}>
+      + {count.toLocaleString()} {noun} without test cases
+    </button>
+  );
+}
+
+/** "Hide untested" checkbox with the hidden count while it is on. */
+export function HideUntestedToggle({ checked, onChange, hidden, hiddenLabel }: { checked: boolean; onChange: (v: boolean) => void; hidden: number; hiddenLabel?: string }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700">
+      <label className="inline-flex items-center gap-2 min-h-8">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        Hide untested
+      </label>
+      {checked && hidden > 0 && <span className="text-xs text-gray-500 tabular-nums">{hiddenLabel ?? `${hidden.toLocaleString()} untested hidden`}</span>}
+    </span>
   );
 }
 
