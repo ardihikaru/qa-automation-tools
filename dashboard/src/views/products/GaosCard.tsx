@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import SubmitButton from '../../components/SubmitButton';
+import GaosDecisions from './GaosDecisions';
 import { ApiError, GAOS_ID_RE, GaosPushResult, Product, api } from './api';
 
 interface Props {
@@ -202,6 +203,7 @@ export default function GaosCard({ product, gaosConfigured, canToggle, onChange 
       {error && (
         <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>
       )}
+      {g.integrated && <GaosDecisions productId={product.id} />}
     </div>
   );
 }

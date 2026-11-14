@@ -187,8 +187,8 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "bad cursor")
 		return
 	}
-	rows, err := r.getDB().Query(ctx, `SELECT id, UNIX_TIMESTAMP(updated_at), code, automated, spec_paths FROM kb_test_cases
-		WHERE product_id = ? AND origin = 'sync' AND removed_at IS NULL
+	rows, err := r.getDB().Query(ctx, `SELECT id, UNIX_TIMESTAMP(updated_at), code, automated, spec_paths, removed_at IS NOT NULL FROM kb_test_cases
+		WHERE product_id = ? AND origin = 'sync'
 		  AND updated_at <= NOW() - INTERVAL ? SECOND
 		  AND (updated_at > FROM_UNIXTIME(?) OR (updated_at = FROM_UNIXTIME(?) AND id > ?))
 		ORDER BY updated_at, id LIMIT ?`, pid, gaosCursorLagSeconds, ts, ts, id, limit+1)
@@ -202,9 +202,9 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 	for rows.Next() {
 		var rid, rts int64
 		var code string
-		var automated bool
+		var automated, removed bool
 		var specs []byte
-		if err := rows.Scan(&rid, &rts, &code, &automated, &specs); err != nil {
+		if err := rows.Scan(&rid, &rts, &code, &automated, &specs, &removed); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "query failed")
 			return
 		}
@@ -218,7 +218,8 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 		it := gaosResultItem{CaseID: code}
-		if sp := gaosUsableSpec(specs); automated && sp != "" {
+		// A removed case is a tombstone: implemented:false, no spec.
+		if sp := gaosUsableSpec(specs); automated && !removed && sp != "" {
 			it.Implemented, it.Spec = true, sp
 		}
 		page.Items = append(page.Items, it)
