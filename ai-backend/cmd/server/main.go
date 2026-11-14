@@ -97,6 +97,11 @@ func main() {
 	}
 	router.SetRepoPool(pool)
 	router.StartProductVerifier(context.Background(), time.Duration(cfg.Backend.Products.VerifyIntervalMinutes)*time.Minute)
+	router.SetCaseAutomation(api.CaseAutomationConfig{
+		PoolHostDir: cfg.Backend.Products.PoolHostDir,
+		Secrets: []string{os.Getenv("GH_TOKEN"), cfg.Backend.GAOS.APIToken, cfg.Backend.GAOS.InboundToken, cfg.Backend.GAOS.ResultsToken,
+			cfg.Backend.Executor.Token, cfg.Backend.AI.ManagerSecretKey},
+	})
 	router.FailOrphanedJobs(context.Background())
 	// Product knowledge base: sync of the automation repo's docs/ catalog (PRODUCT_KNOWLEDGE_SYNC.md).
 	if syncer := knowledge.NewSyncer(database, pool, aiService); syncer != nil {
@@ -133,6 +138,7 @@ func main() {
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
 	}
+	router.ResumeCaseApprovals(context.Background()) // an open approval survives a restart (CASE_AUTOMATION.md)
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs
