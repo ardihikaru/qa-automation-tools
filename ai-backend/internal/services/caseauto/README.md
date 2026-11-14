@@ -29,3 +29,5 @@ Events and approvals in MySQL; LLM calls; through the adapters: git worktree, ex
 
 - The prompt carries the repo's fixture declarations (`src/fixtures/api.fixtures.ts`, `web.fixtures.ts`); `Validate` rejects a test callback that destructures a fixture not declared there (`ValidateOptions.Fixtures`, `FixtureNames`), so the model cannot guess one from a naming pattern.
 - A run that died while loading the automation repo's configuration (`Invalid configuration for TEST_ENV`, missing module) fails the job at once (`envFailure`) instead of spending repair rounds: an LLM rewrite cannot fix the host's environment.
+- The prompt also carries the head and method names of every client class the fixture files import from `@api/*.client` (`clientDocs`), so the model only calls methods that exist.
+- Operational: the claude-v3 upstream (`ai-claude-cli` on app-host) had `MemoryMax=512M`; large generate/repair prompts got its `claude` subprocess OOM-killed (symptom: ai-manager 502 `connection refused` on :8105). It is now 1024M.
