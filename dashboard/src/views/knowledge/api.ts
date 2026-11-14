@@ -563,6 +563,9 @@ export interface JobEvents {
   product_id?: number;
   spec?: { path?: string; content?: string } | null;
   report?: JobReport | null;
+  /** case_run verdict (pass|fail|skipped|none) and the skip reason; a skipped run is status completed. */
+  outcome?: string;
+  skip_reason?: string;
 }
 /** One row of GET .../test-cases/{code}/jobs. */
 export interface CaseJob {
@@ -573,6 +576,7 @@ export interface CaseJob {
   branch?: string;
   pr_url?: string;
   created_at?: string;
+  outcome?: string;
 }
 
 const caseUrl = (pid: number, code: string) => `${kb(pid)}/test-cases/${enc(code)}`;
