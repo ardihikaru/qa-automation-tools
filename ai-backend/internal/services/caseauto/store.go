@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -39,14 +40,17 @@ func (s *EventStore) Add(ctx context.Context, jobID, level, step, message string
 	}
 	message = Clip(s.Redact.Redact(message), 1000)
 	var err error
-	for attempt := 0; attempt < 6; attempt++ {
+	for attempt := 0; attempt < 12; attempt++ {
 		_, err = s.DB.Exec(ctx, "INSERT INTO job_events (job_id, seq, `at`, level, step, message) "+
 			"SELECT ?, COALESCE(MAX(seq), 0) + 1, UTC_TIMESTAMP(3), ?, ?, ? FROM job_events WHERE job_id = ?",
 			jobID, level, Clip(step, 32), message, jobID)
 		var me *mysql.MySQLError
-		if err == nil || !errors.As(err, &me) || me.Number != 1062 {
+		// 1062 duplicate seq and 1213 deadlock (two writers locking the same job's index gap) are
+		// both "somebody else got in first": back off a little and take the next seq.
+		if err == nil || !errors.As(err, &me) || (me.Number != 1062 && me.Number != 1213) {
 			return err
 		}
+		time.Sleep(time.Duration(5+rand.Intn(20)*(attempt+1)) * time.Millisecond)
 	}
 	return err
 }
