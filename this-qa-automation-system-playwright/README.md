@@ -113,9 +113,9 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 ## Invariants
 
 - Specs build URLs from `config.backendUrl` / `config.dashboardUrl`, not from the Playwright `baseURL`. To change the target set `QA_BACKEND_URL` / `QA_DASHBOARD_URL` (e.g. both `https://qa-tool.sismedika.com`); note the suite does not log in, so auth-gated routes return 401 against a DB-backed backend.
-- Tests run serially (`workers: 1`, `fullyParallel: false`). Mutating API tests (issues, learning) assume they run in file order against shared data.
-- Some API tests accept more than one status code because of the environment: `POST /api/flows` with invalid data accepts `[400, 500]`, `POST /api/learning` accepts `[201, 500]`, `DELETE /api/learning?id=1` accepts `[200, 404]`, and invalid `POST /api/issues` accepts `[201, 400]`.
-- Method-not-allowed checks expect `405` for `POST /api/cost/overview`, `PUT /api/flows` and `POST /api/skills`.
+- Tests run serially (`workers: 1`, `fullyParallel: false`). Mutating API tests (learning) assume they run in file order against shared data.
+- Some API tests accept more than one status code because of the environment: `POST /api/learning` accepts `[201, 500]`, `DELETE /api/learning?id=1` accepts `[200, 404]`, and invalid `POST /api/issues` accepts `[201, 400]`.
+- Method-not-allowed checks expect `405` for `POST /api/cost/overview` and `POST /api/skills`.
 - `tests/api/skills.spec.ts` requires every built-in skill in `config.expectedSkills` to be present and every returned skill to have `is_active === true`.
 - In dashboard specs, a "critical" console error is any `console.error` whose text does not contain `favicon`, `404` or `net::ERR`. "fetch from API" tests wait up to 10s for a 200 response from the matching `/api/...` URL.
 - No spec logs in (no `/api/auth/login` call, no `storageState`). See the drift note in the Overview.
@@ -123,11 +123,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 ## Side Effects
 
 - **Writes to the backend database** (the tests are not read-only and do not clean up):
-  - `POST /api/flows` creates a flow named `Test Flow` (`tests/api/flows.spec.ts`).
-  - `POST /api/issues` creates an issue with `page: 'test-page'`, and the invalid-data case may also create one (`tests/api/issues.spec.ts`).
-  - `POST /api/issues/status` sets `is_fixed: true` on issue `id: 1`, and `POST /api/issues/notes` overwrites the notes of issue `id: 1`.
   - `POST /api/learning` inserts a `test_intent` record, and `DELETE /api/learning?id=1` deletes learning record 1 (`tests/api/learning.spec.ts`).
-- `GET /api/search` is read-only: it runs a `LIKE` query on `learning_cache.intent` (`router.go:handleSearch`) and makes no AI call.
 - **Local disk**: Playwright writes traces, screenshots and videos for failed tests to `test-results/` (ignored).
 - **Browser**: launches the system Chrome channel for dashboard specs.
 
@@ -139,25 +135,19 @@ Never point these tests at a shared or production database.
 
 | Spec file | Endpoints exercised | Tests |
 |-----------|---------------------|-------|
-| `health.spec.ts` | `GET /health`, `GET /api/analytics` | 5 |
-| `flows.spec.ts` | `GET/POST/PUT /api/flows` | 5 |
-| `issues.spec.ts` | `GET /api/issues` (+ `is_fixed`, `category`, `search` filters), `POST /api/issues`, `POST /api/issues/status`, `POST /api/issues/notes` | 9 |
+| `health.spec.ts` | `GET /health` | 3 |
 | `skills.spec.ts` | `GET/POST /api/skills`, `GET /api/skills/stats`, `GET /api/skills/logs` (+ `passed`, `skill_id`) | 9 |
 | `cost.spec.ts` | `/api/cost/*` (overview, trend, efficiency, by-feature, by-model, recent, filters, gateway). Needs `E2E_IMPERSONATOR_*`; read-only | 7 |
-| `learning.spec.ts` | `GET/POST/DELETE /api/learning`, `GET /api/learning/navigation`, `GET /api/learning/stats`, `GET /api/search` | 11 |
+| `learning.spec.ts` | `GET/POST/DELETE /api/learning`, `GET /api/learning/navigation` | 8 |
 
-Not covered by any spec: `/api/roles`, `/api/ai-cache`, `/api/embedding-cache`, `/api/docs`, `/api/videos`, `/api/goal-events`, `/api/auth/*`.
+Not covered by any spec: `/api/auth/*`.
 
 ### Dashboard Tests (35 test cases)
 
 | Route | Spec file | Tests |
 |-------|-----------|-------|
-| `/` (redirect to /docs), `/qa`, `/issues`, `/cost`, `/fixes`, `/skills` | `navigation.spec.ts` | 8 |
-| `/docs` | `docs.spec.ts` | 3 |
-| `/qa` | `qa-insights.spec.ts` | 4 |
-| `/issues` | `issues.spec.ts` | 4 |
+| `/` (redirect to /products), `/cost`, `/skills` | `navigation.spec.ts` | 5 |
 | `/cost` | `cost.spec.ts` (needs `QA_USERNAME`/`QA_PASSWORD`) | 3 |
-| `/fixes` | `fix-tracking.spec.ts` | 4 |
 | `/skills` | `skills.spec.ts` | 6 |
 
 Not covered: `/login`, `/navigation`, `/learning` (all present in `dashboard/src/App.tsx`).
@@ -173,19 +163,13 @@ this-qa-automation-system-playwright/
 ├── TEST-PLAN.md                 # Detailed test plan
 ├── tests/
 │   ├── api/
-│   │   ├── health.spec.ts       # Health & analytics
-│   │   ├── flows.spec.ts        # Flow management
-│   │   ├── issues.spec.ts       # Issue tracking
+│   │   ├── health.spec.ts       # Health
 │   │   ├── skills.spec.ts       # Skills & logs
 │   │   ├── cost.spec.ts         # Cost analytics
-│   │   └── learning.spec.ts     # Learning system + search
+│   │   └── learning.spec.ts     # Learning system
 │   └── dashboard/
 │       ├── navigation.spec.ts   # Navigation tests
-│       ├── docs.spec.ts         # /docs view
-│       ├── qa-insights.spec.ts  # /qa view
-│       ├── issues.spec.ts       # /issues view
 │       ├── cost.spec.ts         # /cost view
-│       ├── fix-tracking.spec.ts # /fixes view
 │       └── skills.spec.ts       # /skills view
 └── test-results/                # Failure artifacts (generated, ignored)
 ```
@@ -195,8 +179,7 @@ this-qa-automation-system-playwright/
 1. **Missing API Tests**: Some endpoints lack test coverage (see the lists above).
 2. **No Authentication Support**: Specs do not log in, but the backend and dashboard now enforce cookie-session auth when a DB is configured (see the drift note).
 3. **Stale health assertion**: `health.spec.ts` still expects `minimax: "configured"`. With the default ai-manager provider, `ai_provider` / `ai` would be the right fields to assert.
-4. **Static File Tests**: /api/docs and /api/videos depend on static files and are not tested.
-5. **Hardcoded IDs**: issue `id: 1` and learning `id: 1` must exist for the status/notes/delete tests to be meaningful.
+4. **Hardcoded IDs**: learning `id: 1` must exist for the delete test to be meaningful.
 
 ## Maintenance
 

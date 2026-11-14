@@ -10,7 +10,7 @@ It builds to a single binary from `cmd/server` (module `github.com/qa-automation
 1. `config.LoadConfig()` loads configuration from env, `.env` and `config.yaml`.
 2. `ai.NewFromConfig(cfg.Backend.AI)` builds the LLM client. It goes through the `ChatProvider` abstraction.
    The only supported path is ai-manager (`POST {AI_MANAGER_URL}/v1/chat`), pinned to `claude-v3`. The MiniMax code (`AI_PROVIDER=minimax`) is dormant.
-   Playwright jobs (`/api/jobs/qa/run`, `/api/jobs/docs/generate`) are dispatched to playwright-executor (`internal/api/jobs_executor.go`).
+   Case automation `case_run` jobs are dispatched to playwright-executor (`internal/api/jobs_executor.go`).
 3. `db.NewConnection(cfg)` connects to MySQL 8. Connection failure is non-fatal: the server keeps running without a DB.
 4. When the DB connects, the DB-backed services start (`learning.NewService`, `skills.NewService` + `EnsureBuiltinSkills`).
    Users are seeded (`seed.SeedUsers`) and cookie-session auth is wired (`router.SetAuth`).
@@ -24,7 +24,7 @@ It builds to a single binary from `cmd/server` (module `github.com/qa-automation
 | `cmd/databasemigration/` | The only way to run schema migrations: `db.NewConnection` then `db.RunMigrations` | [internal/db](./internal/db/README.md), [database-migration.md](./database-migration.md) |
 | `cmd/verifyai/` | Smoke test for the configured AI provider. Prints provider, `Configured()` and `Health()`, then sends one chat; exits 1 on failure | [internal/services/ai](./internal/services/ai/README.md) |
 | `cmd/verifyminimax/` | Standalone MiniMax endpoint probe that writes `result.json` (legacy diagnostics) | n/a |
-| `internal/api/` | HTTP router, all `/api/*` handlers, `/health`, auth endpoints, simulated job queue | [README](./internal/api/README.md) |
+| `internal/api/` | HTTP router, all `/api/*` handlers, `/health`, auth endpoints, job records and case automation | [README](./internal/api/README.md) |
 | `internal/auth/` | bcrypt passwords, MySQL-backed session tokens, `Require` middleware | [README](./internal/auth/README.md) |
 | `internal/config/` | `Config` loading (env > `.env` > `config.yaml`), `GetDatabaseURL` MySQL DSN | [README](./internal/config/README.md) |
 | `internal/db/` | MySQL 8 connection (`connection.go`) and idempotent migrations (`migrations.go`) | [README](./internal/db/README.md) |
@@ -46,15 +46,10 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 
 - `/health` is always public. It returns `status`, `database`, `ai_provider`, `ai_upstream` (`claude-v3`), `ai`, `executor`, and also `minimax` for backward compatibility.
 - These auth endpoints exist only when the DB is connected: `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/change-password`.
-- `/api/flows`, `/api/roles`, `/api/docs`, `/api/videos`
-- `/api/issues`, `/api/issues/status`, `/api/issues/notes`
 - `/api/skills`, `/api/skills/logs`, `/api/skills/stats`
-- `/api/search?q=`
 - `/api/cost/{overview,trend,efficiency,by-feature,by-model,recent,filters,gateway}`
-- `/api/analytics`
-- `/api/learning`, `/api/learning/{navigation,sequences,context,stats}`
-- `/api/ai-cache`, `/api/embedding-cache`, `/api/goal-events`
-- `/api/jobs`, `/api/jobs/qa/run`, `/api/jobs/docs/generate`, `/api/jobs/{id}`
+- `/api/learning`, `/api/learning/navigation`
+- `/api/jobs`, `/api/jobs/{id}` (+ `/events`, `/approval`)
 
 ## Global Invariants
 
@@ -74,7 +69,6 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 - MySQL 8 database (`DB_*` or `DATABASE_URL`). Tables are listed in [internal/db/README.md](./internal/db/README.md).
 - Outbound HTTP to ai-manager (HTTP Basic, over WireGuard in production) or to the MiniMax API.
 - When `TASKMGR_NEO4J_URI` is set, the server reads from the taskmgr Neo4j at startup.
-- Reads `../product-documentations` and `../playwright-docs/output/videos` from disk (`/api/docs`, `/api/videos`).
 
 ## Deployment
 

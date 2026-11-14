@@ -1,14 +1,5 @@
-export type RunType = 'qa_run' | 'docs_generate' | 'case_run';
+export type RunType = 'case_run';
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed';
-
-export interface RunParams {
-  roles: string[];
-  max_steps: number;
-  /** Run skills that click/submit (required_field). Staging only, off by default. */
-  interactive_skills: boolean;
-  /** docs_generate: restrict to these flow ids (empty = all flows of each role). */
-  flows: string[];
-}
 
 /** case_run params (validated in validate.ts, nothing else is accepted). */
 export interface CaseRunParams {
@@ -36,7 +27,7 @@ export interface RunRecord {
   id: string;
   job_id: string;
   type: RunType;
-  params: RunParams | CaseRunParams;
+  params: CaseRunParams;
   status: RunStatus;
   /** Ring of the last {@link EVENT_RING} events. GET ?since=n returns only n > since. */
   events: RunEvent[];
@@ -48,6 +39,4 @@ export interface RunRecord {
   duration_ms?: number;
 }
 
-export const RUN_TYPES: readonly RunType[] = ['qa_run', 'docs_generate', 'case_run'];
-export const MAX_STEPS_LIMIT = 50;
-export const MAX_ROLES = 5;
+export const RUN_TYPES: readonly RunType[] = ['case_run'];

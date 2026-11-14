@@ -13,7 +13,6 @@ ai-backend/cmd/verifyminimax/result.json
 ai-backend/resources/http-client.env.json
 dashboard/nginx.conf
 ai-backend/env.yaml
-tutorial-playwright-docs.md
 ai-backend/vendor
 
 ai-backend/result.json
@@ -23,12 +22,8 @@ this-qa-automation-system-playwright/test-results
 
 .codex
 
-playwright-docs/output/
-playwright-docs/recorder/
 
 dashboard/dist/
-playwright-docs/dist/
-playwright-qa/dist/
 
 *.pdf
 
@@ -41,8 +36,6 @@ playwright-qa/dist/
 
 .env
 
-_prompts/
-_docs/
 
 TEST-SCENARIO.md
 TEST-RESULTS.md

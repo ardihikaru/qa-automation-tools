@@ -72,7 +72,7 @@ type GAOSConfig struct {
 }
 
 // ExecutorConfig points at playwright-executor (systemd service on rnd-v3).
-// Env only. An empty URL keeps /api/jobs/* in simulated mode.
+// Env only. An empty URL makes case_run jobs fail with "executor not configured".
 type ExecutorConfig struct {
 	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.10.0.9:8141
 	Token          string // PLAYWRIGHT_EXECUTOR_TOKEN (shared bearer secret)
@@ -395,7 +395,7 @@ func LoadConfig() *Config {
 	if cfg.Backend.Executor.URL != "" {
 		log.Printf("   Playwright: executor at %s", cfg.Backend.Executor.URL)
 	} else {
-		log.Printf("   Playwright: PLAYWRIGHT_EXECUTOR_URL empty - /api/jobs run in simulated mode")
+		log.Printf("   Playwright: PLAYWRIGHT_EXECUTOR_URL empty - case_run jobs will fail")
 	}
 
 	// Apply environment overrides
