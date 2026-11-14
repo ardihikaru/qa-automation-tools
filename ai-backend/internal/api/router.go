@@ -53,6 +53,9 @@ type Router struct {
 	// onResultsStored is told the product id after an upload stored results (nil = off).
 	onResultsStored func(productID int)
 
+	// caseAuto is the state of run / create-automation (CASE_AUTOMATION.md). See case_automation.go.
+	caseAuto caseAuto
+
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
 
@@ -194,6 +197,11 @@ func (r *Router) handleJobs(w http.ResponseWriter, req *http.Request) {
 	}
 
 	jobID := strings.TrimPrefix(req.URL.Path, "/api/jobs/")
+	// /api/jobs/{id}/events and /api/jobs/{id}/approval (CASE_AUTOMATION.md).
+	if id, sub, ok := strings.Cut(jobID, "/"); ok && id != "" && !strings.Contains(sub, "/") && id != "qa" && id != "docs" {
+		r.handleJobSub(w, req, id, sub)
+		return
+	}
 	if jobID == "" || strings.Contains(jobID, "/") {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
@@ -215,6 +223,10 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 	r.jobs.mu.Unlock()
 	r.upsertJobRecord(context.Background(), job)
 
+	if jobType == "case_create" {
+		go r.runCaseCreate(job.ID, payload, false)
+		return job
+	}
 	if r.executor != nil {
 		go r.runExecutorJob(job.ID, jobType, payload)
 		return job

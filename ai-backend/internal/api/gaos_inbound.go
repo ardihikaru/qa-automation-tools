@@ -43,7 +43,7 @@ var (
 // IsGAOSInboundPath reports whether path is one of the two bearer-authenticated routes.
 // auth.IsAuthAllowList mirrors this (GAOS_INBOUND.md decision 1).
 func IsGAOSInboundPath(path string) bool {
-	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog"
+	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog" || path == gaosInboxAnswerPath
 }
 
 // SetGAOSInboundToken enables the inbound routes. Empty = disabled (503, fail-closed).
@@ -71,6 +71,12 @@ func (r *Router) serveGAOSInbound(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		r.gaosResults(w, req)
+	case gaosInboxAnswerPath:
+		if req.Method != http.MethodPost {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosInboxAnswer(w, req)
 	default:
 		if req.Method != http.MethodPost {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")

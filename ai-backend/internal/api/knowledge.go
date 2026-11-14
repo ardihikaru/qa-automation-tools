@@ -175,6 +175,9 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 			bad()
 		}
 
+	case seg == "test-cases" && len(rest) == 3 && (rest[2] == "run" || rest[2] == "create-automation" || rest[2] == "jobs"):
+		r.handleCaseAction(w, req, pid, rest[1], rest[2], canWrite)
+
 	case entityPaths[seg] != "" && len(rest) <= 2:
 		et := entityPaths[seg]
 		draftable := et == knowledge.TypeStory || et == knowledge.TypeTestCase

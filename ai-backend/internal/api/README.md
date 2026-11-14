@@ -14,7 +14,7 @@ primitives come from [`auth`](../auth/README.md).
 ## Interface
 
 - `router.go:NewRouter(db *db.DB, aiService *ai.Service, learningService *learning.Service, skillsService *skills.Service) *Router`: every dependency may be nil. `skillsService` ([`services/skills`](../services/skills/README.md)) is stored on the struct, but no handler in `router.go` calls it.
-- `router.go:(*Router).ServeHTTP`: the entry point. It runs in this order: `applyCORS`, then `OPTIONS` returns 200, then the allow-list (`/api/auth/login` when auth is wired, and `/health`), then the CI results route (`POST /api/v1/results/playwright?product=<id>`, bearer `RESULTS_INGEST_TOKEN`, `case_results.go`, fail-closed 503 when unset), then the GAOS inbound routes (`/api/v1/gaos/results`, `/api/v1/gaos/catalog`; bearer `GAOS_INBOUND_TOKEN`, `gaos_inbound.go`, fail-closed 503 when unset), then `requireAuth` (if set) wrapping `dispatchAuthenticated`.
+- `router.go:(*Router).ServeHTTP`: the entry point. It runs in this order: `applyCORS`, then `OPTIONS` returns 200, then the allow-list (`/api/auth/login` when auth is wired, and `/health`), then the CI results route (`POST /api/v1/results/playwright?product=<id>`, bearer `RESULTS_INGEST_TOKEN`, `case_results.go`, fail-closed 503 when unset), then the GAOS inbound routes (`/api/v1/gaos/results`, `/api/v1/gaos/catalog`, `POST /api/v1/gaos/inbox-answer` (`gaos_inbox_inbound.go`, CASE_AUTOMATION.md: answers an open approval, idempotent, first answer wins); bearer `GAOS_INBOUND_TOKEN`, `gaos_inbound.go`, fail-closed 503 when unset), then `requireAuth` (if set) wrapping `dispatchAuthenticated`.
 - `router.go:(*Router).SetAuth(h *AuthHandlers, mw func(http.Handler) http.Handler, dashboardOrigin string)`: wires the auth handlers, the middleware, and the CORS origin.
 - `auth_handlers.go:AuthHandlers{DB *sql.DB, CookieName string, SessionTTL time.Duration, Secure bool}` with methods `Login`, `Logout`, `Me`, `ChangePassword`, and in `impersonation.go` `ListUsers`, `Impersonate`, `StopImpersonation`.
 
@@ -83,6 +83,11 @@ All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`
 | `/api/jobs/qa/run` | POST (202) | `handleRunQAJob` |
 | `/api/jobs/docs/generate` | POST (202) | `handleGenerateDocsJob` |
 | `/api/jobs/{id}` | GET | `handleJobs` -> `handleGetJob` |
+| `/api/jobs/{id}/events?since=<seq>` | GET | `handleJobEvents` (`job_events.go`): `{events:[{seq,at,level,step,message}], status, phase, job_type, error?, case_code?, branch?, product_id?, pr_url?, spec?:{path,content}, report?:{passed,failed,skipped}, approval?:{status,gaos_created,answer_text,answered_by,external_id}}`; at most 500 events per call |
+| `/api/jobs/{id}/approval` | POST | `handleJobApproval`: `{decision: approve\|reject\|changes, text?}` (Admin, DevOps, Developer, QA, QC; `changes` needs text); 200 `{status}`, 404 no approval, 409 already answered |
+| `/api/products/{id}/knowledge/test-cases/{code}/run` | POST | `handleCaseAction` (`case_automation.go`): 202 `{job_id}`; 403 role; 404 case; 409 no `spec_paths` / unsupported spec path / no automation repo / a job is active (body has `job_id`); 503 executor, pool, `REPO_POOL_HOST_DIR` missing |
+| `/api/products/{id}/knowledge/test-cases/{code}/create-automation` | POST | same handler: 202 `{job_id}`; 409 the case already has a spec / no automation repo / a job is active; 503 also when AI is not configured |
+| `/api/products/{id}/knowledge/test-cases/{code}/jobs` | GET | last 10 `case_run` / `case_create` jobs of the case |
 
 Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
@@ -104,6 +109,9 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 - `auth_helpers.go:validateNewPassword` requires a new password of at least 8 characters that differs from both the username (case-insensitive) and the current password.
 - Jobs (`router.go:enqueueJob`) get IDs `job-<unixnano>`. The in-memory `jobManager` map is guarded by `sync.RWMutex`. Every state change is upserted into `job_runs`.
   - **Executor configured** (`SetExecutor`, from `PLAYWRIGHT_EXECUTOR_URL`): `jobs_executor.go:runExecutorJob` submits `qa_run` / `docs_generate` to playwright-executor. It forwards only `roles`, `max_steps`, `interactive_skills` and `flows` (top-level or under `params`). It polls every 3 s, for up to `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES`.
+  - `case_run` (CASE_AUTOMATION.md): `runExecutorJob` forwards only `repo_dir, case_code, spec_paths, env_file, repair`, polls every 2 s and copies the executor's new events into `job_events`. On completion `finishCaseRun` parses the report with `caseresults.Parse`, saves it with `caseresults.Save(..., runRef = job id, source "case-run")`, calls the `SetOnResultsStored` hook (the GAOS push), drops the raw report from the job result (keeps `summary` and `verdict`), and fails the job when the report is missing or has no test titled with the case code (`no test titled <code> in <spec>`). A failing test is a completed job with a `fail` verdict.
+  - `case_create` is run by `runCaseCreate` (the `caseauto` state machine) instead of the executor loop, with its own 76 h context. Its repo ops (`poolRepo`) re-check every path; `Push` and `OpenPR` call `repoWriteAllowed(RepoOpPush / RepoOpOpenPR)` first. A job with an open `case_approvals` row survives a restart: `FailOrphanedJobs` skips it and `ResumeCaseApprovals` (called after the GAOS wiring) continues at the approval step.
+  - At most one active `case_run`/`case_create` per product and case (`activeCaseJob`, checked under a mutex); the executor itself still runs one job at a time.
   - States: `queued` -> `running` (once the executor starts) -> `completed` | `failed`. The result is the executor's result plus `executor_run_id`.
   - For `qa_run`, issues go into `raw_issues` (`recordExecutorIssues`, `error_type = executor:<type>`, skipping exact duplicates of open issues), and their count is stored in `issues_recorded`.
   - For `docs_generate`, `summarizeDocsRun` adds `documentation_markdown` (ai-manager / claude-v3), or `ai_error` if that call fails.

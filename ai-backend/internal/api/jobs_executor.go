@@ -17,6 +17,7 @@ import (
 var executorRunTypes = map[string]string{
 	"qa_run":        "qa_run",
 	"docs_generate": "docs_generate",
+	"case_run":      "case_run", // CASE_AUTOMATION.md
 }
 
 // Params a job payload may forward to the executor; everything else in the
@@ -43,7 +44,15 @@ func (r *Router) FailOrphanedJobs(ctx context.Context) {
 	res, err := db.Exec(ctx, `
 		UPDATE job_runs
 		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
+		WHERE status IN ('queued', 'running')
+		AND NOT (type = 'case_create' AND EXISTS (SELECT 1 FROM case_approvals a WHERE a.job_id = job_runs.id AND a.status = 'open'))`)
+	if err != nil {
+		// case_approvals may not exist yet (migration pending): fall back to the plain statement.
+		res, err = db.Exec(ctx, `
+		UPDATE job_runs
+		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
 		WHERE status IN ('queued', 'running')`)
+	}
 	if err != nil {
 		log.Printf("failed to reconcile orphaned jobs: %v", err)
 		return
@@ -70,6 +79,10 @@ func executorParams(payload map[string]interface{}) map[string]interface{} {
 func (r *Router) updateJob(id string, mutate func(*jobRecord)) *jobRecord {
 	r.jobs.mu.Lock()
 	rec := r.jobs.jobs[id]
+	if rec == nil {
+		r.jobs.mu.Unlock()
+		return nil
+	}
 	mutate(rec)
 	snapshot := *rec
 	r.jobs.mu.Unlock()
@@ -102,14 +115,24 @@ func (r *Router) runExecutorJob(id, jobType string, payload map[string]interface
 		return
 	}
 
-	run, err := r.executor.Submit(ctx, executor.SubmitRequest{JobID: id, Type: runType, Params: executorParams(payload)})
+	params := executorParams(payload)
+	if jobType == "case_run" {
+		params = caseRunParams(payload)
+	}
+	run, err := r.executor.Submit(ctx, executor.SubmitRequest{JobID: id, Type: runType, Params: params})
 	if err != nil {
 		fail(err)
 		return
 	}
 	log.Printf("job %s (%s) submitted to playwright-executor as %s", id, jobType, run.ID)
 
-	final, err := r.executor.Wait(ctx, run.ID, 3*time.Second, func(u *executor.Run) {
+	if jobType == "case_run" {
+		r.addJobEvent(id, "info", "run", "submitted to playwright-executor")
+	}
+	final, err := r.executor.Wait(ctx, run.ID, pollEvery(jobType), func(u *executor.Run) {
+		if jobType == "case_run" {
+			r.forwardExecutorEvents(id, u)
+		}
 		if u.Status != executor.StatusRunning {
 			return
 		}
@@ -143,6 +166,12 @@ func (r *Router) runExecutorJob(id, jobType string, payload map[string]interface
 	}
 
 	switch jobType {
+	case "case_run":
+		if err := r.finishCaseRun(ctx, id, payload, result); err != nil {
+			r.updateJob(id, func(j *jobRecord) { j.Result = result })
+			fail(err)
+			return
+		}
 	case "qa_run":
 		result["issues_recorded"] = r.recordExecutorIssues(ctx, id, result)
 	case "docs_generate":
@@ -164,6 +193,14 @@ func (r *Router) runExecutorJob(id, jobType string, payload map[string]interface
 		j.DurationMs = now.Sub(*j.StartedAt).Milliseconds()
 	})
 	log.Printf("job %s (%s) completed via playwright-executor", id, jobType)
+}
+
+// pollEvery is the executor poll period: case runs are watched live (2 s), the rest as before.
+func pollEvery(jobType string) time.Duration {
+	if jobType == "case_run" {
+		return 2 * time.Second
+	}
+	return 3 * time.Second
 }
 
 func clip(s string, n int) string {
