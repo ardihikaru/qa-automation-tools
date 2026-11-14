@@ -406,6 +406,8 @@ Dashboard: one page per entity at `/products/:id/knowledge/:type/:code`. Each pa
 *   a case grid: one square per test case, colored by status;
 *   child lists filtered by automation state.
 
+Later addition: `features` accepts `sort=tested|code`. The default, `tested`, lists features that have test cases first. The feature detail loads all its stories' test cases in one query.
+
 ### Amendment 2 (2026-11-14): assistant files
 The same sync, with the same button, schedule and history, also reads these files from the automation repo:
 
