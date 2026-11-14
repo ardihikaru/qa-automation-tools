@@ -12,9 +12,6 @@ func loadIntegrationEnvFiles() {
 		"../.env",
 		"../../.env",
 		"../../../.env",
-		"../../_docs/markdown-results/by-roles/.env",
-		"../../../_docs/markdown-results/by-roles/.env",
-		"../../../../_docs/markdown-results/by-roles/.env",
 	}
 
 	for _, file := range candidates {
