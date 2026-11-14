@@ -82,8 +82,11 @@ type ExecutorConfig struct {
 // ProductsConfig configures the products repo pool. Env only.
 // GH_TOKEN (read by gh/git directly, never logged) authenticates clones.
 type ProductsConfig struct {
-	PoolDir               string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
-	VerifyIntervalMinutes int    // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
+	PoolDir string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
+	// PoolHostDir is REPO_POOL_HOST_DIR: the same pool as playwright-executor sees it on app-host
+	// (PoolDir is a container path). case_run / case_create send repo_dir under it (CASE_AUTOMATION.md).
+	PoolHostDir           string
+	VerifyIntervalMinutes int // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
 	// KnowledgeSyncIntervalMinutes is KB_SYNC_INTERVAL_MINUTES: scheduled knowledge sync, 0 disables (PRODUCT_KNOWLEDGE_SYNC.md).
 	KnowledgeSyncIntervalMinutes int
 	AllowedOwners                string // REPO_POOL_ALLOWED_OWNERS: comma-separated GitHub owners allowed to clone (empty = any)
@@ -334,6 +337,7 @@ func LoadConfig() *Config {
 			},
 			Products: ProductsConfig{
 				PoolDir:                      getEnvString("REPO_POOL_DIR", ""),
+				PoolHostDir:                  getEnvString("REPO_POOL_HOST_DIR", ""),
 				VerifyIntervalMinutes:        getEnvInt("PRODUCTS_VERIFY_INTERVAL_MINUTES", 360),
 				KnowledgeSyncIntervalMinutes: getEnvInt("KB_SYNC_INTERVAL_MINUTES", 360),
 				AllowedOwners:                getEnvString("REPO_POOL_ALLOWED_OWNERS", ""),

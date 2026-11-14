@@ -741,6 +741,34 @@ ALTER TABLE product_settings
   PRIMARY KEY (product_id, case_code),
   CONSTRAINT fk_kb_case_results_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// CASE_AUTOMATION.md: the live event log of a case_run / case_create job (polled by the dashboard).
+	`CREATE TABLE IF NOT EXISTS job_events (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  seq INT NOT NULL,
+  ` + "`at`" + ` DATETIME(3) NOT NULL,
+  level VARCHAR(8) NOT NULL,
+  step VARCHAR(32) NOT NULL,
+  message VARCHAR(1000) NOT NULL,
+  UNIQUE KEY uq_job_seq (job_id, seq),
+  KEY idx_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+	// CASE_AUTOMATION.md: one approval gate per generated spec; two doors (dashboard, GAOS Inbox), one record.
+	`CREATE TABLE IF NOT EXISTS case_approvals (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  job_id VARCHAR(64) NOT NULL,
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) NOT NULL,
+  external_id VARCHAR(80) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'open',
+  answered_by VARCHAR(16) NULL,
+  answer_text VARCHAR(1000) NULL,
+  gaos_created TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  answered_at DATETIME NULL,
+  UNIQUE KEY uq_ext (external_id),
+  KEY idx_case_approvals_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
