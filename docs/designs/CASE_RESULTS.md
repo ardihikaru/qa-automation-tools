@@ -9,7 +9,7 @@
 GAOS wants `result` (`pass|fail|skipped`), `runAt` and `runRef` per test case. The QA tools hold none: playwright-executor does exploratory runs and produces *issues*, not pass/fail of the automation repo's specs.
 
 ## Finding
-The automation repo (`automation-test-sut`) runs its own Playwright suite. In CI it writes a JSON report (`playwright.config.ts`: `['json', {outputFile: <runDir>/results.json}]`). Its test titles begin with the case code, for example `'TC-PATREG-020 the check-in writes the registration number...'`. So the mapping run to case is in the title; nothing has to be guessed. Running that suite from playwright-executor was rejected: it needs the repo's dependencies and secrets, targets APIs and message queues as well as the browser, and would not fit the executor's 2.5 GiB budget and its "staging UI only" rule.
+The automation repo (`automation-test-sut`) runs its own Playwright suite. In CI it writes a JSON report (`playwright.config.ts`: `['json', {outputFile: <runDir>/results.json}]`). Its test titles begin with the case code, for example `'TC-PATREG-020 the check-in writes the registration number...'`. So the mapping run to case is in the title; nothing has to be guessed. Running that suite from playwright-executor was rejected (**superseded by [CASE_AUTOMATION.md](CASE_AUTOMATION.md), 2026-11-14**): it needs the repo's dependencies and secrets, targets APIs and message queues as well as the browser, and would not fit the executor's 2.5 GiB budget and its "staging UI only" rule.
 
 ## Decisions
 1.  **Ingest the report, do not run the suite.** The Playwright JSON report is the input.
