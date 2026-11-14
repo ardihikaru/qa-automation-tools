@@ -3,7 +3,7 @@
  *
  *   GET  /health        public: status, queue, Chromium, cgroup memory
  *   POST /v1/runs       bearer: enqueue {job_id, type, params}  -> 202 {id, status}
- *   GET  /v1/runs/:id   bearer: run status/result
+ *   GET  /v1/runs/:id   bearer: run status/result; ?since=n returns only events with n > since
  *
  * The executor never calls ai-backend or any LLM: the backend submits runs and
  * polls for results.
@@ -15,10 +15,11 @@ import { chromium } from 'playwright';
 import { checkBearer } from './auth';
 import { launchBrowser } from './browser';
 import { ExecutorConfig, loadConfig } from './config';
-import { RunQueue } from './queue';
+import { EmitEvent, RunQueue } from './queue';
 import { docsGenerate } from './runs/docsGenerate';
 import { qaRun } from './runs/qaRun';
-import { RunRecord } from './types';
+import { caseRun } from './runs/caseRun';
+import { CaseRunParams, RunParams, RunRecord } from './types';
 import { parseRunRequest } from './validate';
 
 const MAX_BODY = 64 * 1024;
@@ -66,14 +67,16 @@ function pruneArtifacts(cfg: ExecutorConfig): void {
 }
 
 function makeHandler(cfg: ExecutorConfig) {
-  return async (run: RunRecord, signal: AbortSignal) => {
+  return async (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => {
+    // case_run drives child processes in the repo pool, not an executor-owned browser.
+    if (run.type === 'case_run') return caseRun({ cfg, signal, runId: run.id, emit }, run.params as CaseRunParams);
     pruneArtifacts(cfg);
     const outDir = path.join(cfg.outputDir, run.id);
     fs.mkdirSync(outDir, { recursive: true });
     const browser = await launchBrowser(cfg.headless, signal);
     try {
       const ctx = { cfg, browser, signal, runId: run.id, outDir };
-      return run.type === 'qa_run' ? await qaRun(ctx, run.params) : await docsGenerate(ctx, run.params);
+      return run.type === 'qa_run' ? await qaRun(ctx, run.params as RunParams) : await docsGenerate(ctx, run.params as RunParams);
     } finally {
       await browser.close().catch(() => undefined);
     }
@@ -140,17 +143,23 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
         } catch (err) {
           return send(res, 400, { error: (err as Error).message });
         }
-        const parsed = parseRunRequest(body, knownRoles, cfg.defaultRoles);
+        const parsed = parseRunRequest(body, knownRoles, cfg.defaultRoles, { repoPool: cfg.repoPool, envDir: cfg.envDir });
         if (!parsed.ok) return send(res, 400, { error: parsed.error });
         const run = queue.submit(parsed.value);
         if (!run) return send(res, 429, { error: 'queue full', ...queue.stats() });
-        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, roles: run.params.roles });
+        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, roles: (run.params as RunParams).roles });
         return send(res, 202, { id: run.id, status: run.status, job_id: run.job_id });
       }
 
       const m = /^\/v1\/runs\/([A-Za-z0-9-]+)$/.exec(url.pathname);
       if (m && req.method === 'GET') {
-        const run = queue.get(m[1]);
+        const sinceRaw = url.searchParams.get('since');
+        let since: number | undefined;
+        if (sinceRaw !== null) {
+          if (!/^\d{1,12}$/.test(sinceRaw)) return send(res, 400, { error: 'since must be a non-negative integer' });
+          since = Number(sinceRaw);
+        }
+        const run = queue.get(m[1], since);
         return run ? send(res, 200, run) : send(res, 404, { error: 'run not found' });
       }
       return send(res, 404, { error: 'not found' });
