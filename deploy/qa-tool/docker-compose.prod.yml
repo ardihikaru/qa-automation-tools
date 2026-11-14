@@ -52,7 +52,7 @@ services:
       - "${QATOOL_BIND_IP:-10.8.0.9}:${QATOOL_PORT:-8140}:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/nginx-health"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
       interval: 30s
       timeout: 5s
       retries: 3
