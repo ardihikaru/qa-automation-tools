@@ -652,14 +652,30 @@ func DecisionFromAnswer(optionLabel, choice string) (string, bool) {
 	return "", false
 }
 
+// specTitle is the short title of the first test in the generated file with the case code
+// removed ("the liveness probe answers 200 ..."); "" when the file has none.
+func specTitle(content, code string) string {
+	for _, t := range testTitleRe.FindAllStringSubmatch(content, -1) {
+		title := strings.TrimSpace(strings.TrimPrefix(t[1]+t[2]+t[3], code))
+		title = strings.TrimLeft(title, " :-\u00b7")
+		if title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
 // publish commits, pushes and opens the pull request after an approval.
 func (m *Machine) publish(ctx context.Context, r *run, ap *Approval) (*Outcome, error) {
 	job := r.job
-	title := firstLine(job.Case.Scenario)
+	title := specTitle(r.file.Content, job.Case.Code)
+	if title == "" {
+		title = firstLine(job.Case.Scenario)
+	}
 	if title == "" {
 		title = job.Case.Code
 	}
-	title = Clip(m.Redact.Redact(title), 80)
+	title = Clip(m.Redact.Redact(title), 72)
 	msg := fmt.Sprintf("test(%s): automate %s", job.Case.Code, title)
 	m.ev(ctx, job, "info", StepPush, "approved"+byText(ap)+"; committing and pushing "+job.Branch)
 	if err := m.Repo.Commit(ctx, r.ws, msg, r.file.Path); err != nil {
