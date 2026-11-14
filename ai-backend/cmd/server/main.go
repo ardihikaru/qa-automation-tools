@@ -105,6 +105,7 @@ func main() {
 		// The hooks are set before the scheduler starts. Unset URL/token = never sends.
 		if database != nil {
 			gaos := gaossync.New(database, cfg.Backend.GAOS.APIURL, cfg.Backend.GAOS.APIToken)
+			gaos.SetWebURL(cfg.Backend.GAOS.WebURL)
 			router.SetGAOS(gaos)
 			router.SetOnResultsStored(gaos.Trigger) // a stored run is pushed like a synced catalog
 			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
