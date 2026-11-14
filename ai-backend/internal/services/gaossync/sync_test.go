@@ -83,7 +83,7 @@ func newFake(t *testing.T) *fakeGAOS {
 
 func defaultAnswer(r recorded) string {
 	if strings.HasSuffix(r.path, "/qa/cases") {
-		return fmt.Sprintf(`{"created":%d,"unchanged":0,"rejected":[],"epicsAdded":1,"cardsAdded":1,"cardsDeferred":0,"catHead":"abc"}`, len(r.cases()))
+		return fmt.Sprintf(`{"created":%d,"unchanged":0,"rejected":[],"epicsAdded":1,"cardsAdded":1,"cardsDeferred":"","catHead":1700}`, len(r.cases()))
 	}
 	return fmt.Sprintf(`{"applied":%d,"unchanged":0,"rejected":[],"catHead":"abc"}`, len(r.items()))
 }
@@ -266,7 +266,7 @@ func TestExistsDiffersIsInformationalOtherRejectionsArePartial(t *testing.T) {
 	}
 	f.respond = func(n int, r recorded) (int, map[string]string, string) {
 		if strings.HasSuffix(r.path, "/qa/cases") {
-			return 200, nil, `{"created":1,"unchanged":0,"rejected":[{"caseId":"TC-AUTH-002","reason":"exists-differs"},{"caseId":"TC-AUTH-003","reason":"bad-spec"}],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":0,"catHead":"h1"}`
+			return 200, nil, `{"created":1,"unchanged":0,"rejected":[{"caseId":"TC-AUTH-002","reason":"exists-differs"},{"caseId":"TC-AUTH-003","reason":"bad-spec"}],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`
 		}
 		return 200, nil, defaultAnswer(r)
 	}
@@ -287,7 +287,7 @@ func TestExistsDiffersIsInformationalOtherRejectionsArePartial(t *testing.T) {
 	f.mu.Lock()
 	f.respond = func(n int, r recorded) (int, map[string]string, string) {
 		if strings.HasSuffix(r.path, "/qa/cases") {
-			return 200, nil, `{"created":0,"unchanged":2,"rejected":[{"caseId":"TC-AUTH-002","reason":"exists-differs"}],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":0,"catHead":"h1"}`
+			return 200, nil, `{"created":0,"unchanged":2,"rejected":[{"caseId":"TC-AUTH-002","reason":"exists-differs"}],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`
 		}
 		return 200, nil, defaultAnswer(r)
 	}
@@ -456,7 +456,7 @@ func TestIdempotentResend(t *testing.T) {
 	first := startAndWait(t, s, pid)
 	f.respond = func(n int, r recorded) (int, map[string]string, string) {
 		if strings.HasSuffix(r.path, "/qa/cases") {
-			return 200, nil, `{"created":0,"unchanged":2,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":0,"catHead":"abc"}`
+			return 200, nil, `{"created":0,"unchanged":2,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`
 		}
 		return 200, nil, `{"applied":0,"unchanged":2,"rejected":[],"catHead":"abc"}`
 	}
@@ -641,5 +641,34 @@ func TestNoteIsClipped(t *testing.T) {
 	long := strings.Repeat("é", 400)
 	if got := clipNote(long); len([]rune(got)) != 300 || !strings.HasSuffix(got, "...") {
 		t.Fatalf("%d", len([]rune(got)))
+	}
+}
+
+// The exact bodies GAOS v0.37.1 serves (captured from the live API on 2026-11-14): cardsDeferred is a
+// STRING and catHead an integer. The first live push failed with "unreadable body" because this decoded
+// cardsDeferred as an int; every fake in this file had agreed with the bug.
+func TestGaosResponsesAsServed(t *testing.T) {
+	var cr casesResponse
+	if err := json.Unmarshal([]byte(`{"created":0,"unchanged":0,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":1700}`), &cr); err != nil || cr.check(1) != nil {
+		t.Fatalf("the cases response as served did not decode: %v %v", err, cr.check(1))
+	}
+	var rr resultsResponse
+	if err := json.Unmarshal([]byte(`{"applied":0,"unchanged":0,"rejected":[],"catHead":1700}`), &rr); err != nil || rr.check(1) != nil {
+		t.Fatalf("the results response as served did not decode: %v", err)
+	}
+	// A deferred card is a reason, and counts as the epics that got none.
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedProduct(t, d, true)
+	seedEpic(t, d, pid, "AUTH", "Authentication")
+	seedCase(t, d, pid, "TC-AUTH-001", "AUTH", "", "planned")
+	f.respond = func(n int, r recorded) (int, map[string]string, string) {
+		if strings.HasSuffix(r.path, "/qa/cases") {
+			return 200, nil, `{"created":1,"unchanged":0,"rejected":[],"epicsAdded":1,"cardsAdded":0,"cardsDeferred":"no-workflow","catHead":1}`
+		}
+		return 200, nil, defaultAnswer(r)
+	}
+	if res := startAndWait(t, s, pid); res.Status != "ok" || res.CardsDeferred != 1 || res.CardsAdded != 0 {
+		t.Fatalf("a deferred card: %+v, want ok with 1 deferred", res)
 	}
 }
