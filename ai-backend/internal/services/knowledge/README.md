@@ -6,6 +6,7 @@ Product knowledge base (spec: [PRODUCT_KNOWLEDGE_SYNC.md](../../../../docs/desig
 ## Interface
 - `Format` (`catalog.go`): `Name()`, `Version()`, `Parse(files) (*Snapshot, []Problem, error)`; `Lookup`, `Names`, `Enums`. Registered: `test-catalog-v1` (`sut.go`), a port of `automation-test-sut/scripts/test-catalog.mjs` at `521618a` (duplicates last-wins, unknown-status rows skipped, out-of-heading features kept).
 - `Syncer` (`sync.go`): `NewSyncer(db, pool, ai)`, `Start(ctx, productID, trigger, userID)`, `FailOrphanedSyncs`, `StartScheduler(ctx, interval)`. Errors: `ErrProductNotFound`, `ErrNotConfigured`, `ErrUnknownFormat`, `ErrNoAutomation`, `ErrUnavailable`, `ErrRunning{SyncID}`.
+- Hooks (`sync.go`): `Syncer.OnSucceeded(productID)` runs after a sync committed, `Syncer.OnUnchanged(productID)` after a scheduled sync skipped for an unchanged commit. Set at startup before `StartScheduler`; they must return at once. `knowledge` does not import the GAOS pusher (`cmd/server/main.go` wires them to `gaossync`).
 - Queries (`query.go`): `Summary`, `Tree`, `Syncs`, `Sync`, `Epics`, `Stories`, `TestCases`, `Entity`, `PutAnnotation`, `DeleteAnnotation`, `SaveDraft`, `DeleteDraft`, `ValidFormat`. Errors: `ErrNotFound`, `*InputError` (400), `*ConflictError` (409).
 - Coverage (`coverage.go`): `CoverageBy`, `Features`, `Modules`. Assistant files (`assistants.go`): `ParseAssistants`, `KeepForSync`; `Assistants` (query.go) lists them per product or across products.
 - Storage (`store.go`): `apply` (diff + batched upsert + soft delete + link-set diff), `countActive`, `summarizeProblems`.
@@ -16,6 +17,7 @@ Product knowledge base (spec: [PRODUCT_KNOWLEDGE_SYNC.md](../../../../docs/desig
 - Entity rows, links, counts, diff, problems and `status='succeeded'` are written in one transaction. A catalog with no features and no test cases fails the sync (nothing is soft-deleted).
 - Unchanged rows are not written; location-only changes update `source_file`/`source_line` without a diff entry. Same commit + parser version gives an empty diff (`diff.unchanged`); a scheduled sync of the same `(repo, branch, format, parser_version, commit)` is `skipped`.
 - Synced rows are read-only through the API; local drafts use `L-` codes and are hard-deleted. Annotations are keyed by code and survive re-syncs.
+- A hook never fails or delays a sync: a panic in it is recovered and logged.
 - The AI summary is the only LLM call, made through `*ai.Service` (ai-manager → claude-v3) after the commit with its own 3 min timeout; its failure never fails a sync.
 
 ## Side Effects
