@@ -73,6 +73,51 @@ type ValidateOptions struct {
 	Code           string
 	AllowedHosts   []string        // hosts a literal URL may name (the product's staging host)
 	AllowedImports map[string]bool // bare module specifiers allowed besides @playwright/test
+	// Fixtures are the fixture names the repo declares (src/fixtures/*.ts). When non-empty, a
+	// test callback may only destructure these plus Playwright's built-ins.
+	Fixtures map[string]bool
+}
+
+var (
+	destructureRe   = regexp.MustCompile(`async\s*\(\s*\{([^}]*)\}`)
+	fixtureDeclRe   = regexp.MustCompile(`(?m)^ {2}(\w+)\??\s*:`)
+	builtinFixtures = map[string]bool{"page": true, "context": true, "browser": true, "browserName": true,
+		"request": true, "baseURL": true, "playwright": true, "testInfo": true}
+)
+
+// FixtureNames extracts the fixture names declared in the source of a repo's fixture files:
+// two-space-indented `name:` members of the fixtures interfaces.
+func FixtureNames(srcs ...string) map[string]bool {
+	out := map[string]bool{}
+	for _, src := range srcs {
+		for _, m := range fixtureDeclRe.FindAllStringSubmatch(src, -1) {
+			out[m[1]] = true
+		}
+	}
+	return out
+}
+
+// checkFixtures rejects a test callback that destructures a fixture the repo does not declare
+// (the generator guessed one from the naming pattern).
+func checkFixtures(c string, known map[string]bool) error {
+	if len(known) == 0 {
+		return nil
+	}
+	for _, m := range destructureRe.FindAllStringSubmatch(c, -1) {
+		for _, part := range strings.Split(m[1], ",") {
+			name := strings.TrimSpace(part)
+			if name == "" || strings.HasPrefix(name, "...") {
+				continue
+			}
+			if i := strings.IndexAny(name, ":="); i >= 0 {
+				name = strings.TrimSpace(name[:i])
+			}
+			if !builtinFixtures[name] && !known[name] {
+				return fmt.Errorf("the fixture %q does not exist in this repo; use one of the AVAILABLE FIXTURES", name)
+			}
+		}
+	}
+	return nil
 }
 
 // ImportSpecs lists the module specifiers imported by TypeScript source.
@@ -139,6 +184,9 @@ func Validate(f GeneratedFile, o ValidateOptions) error {
 		default:
 			return fmt.Errorf("import %q is not allowed", spec)
 		}
+	}
+	if err := checkFixtures(c, o.Fixtures); err != nil {
+		return err
 	}
 	allowed := map[string]bool{}
 	for _, h := range o.AllowedHosts {

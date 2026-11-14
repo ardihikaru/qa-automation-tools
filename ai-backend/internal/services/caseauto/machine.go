@@ -378,6 +378,15 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	if len(examples) == 0 {
 		m.ev(ctx, job, "warn", StepGenerate, "the repo has no example specs to copy from")
 	}
+	// The repo's fixture declarations: the only names a spec may destructure. Without them the
+	// generator guesses (e.g. hisVendorBackendMasterDataRest) and the first run dies at load time.
+	var fixtureSrc []string
+	for _, fp := range []string{"src/fixtures/api.fixtures.ts", "src/fixtures/web.fixtures.ts"} {
+		if b, err := m.Repo.ReadFile(r.ws, fp); err == nil {
+			fixtureSrc = append(fixtureSrc, string(b))
+		}
+	}
+	r.opts.Fixtures = FixtureNames(fixtureSrc...)
 	c := job.Case
 	var sb strings.Builder
 	sb.WriteString(systemRules)
@@ -390,6 +399,17 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	}
 	if guide != "" {
 		sb.WriteString("\nREPO GUIDE (AGENTS.md):\n" + guide + "\n")
+	}
+	if len(r.opts.Fixtures) > 0 {
+		names := make([]string, 0, len(r.opts.Fixtures))
+		for n := range r.opts.Fixtures {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		sb.WriteString("\nAVAILABLE FIXTURES (a test callback may destructure ONLY these, plus page, request, context, browser, baseURL; never invent a fixture or a client that is not shown): " + strings.Join(names, ", ") + "\n")
+		for _, src := range fixtureSrc {
+			sb.WriteString("\nFIXTURE FILE (clipped):\n```ts\n" + Clip(src, 5000) + "\n```\n")
+		}
 	}
 	for _, e := range examples {
 		sb.WriteString("\nEXAMPLE SPEC:\n```ts\n" + e + "\n```\n")
@@ -475,9 +495,24 @@ func (m *Machine) build(ctx context.Context, r *run, first string) error {
 			return nil
 		}
 		m.ev(ctx, job, "warn", StepRun, "the spec did not pass: "+res.Message)
+		if why := envFailure(res.Tail); why != "" {
+			// A config/environment failure is not the spec's fault: another LLM round cannot fix it.
+			return m.fail(ctx, job, StepRun, "the run failed before any test was collected (%s); fix the automation repo's environment (env file on the executor host), then retry", why)
+		}
 		r.convo = append(r.convo, models.Message{Role: "user", Content: m.Redact.Redact("The spec was run against staging and did not pass: " + res.Message +
 			"\nOutput tail:\n" + Clip(res.Tail, 3500) + "\n\nFix the spec. Return the complete corrected file in the required format.")})
 	}
+}
+
+// envFailure recognises output of a run that died while loading the automation repo's
+// configuration (missing/invalid env values), as opposed to a failing test. "" = not one.
+func envFailure(tail string) string {
+	for _, marker := range []string{"Invalid configuration for TEST_ENV", "Expected values in env/.env.", "Cannot find module", "ERR_MODULE_NOT_FOUND"} {
+		if strings.Contains(tail, marker) {
+			return marker
+		}
+	}
+	return ""
 }
 
 // approve opens the approval, asks GAOS too when integrated, and waits for the first answer.
