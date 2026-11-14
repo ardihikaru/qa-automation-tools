@@ -1,10 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import DocsView from './views/DocsView';
-import QAInsights from './views/QAInsights';
-import IssueDebugger from './views/IssueDebugger';
 import CostAnalytics from './views/CostAnalytics';
-import FixTracking from './views/FixTracking';
 import SkillsView from './views/SkillsView';
 import AgentsView from './views/assistants/AgentsView';
 import RulesView from './views/assistants/RulesView';
@@ -37,12 +33,8 @@ function App() {
           <ProtectedRoute>
             <Layout>
               <Routes>
-                <Route path="/" element={<Navigate to="/docs" replace />} />
-                <Route path="/docs" element={<DocsView />} />
-                <Route path="/qa" element={<QAInsights />} />
-                <Route path="/issues" element={<IssueDebugger />} />
+                <Route path="/" element={<Navigate to="/products" replace />} />
                 <Route path="/cost" element={<CostAnalytics />} />
-                <Route path="/fixes" element={<FixTracking />} />
                 <Route path="/skills" element={<SkillsView />} />
                 <Route path="/agents" element={<AgentsView />} />
                 <Route path="/rules" element={<RulesView />} />

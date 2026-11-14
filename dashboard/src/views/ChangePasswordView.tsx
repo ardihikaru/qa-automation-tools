@@ -30,7 +30,7 @@ export default function ChangePasswordView() {
     try {
       await changePassword(current, next);
       markPasswordChanged();
-      navigate('/docs', { replace: true });
+      navigate('/products', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not change password');
       setSubmitting(false);
