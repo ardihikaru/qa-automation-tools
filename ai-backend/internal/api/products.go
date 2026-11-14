@@ -17,9 +17,13 @@ import (
 	"github.com/qa-automation/ai-backend/internal/auth"
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/models"
+	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 )
+
+// SetGAOS wires the GAOS pusher (GAOS_INTEGRATION.md). A nil value keeps the integration off.
+func (r *Router) SetGAOS(g *gaossync.Syncer) { r.gaos = g }
 
 // SetRepoPool enables clone/checkout/verify. A nil pool keeps CRUD only.
 func (r *Router) SetRepoPool(p *repopool.Pool) { r.repoPool = p }
@@ -199,7 +203,9 @@ func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, err
 	}
 	flags := map[int]bool{}
 	formats := map[int]string{}
-	frows, err := q.QueryContext(ctx, `SELECT product_id, allow_non_automation_work, COALESCE(knowledge_format, '') FROM product_settings`)
+	gaos := map[int]models.GAOSSettings{}
+	frows, err := q.QueryContext(ctx, `SELECT product_id, allow_non_automation_work, COALESCE(knowledge_format, ''),
+	gaos_integrated, gaos_product_id, gaos_last_sync_at, gaos_last_status, gaos_last_note FROM product_settings`)
 	if err != nil {
 		return nil, err
 	}
@@ -207,12 +213,19 @@ func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, err
 		var pid int
 		var on bool
 		var kf string
-		if err := frows.Scan(&pid, &on, &kf); err != nil {
+		var g models.GAOSSettings
+		var at sql.NullTime
+		if err := frows.Scan(&pid, &on, &kf, &g.Integrated, &g.ProductID, &at, &g.LastStatus, &g.LastNote); err != nil {
 			frows.Close()
 			return nil, err
 		}
+		if at.Valid {
+			t := at.Time
+			g.LastSyncAt = &t
+		}
 		flags[pid] = on
 		formats[pid] = kf
+		gaos[pid] = g
 	}
 	frows.Close()
 	where, rargs := `1=1`, []any{}
@@ -230,6 +243,7 @@ func loadProducts(ctx context.Context, q queryer, id int) ([]models.Product, err
 	for i := range products {
 		products[i].AllowNonAutomationWork = flags[products[i].ID]
 		products[i].KnowledgeFormat = formats[products[i].ID]
+		products[i].GAOS = gaos[products[i].ID]
 		rs := byProduct[products[i].ID]
 		if rs == nil {
 			rs = []models.ProductRepo{}
@@ -448,7 +462,7 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 				writeOpError(w, "list", err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"products": list, "pool_enabled": r.repoPool != nil})
+			writeJSON(w, http.StatusOK, map[string]any{"products": list, "pool_enabled": r.repoPool != nil, "gaos_configured": r.gaos.Configured()})
 		case http.MethodPost:
 			if !canManage {
 				writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
@@ -506,6 +520,9 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 
 	case parts[1] == "knowledge":
 		r.handleKnowledge(w, req, id, parts[2:], canVerify)
+
+	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "sync":
+		r.handleGAOSSync(w, req, id)
 
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
@@ -623,6 +640,9 @@ type productUpdateBody struct {
 	Allow      *bool   `json:"allow_non_automation_work"`
 	// KnowledgeFormat: "" turns the knowledge sync off; otherwise a registered format (Admin/DevOps only).
 	KnowledgeFormat *string `json:"knowledge_format"`
+	// GaosIntegrated and GaosProductID: the GAOS integration (GAOS_INTEGRATION.md; Admin/DevOps only).
+	GaosIntegrated *bool   `json:"gaos_integrated"`
+	GaosProductID  *string `json:"gaos_product_id"`
 	// Legacy flat repo fields are accepted for old clients and ignored (see updateProduct).
 	LegacyRepoURL string `json:"repo_url"`
 	LegacyRootDir string `json:"root_dir"`
@@ -639,8 +659,9 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 	ctx := req.Context()
 	var flagChanged bool
 	var newFlag bool
+	var gaosTrigger bool
 	err := productTx(ctx, d, id, func(tx *sql.Tx) error {
-		flagChanged = false
+		flagChanged, gaosTrigger = false, false
 		var cur models.Product
 		if err := tx.QueryRowContext(ctx, `SELECT name, staging_url FROM products WHERE id = ?`, id).Scan(&cur.Name, &cur.StagingURL); err != nil {
 			return err
@@ -688,6 +709,12 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 				}
 			}
 		}
+		if body.GaosIntegrated != nil || body.GaosProductID != nil {
+			var err error
+			if gaosTrigger, err = r.applyGAOSSettings(ctx, tx, id, body.GaosIntegrated, body.GaosProductID, toggle); err != nil {
+				return err
+			}
+		}
 		if flagChanged {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO product_settings (product_id, allow_non_automation_work) VALUES (?, ?)
 				ON DUPLICATE KEY UPDATE allow_non_automation_work = VALUES(allow_non_automation_work)`, id, newFlag); err != nil {
@@ -710,6 +737,9 @@ func (r *Router) updateProduct(w http.ResponseWriter, req *http.Request, d *db.D
 	}
 	if flagChanged {
 		r.applyPushPolicies(ctx, d, id)
+	}
+	if gaosTrigger {
+		r.gaos.Trigger(id) // after the commit; never blocks
 	}
 	r.respondProduct(w, req, id, http.StatusOK)
 }

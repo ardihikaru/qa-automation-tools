@@ -309,3 +309,52 @@ func TestSeedMigration(t *testing.T) {
 		t.Fatalf("seed overrode the admin: %v", f)
 	}
 }
+
+// GAOS_INTEGRATION.md: OnSucceeded runs after a committed sync, OnUnchanged after a skipped scheduled
+// one, neither after a failed one, and a panicking hook never fails a sync.
+func TestSyncHooks(t *testing.T) {
+	d := testdb.New(t)
+	ctx := context.Background()
+	pid := setupProduct(t, d, HISv3FormatName)
+	repo := &fakeRepo{}
+	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic})
+	var mu sync.Mutex
+	var ok, same []int
+	s := &Syncer{DB: d, ReadTree: repo.read, syncTimeout: time.Minute, aiTimeout: time.Minute}
+	s.OnSucceeded = func(id int) { mu.Lock(); ok = append(ok, id); mu.Unlock() }
+	s.OnUnchanged = func(id int) { mu.Lock(); same = append(same, id); mu.Unlock() }
+	counts := func() (int, int) { mu.Lock(); defer mu.Unlock(); return len(ok), len(same) }
+
+	id, _ := s.Start(ctx, pid, TriggerManual, "")
+	if r := waitSync(t, d, id); r.status != "succeeded" {
+		t.Fatalf("%+v", r)
+	}
+	if a, b := counts(); a != 1 || b != 0 || ok[0] != pid {
+		t.Fatalf("after a sync: %d %d", a, b)
+	}
+	id, _ = s.Start(ctx, pid, TriggerSchedule, "") // same commit
+	if r := waitSync(t, d, id); r.status != "skipped" {
+		t.Fatalf("%+v", r)
+	}
+	if a, b := counts(); a != 1 || b != 1 {
+		t.Fatalf("after a skipped sync: %d %d", a, b)
+	}
+	repo.mu.Lock()
+	repo.err = errors.New("boom")
+	repo.mu.Unlock()
+	id, _ = s.Start(ctx, pid, TriggerManual, "")
+	if r := waitSync(t, d, id); r.status != "failed" {
+		t.Fatalf("%+v", r)
+	}
+	if a, b := counts(); a != 1 || b != 1 {
+		t.Fatalf("a failed sync must call nothing: %d %d", a, b)
+	}
+	repo.mu.Lock()
+	repo.err = nil
+	repo.mu.Unlock()
+	s.OnSucceeded = func(int) { panic("hook bug") }
+	id, _ = s.Start(ctx, pid, TriggerManual, "")
+	if r := waitSync(t, d, id); r.status != "succeeded" {
+		t.Fatalf("a panicking hook must not fail the sync: %+v", r)
+	}
+}

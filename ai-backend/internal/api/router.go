@@ -21,6 +21,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/models"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
+	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
@@ -43,6 +44,8 @@ type Router struct {
 	repoPool *repopool.Pool
 	// knowledge runs and serves product knowledge syncs (nil without a DB).
 	kb *knowledge.Syncer
+	// gaos pushes flagged products' test cases to GAOS (nil or unconfigured = off). See products_gaos.go.
+	gaos *gaossync.Syncer
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
