@@ -30,17 +30,22 @@ func (r *Router) FailOrphanedJobs(ctx context.Context) {
 	if db == nil {
 		return
 	}
+	// case_run/case_create are left for ResumeOrphanedJobs when the feature is wired.
+	skipCase := ""
+	if r.canResumeCaseJobs() {
+		skipCase = " AND type NOT IN ('case_run', 'case_create')"
+	}
 	res, err := db.Exec(ctx, `
 		UPDATE job_runs
 		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
-		WHERE status IN ('queued', 'running')
+		WHERE status IN ('queued', 'running')`+skipCase+`
 		AND NOT (type = 'case_create' AND EXISTS (SELECT 1 FROM case_approvals a WHERE a.job_id = job_runs.id AND a.status = 'open'))`)
 	if err != nil {
 		// case_approvals may not exist yet (migration pending): fall back to the plain statement.
 		res, err = db.Exec(ctx, `
 		UPDATE job_runs
 		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
-		WHERE status IN ('queued', 'running')`)
+		WHERE status IN ('queued', 'running')`+skipCase)
 	}
 	if err != nil {
 		log.Printf("failed to reconcile orphaned jobs: %v", err)
@@ -91,14 +96,12 @@ func (r *Router) runExecutorJob(id, jobType string, payload map[string]interface
 	}
 
 	params := caseRunParams(payload)
-	run, err := r.executor.Submit(ctx, executor.SubmitRequest{JobID: id, Type: runType, Params: params})
+	run, err := r.submitOrReattach(ctx, id, runType, params)
 	if err != nil {
 		fail(err)
 		return
 	}
-	log.Printf("job %s (%s) submitted to playwright-executor as %s", id, jobType, run.ID)
-
-	r.addJobEvent(id, "info", "run", "submitted to playwright-executor")
+	log.Printf("job %s (%s) is on playwright-executor run %s", id, jobType, run.ID)
 	final, err := r.executor.Wait(ctx, run.ID, 2*time.Second, func(u *executor.Run) {
 		r.forwardExecutorEvents(id, u)
 		if u.Status != executor.StatusRunning {

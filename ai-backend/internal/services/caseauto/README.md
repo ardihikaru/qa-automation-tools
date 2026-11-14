@@ -10,7 +10,7 @@ The "create automation" state machine of [CASE_AUTOMATION.md](../../../../docs/d
 - `Redactor.Redact`: replaces literal secrets given at start, `Bearer` tokens, `gh*_` / `github_pat_` / `gaos_` tokens and URL userinfo by `***`. `Machine.ev` applies it (and a 1000 byte clip) to every event; the prompts and the PR body pass through it too.
 - `VerdictFromResult`: reads the executor's case_run result (`report` through `caseresults.Parse`). Also used by the api's `case_run` job.
 - `DecisionFromAnswer`: maps a GAOS Inbox answer (option label, else choice) to `approved|rejected|changes`.
-- `EventStore` (`job_events`, seq allocated by `INSERT ... SELECT MAX(seq)+1`, retried on duplicate key) and `ApprovalStore` (`case_approvals`; `Answer` is `UPDATE ... WHERE status = 'open'`, so the first answer wins).
+- `EventStore` (`job_events`, seq allocated by `INSERT ... SELECT MAX(seq)+1`, retried on duplicate key) and `ApprovalStore` (`case_approvals`; `Answer` is `UPDATE ... WHERE status = 'open'`, so the first answer wins). `EventStore.Progress` reports a job's last step and whether a `push`/`pr` event exists; the api's orphan resume uses it to refuse re-running a job that may have a PR.
 
 ## Invariants
 - No push, commit-to-remote or PR happens before an `approved` answer; a reject or an expiry (72 h) ends the job `failed`. `changes` loops back to the LLM at most `MaxChangeRounds` (2) times, each round with a new approval `qa-<job>-prN`.
