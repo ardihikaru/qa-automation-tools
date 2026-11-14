@@ -16,7 +16,10 @@ type Verdict struct {
 	Passed  int
 	Failed  int
 	Skipped int
-	Report  *caseresults.Report // nil when the result held no usable report
+	// Result is the case's own outcome: pass|fail|skipped, or "none" when the report has no test for it.
+	Result     string
+	SkipReason string              // annotation reasons of a skipped case (clipped, not redacted)
+	Report     *caseresults.Report // nil when the result held no usable report
 }
 
 func num(m map[string]interface{}, k string) int {
@@ -46,6 +49,10 @@ func VerdictFromResult(result map[string]interface{}, code, spec string, now tim
 	}
 	v.Report = rep
 	res, ok := rep.Results[code]
+	v.Result = res
+	if !ok {
+		v.Result = "none"
+	}
 	switch {
 	case !ok:
 		v.Message = fmt.Sprintf("no test titled %s in %s", code, spec)
@@ -53,7 +60,11 @@ func VerdictFromResult(result map[string]interface{}, code, spec string, now tim
 		v.Pass = true
 		v.Message = fmt.Sprintf("%s passed", code)
 	case res == caseresults.Skipped:
+		v.SkipReason = rep.SkipReason(code, 400)
 		v.Message = fmt.Sprintf("%s was skipped", code)
+		if v.SkipReason != "" {
+			v.Message += ": " + v.SkipReason
+		}
 	default:
 		v.Message = fmt.Sprintf("%s failed", code)
 	}

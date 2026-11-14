@@ -18,7 +18,7 @@ import {
   isAbort,
   isTerminalJob,
 } from './knowledge/api';
-import { JOB_CHIP_CLASS } from './knowledge/CaseAutomation';
+import { JOB_CHIP_CLASS, jobChipStatus } from './knowledge/CaseAutomation';
 
 const POLL_MS = 2000;
 const AFTER_TERMINAL_MS = 30_000;
@@ -139,7 +139,7 @@ export default function JobView() {
 
   const code = meta.case_code ?? hint.code;
   const pid = meta.product_id ?? hint.pid;
-  const status = meta.status ?? (loaded ? 'unknown' : 'loading');
+  const status = jobChipStatus(meta.status ?? (loaded ? 'unknown' : 'loading'), meta.outcome);
   const terminal = isTerminalJob(meta.status);
   const caseHref = pid !== undefined && code ? entityHref(pid, 'test_case', code) : null;
 
@@ -183,6 +183,11 @@ export default function JobView() {
           <span className={`badge whitespace-nowrap ${JOB_CHIP_CLASS[status] ?? 'bg-gray-100 text-gray-700'}`} role="status">
             {status}
           </span>
+          {meta.outcome === 'skipped' && (
+            <span className="text-sm text-amber-800 min-w-0 break-words">
+              Skipped{meta.skip_reason ? `: ${meta.skip_reason}` : ' (no reason in the report)'}. No result was stored.
+            </span>
+          )}
           {meta.phase && (
             <span className="text-sm text-gray-600">
               Phase <span className="font-mono text-gray-900">{meta.phase}</span>

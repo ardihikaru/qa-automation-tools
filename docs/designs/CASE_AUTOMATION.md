@@ -100,6 +100,10 @@ Events: `RunRecord.events: {n, at, level, step, message}[]` (ring of 500). `GET 
 
 Orphans: `FailOrphanedJobs` at start also fails jobs in `approval`'s *waiting* only if the approval is not `open` (an open approval survives a restart and resumes via the poller).
 
+### Skipped runs
+
+A `case_run` whose own test(s) are all skipped is a `completed` job with `result.verdict.result = "skipped"` and `result.skip_reason`; it stores no result and pushes nothing to GAOS. The first live run (TC-VOCBOOK-007) skipped because the harness's staging DB credential file is absent on app-host, so `vendor-e2e-setup` and the data-driven cases skip by design. Root cause, evidence and the full policy: [CASE_RESULTS.md, Skipped runs](CASE_RESULTS.md#skipped-runs-2026-11-15). A report with no test titled with the case code remains a failed job.
+
 ## 6. GAOS Inbox contract (implemented in the GAOS repo)
 
 `POST /v1/products/{pid}/inbox` and `GET /v1/products/{pid}/inbox/{externalId}` (QA-scope bearer), plus a webhook from GAOS to `GAOS_QA_URL + /api/v1/gaos/inbox-answer` (bearer `GAOS_QA_TOKEN`). Shapes as implemented in the GAOS repo's design doc; this tool treats any non-2xx and any unknown `status` as "still open" and keeps polling.

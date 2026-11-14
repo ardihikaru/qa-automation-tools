@@ -11,12 +11,17 @@ export const JOB_CHIP_CLASS: Record<string, string> = {
   running: 'bg-blue-100 text-blue-800',
   completed: 'badge-success',
   failed: 'badge-error',
+  skipped: 'bg-amber-100 text-amber-800',
 };
+
+/** A skipped case_run is a completed job: show it as its own chip. */
+export const jobChipStatus = (status: string, outcome?: string) => (status === 'completed' && outcome === 'skipped' ? 'skipped' : status);
 
 export const jobHref = (id: number | string) => `/jobs/${encodeURIComponent(String(id))}`;
 
-export function JobChip({ job, pid, code }: { job: Pick<CaseJob, 'id' | 'status' | 'phase'>; pid: number; code: string }) {
-  const active = !isTerminalJob(job.status);
+export function JobChip({ job: j, pid, code }: { job: Pick<CaseJob, 'id' | 'status' | 'phase' | 'outcome'>; pid: number; code: string }) {
+  const job = { ...j, status: jobChipStatus(j.status, j.outcome) };
+  const active = !isTerminalJob(j.status);
   return (
     <Link
       to={jobHref(job.id)}
