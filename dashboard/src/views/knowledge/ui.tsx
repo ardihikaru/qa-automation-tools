@@ -297,6 +297,13 @@ export function Pagination({
   const from = total === 0 ? 0 : (cur - 1) * pageSize + 1;
   const to = Math.min(total, cur * pageSize);
   const btn = 'inline-flex items-center justify-center min-w-8 h-8 px-2 rounded-md text-sm tabular-nums disabled:opacity-40 disabled:cursor-not-allowed';
+  // A double click fires two clicks before the list re-renders or starts loading, which used to skip
+  // a page. Only the first click of a multi-click counts (e.detail is the click count; keyboard
+  // activation has detail 0, so Enter and Space always work).
+  const go = (p: number) => (e: React.MouseEvent) => {
+    if (e.detail > 1) return;
+    onPage(p);
+  };
   return (
     <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm text-gray-600">
       <span className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -318,7 +325,7 @@ export function Pagination({
       </span>
       {pages > 1 && (
         <span className="flex items-center gap-1">
-          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur <= 1} onClick={() => onPage(cur - 1)} aria-label="Previous page">
+          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur <= 1} onClick={go(cur - 1)} aria-label="Previous page">
             <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           </button>
           <span className="sm:hidden px-2 tabular-nums">
@@ -338,7 +345,7 @@ export function Pagination({
                     aria-current={p === cur ? 'page' : undefined}
                     aria-label={`Page ${p}`}
                     disabled={disabled && p !== cur}
-                    onClick={() => p !== cur && onPage(p)}
+                    onClick={p !== cur ? go(p) : undefined}
                   >
                     {p}
                   </button>
@@ -346,7 +353,7 @@ export function Pagination({
               ),
             )}
           </ul>
-          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur >= pages} onClick={() => onPage(cur + 1)} aria-label="Next page">
+          <button type="button" className={`${btn} border border-gray-300 bg-white hover:bg-gray-50`} disabled={disabled || cur >= pages} onClick={go(cur + 1)} aria-label="Next page">
             <ChevronRight className="w-4 h-4" aria-hidden="true" />
           </button>
         </span>
