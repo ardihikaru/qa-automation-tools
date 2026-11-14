@@ -158,6 +158,10 @@ type Pool struct {
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
+
+	// owner handed to created paths (owner.go); ownerSet is false when unset.
+	ownerUID, ownerGID int
+	ownerSet           bool
 }
 
 // newProbeClient returns the HTTP client used for staging probes: no redirects and
@@ -430,6 +434,7 @@ func (p *Pool) cloneLocked(ctx context.Context, repoURL, abs string) error {
 		_ = os.RemoveAll(abs)
 		return err
 	}
+	p.FixOwner(abs)
 	return nil
 }
 
@@ -761,6 +766,7 @@ func (p *Pool) SyncBranches(ctx context.Context, repoURL, rel string, branches [
 		return nil, err
 	}
 	defer unlock()
+	defer func() { p.FixOwner(abs); p.FixOwner(abs + ".branches") }()
 
 	// 1-2. Clone when absent, then the push policy.
 	if !isGitRepo(abs) {

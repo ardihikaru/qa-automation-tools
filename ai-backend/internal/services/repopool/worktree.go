@@ -120,6 +120,7 @@ func (p *Pool) AddWorktree(ctx context.Context, rootDir, branch, base string) (s
 	if _, err := run(ctx, abs, sd, 60*time.Second, "git", "worktree", "add", "-b", branch, wt, "origin/"+base); err != nil {
 		return "", err
 	}
+	p.FixOwner(filepath.Dir(wt))
 	return wt, nil
 }
 
