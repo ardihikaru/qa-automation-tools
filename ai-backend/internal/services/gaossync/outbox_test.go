@@ -303,3 +303,60 @@ func TestTwoQuickUploadsAtMostOneRerun(t *testing.T) {
 		t.Fatalf("overlap: %d", f.maxIn)
 	}
 }
+
+// The marker is durable BEFORE Trigger returns to its caller. Found on production: with the settings read
+// and the marker write inside the goroutine, a restart ~100 ms after an upload lost the owed push.
+func TestTriggerPersistsTheMarkerBeforeItReturns(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedOne(t, d)
+	release := make(chan struct{})
+	f.respond = func(n int, r recorded) (int, map[string]string, string) {
+		<-release // hold the push, so only the synchronous part of Trigger can have run
+		return 200, nil, defaultAnswer(r)
+	}
+	s.Trigger(pid)
+	if set, _ := marker(t, d, pid); !set {
+		t.Fatal("Trigger returned before the push marker was persisted: a restart now would lose the delivery")
+	}
+	close(release)
+	waitFor(t, "the held push to finish and clear the marker", func() bool { set, _ := marker(t, d, pid); return !set && idle(s) })
+}
+
+// The level-triggered net: data newer than the last push is owed a push even when no marker survived
+// (the process died between "data stored" and "marker written").
+func TestSweeperPushesDataNewerThanTheLastPush(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedOne(t, d)
+	// A push finished 10 minutes ago, and a result was stored just now with no marker written.
+	exec(t, d, `UPDATE product_settings SET gaos_last_sync_at = UTC_TIMESTAMP() - INTERVAL 600 SECOND, gaos_last_status = 'ok' WHERE product_id = ?`, pid)
+	exec(t, d, `UPDATE kb_test_cases SET updated_at = UTC_TIMESTAMP() - INTERVAL 700 SECOND WHERE product_id = ?`, pid)
+	exec(t, d, `INSERT INTO kb_case_results (product_id, case_code, result, run_at, run_ref, source) VALUES (?, 'TC-AUTH-001', 'pass', UTC_TIMESTAMP() - INTERVAL 5 SECOND, 'run-1', 'test')`, pid)
+	if set, _ := marker(t, d, pid); set {
+		t.Fatal("precondition: no marker")
+	}
+	s.sweepOnce(context.Background())
+	waitFor(t, "the sweeper to push data newer than the last push", func() bool { set, _ := marker(t, d, pid); return !set && idle(s) && len(f.requests()) == 2 })
+
+	// And NOT when the last push ended after the data changed: nothing is owed, nothing is sent.
+	before := len(f.requests())
+	s.sweepOnce(context.Background())
+	time.Sleep(200 * time.Millisecond)
+	if got := len(f.requests()); got != before {
+		t.Fatalf("a product whose last push is newer than its data was pushed again (%d -> %d requests)", before, got)
+	}
+	// An unflagged product with fresh data is never pushed.
+	res, err := d.Exec(context.Background(), `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('Unflagged','https://github.com/o/r2','https://s','x','main')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := int(res.LastInsertId())
+	exec(t, d, `INSERT INTO product_settings (product_id, gaos_integrated, gaos_product_id) VALUES (?, 0, 'p-7')`, other)
+	seedCase(t, d, other, "TC-OTH-001", "OTH", "", "planned")
+	s.sweepOnce(context.Background())
+	time.Sleep(200 * time.Millisecond)
+	if got := len(f.requests()); got != before {
+		t.Fatalf("an unflagged product was pushed (%d -> %d requests)", before, got)
+	}
+}
