@@ -16,6 +16,8 @@ It runs on the host rather than in Docker because:
 | Runtime | `mise exec -- node dist/src/server.js` in `~/devel/projects/qa-automation-tools/playwright-executor`. Node comes from that directory's `mise.toml`. |
 | Env file | `~/.config/qa-automation/playwright-executor.env` (mode 600) |
 | Credentials | `~/.config/qa-automation/hisv3-credentials.json` (mode 600) |
+| Automation env files | `~/.config/qa-automation/automation-<productId>.env` (mode 600, `EXECUTOR_ENV_DIR`). Loaded only into `case_run` child processes; the executor refuses a file that is not mode 600. |
+| Repo pool | `EXECUTOR_REPO_POOL`, default `~/devel/projects/qa-automation-tools/repos` (automation repo clones, with their own `node_modules`). |
 | Artifacts | `~/qa-executor-data/runs/<run_id>/`, kept for 7 days |
 | Logs | `journalctl --user -u playwright-executor` |
 
@@ -63,6 +65,10 @@ It refuses `EXECUTOR_BIND=0.0.0.0`.
 None of these values are printed. They are generated in a local scratchpad with `umask 077` and piped over ssh stdin:
 - **HISv3 staging URL and credentials:** taken from the local `config.yaml` (`staging.url`, `credentials.*`) and written as JSON to `hisv3-credentials.json`.
 - **`EXECUTOR_TOKEN`:** `openssl rand -hex 32`. The same value goes into `deploy/his-v3-qa/.env.prod` as `PLAYWRIGHT_EXECUTOR_TOKEN`, together with `PLAYWRIGHT_EXECUTOR_URL=http://10.10.0.9:8141`.
+
+### Case-run settings (`case_run`)
+
+Add these to `playwright-executor.env` (names only here; see `playwright-executor/.env.example`): `EXECUTOR_REPO_POOL`, `EXECUTOR_ENV_DIR`, `EXECUTOR_ALLOWED_HOSTS` (staging hostnames only; empty means the `HISV3_STAGING_URL` host). Create each product's env file out-of-band with `umask 077`, name it `automation-<productId>.env`, and never print it. `case_run` shares the unit's `MemoryMax`/`CPUQuota`, concurrency 1 and `RUN_TIMEOUT_SECONDS`. No unit change is needed.
 
 ### Operate
 
