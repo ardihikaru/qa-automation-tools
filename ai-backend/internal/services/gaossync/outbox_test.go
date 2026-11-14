@@ -360,3 +360,54 @@ func TestSweeperPushesDataNewerThanTheLastPush(t *testing.T) {
 		t.Fatalf("an unflagged product was pushed (%d -> %d requests)", before, got)
 	}
 }
+
+// The sweeper gives up on a product that failed maxSweepAttempts times: marker cleared, nothing sent,
+// the failed outcome stays; a new trigger owes it again from zero.
+func TestSweeperGivesUpAfterMaxAttempts(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedOne(t, d)
+	exec(t, d, `UPDATE product_settings SET gaos_push_requested_at = UTC_TIMESTAMP(6), gaos_push_attempts = ?, gaos_last_status = 'failed', gaos_last_sync_at = UTC_TIMESTAMP() - INTERVAL 1 DAY WHERE product_id = ?`, maxSweepAttempts, pid)
+	s.sweepOnce(context.Background())
+	time.Sleep(100 * time.Millisecond)
+	if set, a := marker(t, d, pid); set || a != 0 {
+		t.Fatalf("marker must be cleared on give-up (%v, %d)", set, a)
+	}
+	if len(f.requests()) != 0 {
+		t.Fatal("nothing may be sent after give-up")
+	}
+	if st, _, _ := outcome(t, d, pid); st != "failed" {
+		t.Fatalf("the failed outcome must stay, got %q", st)
+	}
+	// One attempt below the limit is still retried.
+	exec(t, d, `UPDATE product_settings SET gaos_push_requested_at = UTC_TIMESTAMP(6), gaos_push_attempts = ? WHERE product_id = ?`, maxSweepAttempts-1, pid)
+	s.sweepOnce(context.Background())
+	waitFor(t, "last retry", func() bool { set, _ := marker(t, d, pid); return !set && idle(s) && len(f.requests()) == 2 })
+}
+
+// Two processes on one database: while another connection holds the sweep lock, a sweep does nothing.
+func TestSweepsAreSerialisedAcrossProcesses(t *testing.T) {
+	f := newFake(t)
+	s, d, _ := newSyncer(t, f)
+	pid := seedOne(t, d)
+	exec(t, d, `UPDATE product_settings SET gaos_push_requested_at = UTC_TIMESTAMP(6) WHERE product_id = ?`, pid)
+	other, err := d.SQL.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	var got int
+	if err := other.QueryRowContext(context.Background(), `SELECT GET_LOCK(CONCAT(?, DATABASE()), 0)`, sweepLockName).Scan(&got); err != nil || got != 1 {
+		t.Fatalf("setup lock: %v %d", err, got)
+	}
+	s.sweepOnce(context.Background())
+	time.Sleep(150 * time.Millisecond)
+	if len(f.requests()) != 0 || !idle(s) {
+		t.Fatal("a sweep must not run while another process holds the lock")
+	}
+	if _, err := other.ExecContext(context.Background(), `SELECT RELEASE_LOCK(CONCAT(?, DATABASE()))`, sweepLockName); err != nil {
+		t.Fatal(err)
+	}
+	s.sweepOnce(context.Background())
+	waitFor(t, "sweep after release", func() bool { set, _ := marker(t, d, pid); return !set && idle(s) && len(f.requests()) == 2 })
+}

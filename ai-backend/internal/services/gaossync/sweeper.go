@@ -2,6 +2,7 @@ package gaossync
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"time"
 )
@@ -10,6 +11,12 @@ const (
 	sweeperStartDelay  = 5 * time.Second
 	backoffStepDefault = 30 * time.Second
 	backoffMax         = 10 * time.Minute
+	// maxSweepAttempts: after this many failed passes the sweeper gives up on a product (marker cleared,
+	// the failed outcome stays in its GAOS card). With the default backoff that is about 3 hours of retries
+	// (20 attempts to reach the 10 minute cap, then 10 more at 10 minutes). New data, a trigger or the
+	// manual button owes the push again from zero.
+	maxSweepAttempts = 30
+	sweepLockName    = "gaossync-sweeper:" // + DATABASE(): one sweeper per database across processes
 )
 
 // backoffFor is how long a product with a push owed is left alone after its last finished
@@ -62,6 +69,26 @@ func (s *Syncer) sweepOnce(ctx context.Context) {
 	}()
 	qctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	// One sweeper per database across processes: a named MySQL lock held on a dedicated connection for the
+	// duration of the sweep. A process that does not get it skips this sweep (the other one is sweeping).
+	conn, err := s.db.SQL.Conn(qctx)
+	if err != nil {
+		log.Printf("gaossync: sweeper: no connection for the sweep lock: %v", err)
+		return
+	}
+	defer conn.Close()
+	var got sql.NullInt64
+	if err := conn.QueryRowContext(qctx, `SELECT GET_LOCK(CONCAT(?, DATABASE()), 0)`, sweepLockName).Scan(&got); err != nil || !got.Valid || got.Int64 != 1 {
+		if err != nil {
+			log.Printf("gaossync: sweeper: sweep lock: %v", err)
+		}
+		return
+	}
+	defer func() {
+		rctx, rcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer rcancel()
+		_, _ = conn.ExecContext(rctx, `SELECT RELEASE_LOCK(CONCAT(?, DATABASE()))`, sweepLockName)
+	}()
 	// LEVEL-triggered safety net, before the marker list is read. A marker is edge-triggered: if the process
 	// died between "data stored" and "marker written", no marker exists. So a flagged product whose results or
 	// cases changed after its last push ended is owed a push whether or not a marker survived (a never-pushed
@@ -116,6 +143,15 @@ FROM product_settings WHERE gaos_push_requested_at IS NOT NULL`)
 			if _, err := s.db.Exec(qctx, `UPDATE product_settings SET gaos_push_requested_at = NULL, gaos_push_attempts = 0
 WHERE product_id = ? AND gaos_integrated = ? AND gaos_product_id = ?`, o.id, o.integrated, o.pid); err != nil {
 				log.Printf("gaossync: sweeper: product %d: clear marker: %v", o.id, err)
+			}
+			continue
+		}
+		if o.attempts >= maxSweepAttempts {
+			if _, err := s.db.Exec(qctx, `UPDATE product_settings SET gaos_push_requested_at = NULL, gaos_push_attempts = 0
+WHERE product_id = ? AND gaos_push_attempts >= ?`, o.id, maxSweepAttempts); err != nil {
+				log.Printf("gaossync: sweeper: product %d: clear marker: %v", o.id, err)
+			} else {
+				log.Printf("gaossync: sweeper: giving up on product %d after %d failed attempts; its next trigger or the manual push owes it again", o.id, o.attempts)
 			}
 			continue
 		}
