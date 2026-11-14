@@ -40,6 +40,21 @@ export interface Repo {
   created_at: string;
   updated_at: string;
 }
+/** The product's GAOS integration (GAOS_INTEGRATION.md). `last_status` is '' until the first push. */
+export interface GaosState {
+  integrated: boolean;
+  product_id: string;
+  last_sync_at: string | null;
+  last_status: '' | 'ok' | 'partial' | 'failed';
+  last_note: string;
+}
+/** Answer of POST /api/products/{id}/gaos/sync (200), or `{status: 'running'}` (202). */
+export interface GaosPushResult {
+  status: 'ok' | 'partial' | 'failed' | 'running' | '';
+  note?: string;
+}
+export const GAOS_ID_RE = /^p-[0-9]+$/;
+
 export interface Product {
   id: number;
   name: string;
@@ -47,6 +62,7 @@ export interface Product {
   allow_non_automation_work: boolean;
   /** Catalog format of the automation repo ("" = knowledge sync off). See PRODUCT_KNOWLEDGE_SYNC.md. */
   knowledge_format: string;
+  gaos: GaosState;
   // Legacy fields, mirrored from the automation repo.
   repo_url: string;
   root_dir: string;
