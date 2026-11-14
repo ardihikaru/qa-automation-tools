@@ -344,7 +344,7 @@ Rules:
 - Every test(...) title must start with the case code, followed by a space and a short description. No test.only/skip/fixme.
 - Follow the repo guide and copy the helper imports, fixtures and style of the example specs. Do not invent helpers that the examples do not show.
 - Never hard-code URLs, hosts or credentials: use what the examples use (config, fixtures, process.env.NAME for a single named variable). Never print, log or iterate process.env.
-- No child processes, no eval, no dynamic import or require, no file-system access.
+- REST specs MUST call the service through one of the repo's client fixtures listed under AVAILABLE FIXTURES (for example the vendor API client), exactly as the example specs do. The raw 'request' fixture has NO base URL in the api projects: never call request.get('/path') or build URLs yourself, and never call a client method the examples or fixture files do not show.\n- Do not read configuration with an import from @config/*: use the fixtures. If a credential the case needs is not provided by any fixture, still write the best spec against the fixtures and do not invent env variables.\n- No child processes, no eval, no dynamic import or require, no file-system access.
 - At most 20 KiB.`
 
 // initialConvo reads the repo guide and two style examples and builds the first prompt.
