@@ -160,9 +160,9 @@ SELECT code, title, service FROM kb_epics WHERE product_id = ? AND removed_at IS
 *   `ai-backend/internal/config/config.go`, `.env.example`, `deploy/his-v3-qa/.env.prod.example`, `README.md`, `deploy/his-v3-qa/README.md`
 *   `ai-backend/internal/services/gaossync/` (new: `config.go`, `sync.go`, `client.go`, `README.md`, tests)
 *   `ai-backend/internal/services/knowledge/sync.go`, `README.md` (`OnSucceeded`)
-*   `ai-backend/internal/models/models.go`, `internal/api/products.go`, `router.go`, `README.md`, tests
+*   `ai-backend/internal/models/models.go`, `internal/api/products.go`, `products_gaos.go` (new), `router.go`, `README.md`, tests (`products_gaos_test.go`)
 *   `ai-backend/cmd/server/main.go` (wiring)
-*   `dashboard/src/views/products/api.ts`, `ProductDetail.tsx`, `ProductsView.tsx`
+*   `dashboard/src/views/products/api.ts`, `GaosCard.tsx` (new), `ProductDetail.tsx`, `ProductsView.tsx`, `dashboard/README.md`
 *   `docs/designs/SITEMAP.md`
 
 ## Tests
