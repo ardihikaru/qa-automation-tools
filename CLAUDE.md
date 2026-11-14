@@ -75,4 +75,4 @@ When to use it:
 - **Every week, or before a release:** `/egm:egm-drift-report docs/designs/`, then decide whether to fix the doc or the code.
 - **After large refactors:** `/egm:egm-bootstrap <dir>` to refresh the README contracts. It merges into existing files and must cite code.
 
-Project skills: `qa-automation-elephant` (load before any design work), `deploy-qa-tool`, `ai-manager-gateway`, `qa-db-ops`, `qa-tool-session` (use the prod app as the `ai-service` account and impersonate any user; agent: `qa-tool-operator`). Rules in `.claude/rules/` load automatically by path.
+Project skills: `qa-automation-elephant` (load before any design work), `deploy-qa-tool`, `ai-manager-gateway`, `qa-db-ops`, `qa-tool-session` (use the prod app as the `ai-service` account and impersonate any user; agent: `qa-tool-operator`), `case-automation-runbook` and `gaos-integration` (run/create case automation and the GAOS link/Inbox; agent: `qa-case-automation`). Rules in `.claude/rules/` load automatically by path.
