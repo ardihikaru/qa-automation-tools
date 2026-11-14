@@ -175,6 +175,9 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 			bad()
 		}
 
+	case seg == "epics" && len(rest) == 3 && (rest[2] == "automation" || rest[2] == "automate"):
+		// EPIC_AUTOMATION.md. GET is open to any reader; POST needs canWrite (= canVerify).
+		r.handleEpicAutomation(w, req, pid, rest[1], rest[2], canWrite)
 	case seg == "test-cases" && len(rest) == 3 && (rest[2] == "run" || rest[2] == "create-automation" || rest[2] == "jobs"):
 		r.handleCaseAction(w, req, pid, rest[1], rest[2], canWrite)
 

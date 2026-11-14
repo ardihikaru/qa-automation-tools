@@ -161,55 +161,93 @@ func (r *Router) handleCaseAction(w http.ResponseWriter, req *http.Request, pid 
 		writeJSONError(w, http.StatusForbidden, "your role cannot run or create automation")
 		return
 	}
-	if r.caseAuto.draining.Load() {
-		w.Header().Set("Retry-After", "30")
-		writeJSONError(w, http.StatusServiceUnavailable, "the server is restarting; try again in a moment")
+	res := r.enqueueCaseAction(req.Context(), d, caseEnqueueIn{PID: pid, Code: code, Action: action, TriggeredBy: userID(req)})
+	if e := res.Err; e != nil {
+		if e.RetryAfter {
+			w.Header().Set("Retry-After", "30")
+		}
+		if res.ActiveJobID != "" {
+			writeJSON(w, e.Status, map[string]any{"error": e.Msg, "job_id": res.ActiveJobID})
+			return
+		}
+		writeJSONError(w, e.Status, e.Msg)
 		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"job_id": res.JobID})
+}
+
+// caseEnqueueIn is what enqueueCaseAction needs. BatchID is set only by the epic driver
+// (EPIC_AUTOMATION.md); it rides in the job's payload from its first write.
+type caseEnqueueIn struct {
+	PID         int
+	Code        string
+	Action      string // "run" | "create-automation"
+	TriggeredBy string
+	BatchID     string
+	BatchSeq    int
+}
+
+// caseErr is a refusal, typed so a non-HTTP caller (the epic driver) can act on it.
+type caseErr struct {
+	Status     int
+	Code       string // unconfigured | draining | no_repo | not_found | has_spec | no_spec | case_active | batch_not_running | bad_spec | internal
+	Msg        string
+	RetryAfter bool
+}
+
+type caseEnqueue struct {
+	JobID       string
+	ActiveJobID string // set with Err.Code == "case_active"
+	Err         *caseErr
+}
+
+func refuse(status int, code, msg string) caseEnqueue {
+	return caseEnqueue{Err: &caseErr{Status: status, Code: code, Msg: msg}}
+}
+
+// enqueueCaseAction is the one path that starts a case_run or case_create job: the per-case
+// buttons and the epic driver both come through here, so their guards cannot diverge.
+func (r *Router) enqueueCaseAction(ctx context.Context, d *db.DB, in caseEnqueueIn) caseEnqueue {
+	pid, code, action := in.PID, in.Code, in.Action
+	if r.caseAuto.draining.Load() {
+		out := refuse(http.StatusServiceUnavailable, "draining", "the server is restarting; try again in a moment")
+		out.Err.RetryAfter = true
+		return out
 	}
 	if r.executor == nil || r.repoPool == nil || r.caseAuto.hostPool == "" {
-		writeJSONError(w, http.StatusServiceUnavailable, "case automation is not configured (playwright-executor, REPO_POOL_DIR and REPO_POOL_HOST_DIR are needed)")
-		return
+		return refuse(http.StatusServiceUnavailable, "unconfigured", "case automation is not configured (playwright-executor, REPO_POOL_DIR and REPO_POOL_HOST_DIR are needed)")
 	}
 	if action == "create-automation" && (r.aiService == nil || !r.aiService.Configured()) {
-		writeJSONError(w, http.StatusServiceUnavailable, "AI is not configured")
-		return
+		return refuse(http.StatusServiceUnavailable, "unconfigured", "AI is not configured")
 	}
-	ctx := req.Context()
 	c, err := r.loadCase(ctx, d, pid, code)
 	if err != nil {
 		log.Printf("case automation: load case: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return refuse(http.StatusInternalServerError, "internal", "internal error")
 	}
 	if c == nil {
-		writeJSONError(w, http.StatusNotFound, "not found")
-		return
+		return refuse(http.StatusNotFound, "not_found", "not found")
 	}
 	repo, err := loadAutomationRepo(ctx, d, pid)
 	if err != nil {
 		log.Printf("case automation: load repo: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return refuse(http.StatusInternalServerError, "internal", "internal error")
 	}
 	hasSpec := len(c.SpecPaths) > 0
 	switch {
 	case action == "run" && !hasSpec:
-		writeJSONError(w, http.StatusConflict, "the case has no automation spec to run")
-		return
+		return refuse(http.StatusConflict, "no_spec", "the case has no automation spec to run")
 	case action == "create-automation" && hasSpec:
-		writeJSONError(w, http.StatusConflict, "the case already has an automation spec")
-		return
+		return refuse(http.StatusConflict, "has_spec", "the case already has an automation spec")
 	case repo == nil:
-		writeJSONError(w, http.StatusConflict, "the product has no automation repo")
-		return
+		return refuse(http.StatusConflict, "no_repo", "the product has no automation repo")
 	}
-	payload := map[string]interface{}{"product_id": pid, "case_code": code, "triggered_by": userID(req)}
+	payload := map[string]interface{}{"product_id": pid, "case_code": code, "triggered_by": in.TriggeredBy}
 	jobType := "case_run"
 	if action == "run" {
 		for _, p := range c.SpecPaths {
 			if !runnableSpec(p) {
-				writeJSONError(w, http.StatusConflict, "the case's spec cannot be run here (only tests/web and tests/api/rest specs are supported)")
-				return
+				return refuse(http.StatusConflict, "bad_spec", "the case's spec cannot be run here (only tests/web and tests/api/rest specs are supported)")
 			}
 		}
 		if len(c.SpecPaths) > 5 {
@@ -217,13 +255,11 @@ func (r *Router) handleCaseAction(w http.ResponseWriter, req *http.Request, pid 
 		}
 		abs, err := r.repoPool.ResolveDir(repo.RootDir)
 		if err != nil {
-			writeJSONError(w, http.StatusConflict, "the automation repo is not available in the pool")
-			return
+			return refuse(http.StatusConflict, "no_repo", "the automation repo is not available in the pool")
 		}
 		hostDir, err := r.repoPool.HostPath(r.caseAuto.hostPool, abs)
 		if err != nil {
-			writeJSONError(w, http.StatusConflict, "the automation repo is not available in the pool")
-			return
+			return refuse(http.StatusConflict, "no_repo", "the automation repo is not available in the pool")
 		}
 		payload["spec_paths"] = c.SpecPaths
 		payload["repo_dir"] = hostDir
@@ -234,18 +270,33 @@ func (r *Router) handleCaseAction(w http.ResponseWriter, req *http.Request, pid 
 		payload["branch"] = repopool.AutoBranch(code)
 		payload["pr_url"] = ""
 	}
+	if in.BatchID != "" {
+		payload["batch_id"] = in.BatchID
+		payload["batch_seq"] = in.BatchSeq
+	}
 	r.caseAuto.mu.Lock()
 	defer r.caseAuto.mu.Unlock()
 	if id, err := activeCaseJob(ctx, d, pid, code); err != nil {
 		log.Printf("case automation: active check: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
+		return refuse(http.StatusInternalServerError, "internal", "internal error")
 	} else if id != "" {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "a job for this case is already active", "job_id": id})
-		return
+		out := refuse(http.StatusConflict, "case_active", "a job for this case is already active")
+		out.ActiveJobID = id
+		return out
 	}
-	job := r.enqueueJob(jobType, payload)
-	writeJSON(w, http.StatusAccepted, map[string]any{"job_id": job.ID})
+	if in.BatchID != "" {
+		// A cancel holds this mutex while it writes, so after it no job may start.
+		var st string
+		if err := d.QueryRow(ctx, `SELECT status FROM epic_batches WHERE id = ?`, in.BatchID).Scan(&st); err != nil || st != "running" {
+			return refuse(http.StatusConflict, "batch_not_running", "the batch is not running")
+		}
+	}
+	job, err := r.enqueueJobTx(jobType, payload)
+	if err != nil {
+		log.Printf("case automation: enqueue: %v", err)
+		return refuse(http.StatusInternalServerError, "internal", "internal error")
+	}
+	return caseEnqueue{JobID: job.ID}
 }
 
 func executorEnvFile(pid int) string { return fmt.Sprintf("automation-%d.env", pid) }

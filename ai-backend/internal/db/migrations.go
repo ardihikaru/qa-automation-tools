@@ -769,6 +769,24 @@ ALTER TABLE product_settings
   UNIQUE KEY uq_ext (external_id),
   KEY idx_case_approvals_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`,
+	// EPIC_AUTOMATION.md: a snapshot queue of one epic's planned cases, worked through two at a time by
+	// the driver. Case state is derived from job_runs (the jobs carry batch_id in their payload);
+	// running_flag is generated from status so UNIQUE(product_id, running_flag) allows one running batch.
+	`CREATE TABLE IF NOT EXISTS epic_batches (
+  id VARCHAR(40) PRIMARY KEY,
+  product_id INT NOT NULL,
+  epic_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  status VARCHAR(12) NOT NULL DEFAULT 'running',
+  cases JSON NOT NULL,
+  started_by VARCHAR(64) NOT NULL DEFAULT '',
+  note VARCHAR(300) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  running_flag TINYINT GENERATED ALWAYS AS (IF(status = 'running', 1, NULL)) STORED,
+  UNIQUE KEY uq_epic_batches_running (product_id, running_flag),
+  INDEX idx_epic_batches_product (product_id, epic_code, created_at),
+  CONSTRAINT fk_epic_batches_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
