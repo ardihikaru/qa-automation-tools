@@ -70,6 +70,8 @@ export default function ProductsView() {
   const [products, setProducts] = useState<Product[]>([]);
   const [poolEnabled, setPoolEnabled] = useState(true);
   const [gaosConfigured, setGaosConfigured] = useState(false);
+  const [gaosWebUrl, setGaosWebUrl] = useState('');
+  const [gaosLink, setGaosLink] = useState<Record<number, { state: string; note: string }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // `?product=<id>` opens that product's detail (the knowledge base links back this way).
@@ -92,10 +94,18 @@ export default function ProductsView() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api<{ products: Product[]; pool_enabled: boolean; gaos_configured?: boolean }>('/api/products');
+      const data = await api<{ products: Product[]; pool_enabled: boolean; gaos_configured?: boolean; gaos_web_url?: string }>('/api/products');
       setProducts(data.products);
       setPoolEnabled(data.pool_enabled);
       setGaosConfigured(!!data.gaos_configured);
+      setGaosWebUrl(data.gaos_web_url ?? '');
+      // Live, read-only check that GAOS really lists the product (never blocks the list).
+      for (const p of data.products) {
+        if (!p.gaos?.integrated) continue;
+        api<{ state: string; note: string }>(`/api/products/${p.id}/gaos/status`)
+          .then((r) => setGaosLink((m) => ({ ...m, [p.id]: r })))
+          .catch(() => setGaosLink((m) => ({ ...m, [p.id]: { state: 'unreachable', note: 'status check failed' } })));
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load products');
@@ -261,14 +271,20 @@ export default function ProductsView() {
                         {p.staging_url.replace(/^https?:\/\//, '')}
                       </a>
                       {p.allow_non_automation_work && <span className="badge bg-amber-100 text-amber-800">Non-automation work on</span>}
-                      {p.gaos?.integrated && (
-                        <span
-                          className={`badge ml-1 ${p.gaos.last_status === 'failed' ? 'bg-red-100 text-red-700' : p.gaos.last_status === 'partial' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'}`}
-                          title={`Integrated with GAOS (${p.gaos.product_id}). Last sync: ${p.gaos.last_status || 'not yet'}${p.gaos.last_sync_at ? ` at ${new Date(p.gaos.last_sync_at).toLocaleString()}` : ''}`}
-                        >
-                          GAOS
-                        </span>
-                      )}
+                      {p.gaos?.integrated && (() => {
+                        const link = gaosLink[p.id];
+                        const live = link ? ` Link check: ${link.state}${link.note ? ` (${link.note})` : ''}.` : '';
+                        const cls = `badge ml-1 ${p.gaos.last_status === 'failed' || (link && link.state !== 'linked') ? 'bg-red-100 text-red-700' : p.gaos.last_status === 'partial' ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'}`;
+                        const title = `Integrated with GAOS (${p.gaos.product_id}). Last sync: ${p.gaos.last_status || 'not yet'}${p.gaos.last_sync_at ? ` at ${new Date(p.gaos.last_sync_at).toLocaleString()}` : ''}.${live}`;
+                        const dot = link?.state === 'linked' ? '● ' : link ? '○ ' : '';
+                        return gaosWebUrl ? (
+                          <a href={gaosWebUrl} target="_blank" rel="noopener noreferrer" className={`${cls} hover:underline`} title={title} data-testid="gaos-badge">
+                            {dot}GAOS {p.gaos.product_id} ↗
+                          </a>
+                        ) : (
+                          <span className={cls} title={title} data-testid="gaos-badge">{dot}GAOS</span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 max-w-[16rem] hidden 2xl:table-cell">
                       <a href={p.staging_url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline break-all">{p.staging_url}</a>
