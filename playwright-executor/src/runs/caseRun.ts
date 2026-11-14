@@ -150,6 +150,16 @@ export function projectsFor(specs: string[]): string[] {
   return [...p];
 }
 
+/**
+ * The automation repo validates VENDOR_E2E_RUN as 3-24 letters/digits and builds its report path
+ * from it (.runs/<VENDOR_E2E_RUN>/results.json), so a run id like "run-<uuid>" cannot be used as is.
+ * Deterministic, filesystem- and regex-safe key derived from the run id.
+ */
+export function runKey(runId: string): string {
+  const alnum = runId.replace(/[^A-Za-z0-9]/g, '');
+  return ('qa' + alnum.slice(-18)).slice(0, 24);
+}
+
 function readReport(repo: string, runId: string): { report: unknown; error?: string } {
   const runsDir = path.join(repo, '.runs');
   const file = path.join(runsDir, runId, 'results.json');
@@ -225,7 +235,8 @@ export async function caseRun(
     }
   }
 
-  const runDir = path.join(repo, '.runs', ctx.runId);
+  const key = runKey(ctx.runId);
+  const runDir = path.join(repo, '.runs', key);
   fs.mkdirSync(runDir, { recursive: true });
   const args = [
     'playwright',
@@ -243,13 +254,13 @@ export async function caseRun(
     ...envVars,
     // Set last: the env file cannot redirect the run.
     PLAYWRIGHT_JSON_OUTPUT_NAME: path.join(runDir, 'results.json'),
-    VENDOR_E2E_RUN: ctx.runId,
+    VENDOR_E2E_RUN: key,
     TEST_ENV: 'staging',
   };
   emit('info', 'run', `npx playwright test ${params.spec_paths.join(' ')} -g ${params.case_code}`);
   const r = await runProc(deps, ctx, 'run', 'npx', args, { cwd: repo, env, secrets });
 
-  const { report, error: reportError } = readReport(repo, ctx.runId);
+  const { report, error: reportError } = readReport(repo, key);
   emit(reportError ? 'warn' : 'info', 'report', reportError ?? 'results.json read');
   const tail = redact(r.tail, secrets).slice(-TAIL_BYTES);
   emit(r.code === 0 ? 'info' : 'warn', 'done', `exit ${r.code}`);
