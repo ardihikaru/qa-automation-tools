@@ -48,6 +48,7 @@ type Result struct {
 	RejectedSample   []Reject  `json:"rejected_sample"`
 	ResultsApplied   int       `json:"results_applied"`
 	ResultsUnchanged int       `json:"results_unchanged"`
+	ResultsStale     int       `json:"results_stale"` // runs GAOS already holds a newer one for: informational
 	EpicsAdded       int       `json:"epics_added"`
 	CardsAdded       int       `json:"cards_added"`
 	CardsDeferred    int       `json:"cards_deferred"`
@@ -310,6 +311,10 @@ func (s *Syncer) push(ctx context.Context, productID int, pid string, cat *catal
 				res.ExistsDiffers++
 				continue
 			}
+			if x.Reason == "stale" { // GAOS holds a newer run for the case: not a failure
+				res.ResultsStale++
+				continue
+			}
 			res.Rejected++
 			if len(res.RejectedSample) < sampleMax {
 				res.RejectedSample = append(res.RejectedSample, Reject{CaseID: clipRunes(x.CaseID, 80), Reason: clipRunes(x.Reason, 80)})
@@ -361,7 +366,8 @@ func (s *Syncer) push(ctx context.Context, productID int, pid string, cat *catal
 	var items []resultItem
 	for _, c := range plan.cases {
 		if !rejectedOther[c.CaseID] {
-			items = append(items, resultItem{CaseID: c.CaseID, Implemented: c.Implemented, Spec: c.Spec})
+			run, has := cat.results[c.CaseID]
+			items = append(items, resultItem{CaseID: c.CaseID, Implemented: c.Implemented, Spec: c.Spec}.withRun(run, has))
 		}
 	}
 	nRes = batches(len(items))
@@ -397,6 +403,9 @@ func (s *Syncer) push(ctx context.Context, productID int, pid string, cat *catal
 		}
 		note := fmt.Sprintf("sent %d cases (created %d, unchanged %d, exists-differs %d), skipped %d, results applied %d; rejected %d",
 			res.Sent, res.Created, res.Unchanged, res.ExistsDiffers, res.Skipped, res.ResultsApplied, res.Rejected)
+		if res.ResultsStale > 0 {
+			note += fmt.Sprintf("; %d results older than GAOS's", res.ResultsStale)
+		}
 		if plan.noSpec > 0 {
 			note += fmt.Sprintf("; %d automated cases without a usable spec", plan.noSpec)
 		}

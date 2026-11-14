@@ -102,6 +102,7 @@ func main() {
 		if database != nil {
 			gaos := gaossync.New(database, cfg.Backend.GAOS.APIURL, cfg.Backend.GAOS.APIToken)
 			router.SetGAOS(gaos)
+			router.SetOnResultsStored(gaos.Trigger) // a stored run is pushed like a synced catalog
 			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
 			log.Printf("   GAOS integration: configured=%v", gaos.Configured())
 			if tok := cfg.Backend.GAOS.InboundToken; tok != "" {
