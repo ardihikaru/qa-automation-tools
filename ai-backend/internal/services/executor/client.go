@@ -27,6 +27,10 @@ const (
 	StatusFailed    = "failed"
 )
 
+// ErrRunNotFound is wrapped by the error of a request the executor answered with 404 (the run
+// is unknown: it never existed or the executor restarted and lost it).
+var ErrRunNotFound = errors.New("playwright-executor: run not found")
+
 // ErrQueueFull is returned when the executor answers 429.
 var ErrQueueFull = errors.New("playwright-executor queue is full")
 
@@ -224,6 +228,9 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte, out i
 		_ = json.Unmarshal(raw, &e)
 		if e.Error == "" {
 			e.Error = strings.TrimSpace(string(raw))
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("playwright-executor %s %s: HTTP 404: %s: %w", method, path, e.Error, ErrRunNotFound)
 		}
 		return fmt.Errorf("playwright-executor %s %s: HTTP %d: %s", method, path, resp.StatusCode, e.Error)
 	}
