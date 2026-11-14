@@ -85,3 +85,6 @@ mise exec -- npm run build
 ```
 
 For production verification (limits, a real run, and backend integration), see [deploy/playwright-executor/README.md](../deploy/playwright-executor/README.md#verification).
+
+- Env files (`parseEnvFile`): double-quoted values expand `\n` and may span lines, so a PEM key fits (`KEY="-----BEGIN PUBLIC KEY-----\n..."`). Single-quoted values stay literal.
+- For web specs the executor also runs `npx playwright install chromium` once per lockfile hash (stamp `node_modules/.qa-browsers`): the repo pins its own Playwright version whose browser build is not in the user cache.

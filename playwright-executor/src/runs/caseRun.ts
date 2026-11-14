@@ -233,6 +233,26 @@ export async function caseRun(
     } else {
       emit('info', 'install', 'dependencies up to date');
     }
+    // The repo pins its own Playwright version, whose browser build may not be in the user's cache
+    // yet (web specs would fail to launch). Install it once per lockfile hash, only for web specs.
+    if (params.spec_paths.some((sp) => sp.startsWith('tests/web/'))) {
+      const bstamp = path.join(repo, 'node_modules', '.qa-browsers');
+      let bhave = '';
+      try {
+        bhave = fs.readFileSync(bstamp, 'utf8').trim();
+      } catch {
+        /* none yet */
+      }
+      if (bhave !== want) {
+        emit('info', 'install', 'installing the Playwright chromium build this repo needs');
+        const b = await runProc(deps, ctx, 'install', 'npx', ['playwright', 'install', 'chromium'], { cwd: repo, env: minimalEnv(deps.baseEnv), secrets });
+        if (b.code !== 0) {
+          emit('error', 'install', `playwright install failed (exit ${b.code})`);
+          throw new Error(`playwright install failed (exit ${b.code})`);
+        }
+        fs.writeFileSync(bstamp, want);
+      }
+    }
   }
 
   const key = runKey(ctx.runId);
