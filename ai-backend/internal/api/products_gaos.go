@@ -99,3 +99,36 @@ func (r *Router) handleGAOSSync(w http.ResponseWriter, req *http.Request, id int
 	}
 	// A client that went away does not stop the push: it runs on its own context.
 }
+
+// handleGAOSStatus serves GET /api/products/{id}/gaos/status: a live, read-only check that GAOS
+// accepts our token and lists this product's GAOS id. It never changes anything.
+func (r *Router) handleGAOSStatus(w http.ResponseWriter, req *http.Request, id int) {
+	if req.Method != http.MethodGet {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	d := r.getDB()
+	if d == nil || r.gaos == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "not available")
+		return
+	}
+	var on bool
+	var pid string
+	err := d.SQL.QueryRowContext(req.Context(), `SELECT gaos_integrated, gaos_product_id FROM product_settings WHERE product_id = ?`, id).Scan(&on, &pid)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		writeOpError(w, "gaos status", err)
+		return
+	}
+	out := map[string]any{"configured": r.gaos.Configured(), "integrated": on, "product_id": pid, "web_url": r.gaos.WebURL()}
+	switch {
+	case !on || pid == "":
+		out["state"], out["note"] = "not_integrated", "the product is not linked to GAOS"
+	case !r.gaos.Configured():
+		out["state"], out["note"] = gaossync.LinkUnreachable, "GAOS is not configured on this server"
+	default:
+		ctx, cancel := context.WithTimeout(req.Context(), 15*time.Second)
+		defer cancel()
+		out["state"], out["note"] = r.gaos.CheckLink(ctx, pid)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
