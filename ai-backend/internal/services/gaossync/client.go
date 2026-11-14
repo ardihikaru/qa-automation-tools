@@ -37,12 +37,14 @@ type rejection struct {
 // casesResponse and resultsResponse are the 200 answers. Required fields are pointers so a
 // missing one is told from a zero; unknown fields are ignored so GAOS can add some.
 type casesResponse struct {
-	Created       *int            `json:"created"`
-	Unchanged     *int            `json:"unchanged"`
-	Rejected      *[]rejection    `json:"rejected"`
-	EpicsAdded    int             `json:"epicsAdded"`
-	CardsAdded    int             `json:"cardsAdded"`
-	CardsDeferred int             `json:"cardsDeferred"`
+	Created    *int         `json:"created"`
+	Unchanged  *int         `json:"unchanged"`
+	Rejected   *[]rejection `json:"rejected"`
+	EpicsAdded int          `json:"epicsAdded"`
+	CardsAdded int          `json:"cardsAdded"`
+	// GAOS answers a STRING: "" when every new epic got its card, else why one did not
+	// ("replay", "no-workflow"). It is not a count (found on the first live push).
+	CardsDeferred string          `json:"cardsDeferred"`
 	CatHead       json.RawMessage `json:"catHead"`
 }
 
@@ -185,8 +187,11 @@ func (r *casesResponse) check(batch int) error {
 	if r.Created == nil || r.Unchanged == nil {
 		return errors.New("missing counters")
 	}
-	if *r.Created < 0 || *r.Unchanged < 0 || r.EpicsAdded < 0 || r.CardsAdded < 0 || r.CardsDeferred < 0 {
+	if *r.Created < 0 || *r.Unchanged < 0 || r.EpicsAdded < 0 || r.CardsAdded < 0 {
 		return errors.New("negative counter")
+	}
+	if len(r.CardsDeferred) > 40 {
+		return errors.New("bad cardsDeferred")
 	}
 	return checkRejected(r.Rejected, batch)
 }

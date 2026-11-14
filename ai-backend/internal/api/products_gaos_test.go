@@ -39,7 +39,7 @@ func newGAOSFake(t *testing.T) *gaosFake {
 		f.mu.Unlock()
 		time.Sleep(d)
 		if strings.HasSuffix(r.URL.Path, "/qa/cases") {
-			fmt.Fprintf(w, `{"created":%d,"unchanged":0,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":0,"catHead":"h"}`, len(body.Cases))
+			fmt.Fprintf(w, `{"created":%d,"unchanged":0,"rejected":[],"epicsAdded":0,"cardsAdded":0,"cardsDeferred":"","catHead":"h"}`, len(body.Cases))
 			return
 		}
 		fmt.Fprintf(w, `{"applied":%d,"unchanged":0,"rejected":[],"catHead":"h"}`, len(body.Items))
