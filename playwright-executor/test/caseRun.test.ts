@@ -10,7 +10,7 @@ import { checkEnvHosts, parseEnvFile } from '../src/caseFs';
 import { ExecutorConfig } from '../src/config';
 import { RunQueue } from '../src/queue';
 import { redact, redactLine } from '../src/redact';
-import { caseRun, CaseRunDeps, projectsFor } from '../src/runs/caseRun';
+import { caseRun, CaseRunDeps, projectsFor, runKey } from '../src/runs/caseRun';
 import { CaseRunParams, RunRecord } from '../src/types';
 import { parseRunRequest } from '../src/validate';
 
@@ -247,7 +247,8 @@ test('caseRun: npm ci then playwright, minimal env, redacted events, report and 
   }
   assert.equal(calls[0].opts.env.API_TOKEN, undefined, 'npm ci gets no env-file keys');
   assert.equal(pw.opts.env.API_TOKEN, 'supersecretvalue');
-  assert.equal(pw.opts.env.VENDOR_E2E_RUN, 'run-1');
+  assert.equal(pw.opts.env.VENDOR_E2E_RUN, runKey('run-1'));
+  assert.match(pw.opts.env.VENDOR_E2E_RUN, /^[A-Za-z0-9]{3,24}$/);
   assert.equal(pw.opts.env.TEST_ENV, 'staging');
   assert.ok(fs.readFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), 'utf8').length === 64);
 
