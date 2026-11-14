@@ -16,29 +16,14 @@ test.describe('Dashboard Navigation', () => {
     await expect(page).toHaveTitle(/QA Automation Dashboard/);
   });
 
-  test('should redirect to /docs by default', async ({ page }) => {
+  test('should redirect to /products by default', async ({ page }) => {
     await page.goto(config.dashboardUrl);
-    await expect(page).toHaveURL(/\/docs/);
-  });
-
-  test('should navigate to /qa', async ({ page }) => {
-    await page.goto(`${config.dashboardUrl}/qa`);
-    await expect(page).toHaveURL(/\/qa/);
-  });
-
-  test('should navigate to /issues', async ({ page }) => {
-    await page.goto(`${config.dashboardUrl}/issues`);
-    await expect(page).toHaveURL(/\/issues/);
+    await expect(page).toHaveURL(/\/products/);
   });
 
   test('should navigate to /cost', async ({ page }) => {
     await page.goto(`${config.dashboardUrl}/cost`);
     await expect(page).toHaveURL(/\/cost/);
-  });
-
-  test('should navigate to /fixes', async ({ page }) => {
-    await page.goto(`${config.dashboardUrl}/fixes`);
-    await expect(page).toHaveURL(/\/fixes/);
   });
 
   test('should navigate to /skills', async ({ page }) => {

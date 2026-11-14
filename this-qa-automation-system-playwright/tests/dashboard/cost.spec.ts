@@ -52,7 +52,7 @@ test.describe('Cost Analytics View (/cost)', () => {
   });
 
   test('has no console errors', async ({ page }) => {
-    // The post-login landing page (/docs) may still be fetching; let it settle so its aborted
+    // The post-login landing page (/products) may still be fetching; let it settle so its aborted
     // request is not blamed on /cost.
     await page.waitForLoadState('networkidle');
     const errors: string[] = [];
