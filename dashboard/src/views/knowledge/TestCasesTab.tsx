@@ -7,6 +7,7 @@ import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, 
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 import CaseAutomation from './CaseAutomation';
+import EpicAutomation from './EpicAutomation';
 import { Paging, useClampPage, useResetOnChange } from './paging';
 
 
@@ -91,6 +92,8 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
           Include removed
         </label>
       </div>
+
+      {epic !== '' && hasRepo && canWrite && <EpicAutomation pid={pid} epic={epic} />}
 
       {error && <ErrorNote onRetry={reload}>{error}</ErrorNote>}
       {loading && !data && <SkeletonRows rows={size} label="Loading test cases" />}

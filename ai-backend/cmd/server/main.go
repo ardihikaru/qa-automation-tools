@@ -145,6 +145,7 @@ func main() {
 	}
 	router.ResumeCaseApprovals(context.Background()) // an open approval survives a restart (CASE_AUTOMATION.md)
 	router.ResumeOrphanedJobs(context.Background())  // other case_run/case_create jobs are retried (max 2), not failed
+	router.StartEpicDriver(serverCtx, 0)                // EPIC_AUTOMATION.md: works through running epic batches (after the resume steps)
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs

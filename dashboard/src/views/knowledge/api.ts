@@ -589,3 +589,34 @@ export const getJobEvents = (jobId: number | string, since: number, signal?: Abo
   api<JobEvents>(`/api/jobs/${enc(String(jobId))}/events?since=${since}`, { signal }).then((r) => ({ ...r, events: Array.isArray(r?.events) ? r.events : [] }));
 export const answerApproval = (jobId: number | string, decision: ApprovalDecision, text?: string) =>
   api<unknown>(`/api/jobs/${enc(String(jobId))}/approval`, json('POST', { decision, ...(text ? { text } : {}) }));
+
+// ---- EPIC_AUTOMATION.md: automate an epic's planned cases, two at a time ----
+export type EpicCaseState = 'pending' | 'active' | 'awaiting_approval' | 'pr' | 'declined' | 'failed' | 'needs_person' | 'skipped';
+export interface EpicBatchCase {
+  code: string;
+  seq: number;
+  state: EpicCaseState;
+  job_id: string;
+  detail: string;
+}
+export interface EpicBatch {
+  id: string;
+  status: 'running' | 'completed' | 'cancelled' | 'stopped';
+  note: string;
+  started_by: string;
+  created_at: string;
+  max_open: number;
+  cases: EpicBatchCase[];
+}
+export interface EpicAutomation {
+  repo: boolean;
+  eligible: number;
+  sample: string[];
+  batch: EpicBatch | null;
+}
+
+const epicUrl = (pid: number, epic: string) => `${kb(pid)}/epics/${enc(epic)}`;
+export const getEpicAutomation = (pid: number, epic: string, signal?: AbortSignal) => api<EpicAutomation>(`${epicUrl(pid, epic)}/automation`, { signal });
+export const automateEpic = (pid: number, epic: string, maxCases: number) =>
+  api<{ batch_id: string; planned: string[] }>(`${epicUrl(pid, epic)}/automate`, json('POST', { max_cases: maxCases }));
+export const cancelEpicBatch = (id: string) => api<EpicBatch>(`/api/epic-batches/${enc(id)}/cancel`, { method: 'POST' });
