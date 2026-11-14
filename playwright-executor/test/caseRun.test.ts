@@ -147,6 +147,17 @@ test('env file parsing and host allow-list', () => {
   assert.throws(() => checkEnvHosts({ A: 'nourl' }, allowed), /no http/);
 });
 
+test('env file parsing: quoted multi-line and \\n-escaped PEM values', () => {
+  const pem = '-----BEGIN PUBLIC KEY-----\nAAAA\nBBBB\n-----END PUBLIC KEY-----';
+  const one = parseEnvFile('K="-----BEGIN PUBLIC KEY-----\\nAAAA\\nBBBB\\n-----END PUBLIC KEY-----"\nNEXT=1\n');
+  assert.equal(one.K, pem);
+  assert.equal(one.NEXT, '1');
+  const multi = parseEnvFile('K="-----BEGIN PUBLIC KEY-----\nAAAA\nBBBB\n-----END PUBLIC KEY-----"\nNEXT=2\n');
+  assert.equal(multi.K, pem);
+  assert.equal(multi.NEXT, '2');
+  assert.equal(parseEnvFile("S='a\\nb'\n").S, 'a\\nb', 'single quotes stay literal');
+});
+
 test('projectsFor maps spec roots to Playwright projects', () => {
   assert.deepEqual(projectsFor(['tests/web/a.spec.ts']), ['web-*']);
   assert.deepEqual(projectsFor(['tests/api/rest/b.spec.ts']), ['api-rest']);
@@ -194,7 +205,9 @@ function fakeDeps(fx: Fx, script: (call: Call, c: { out: PassThrough; err: PassT
       child.stderr = new PassThrough();
       child.pid = ++pid;
       setImmediate(() => {
-        const code = script(call, { out: child.stdout, err: child.stderr });
+        // The browser install is infrastructure, not the scripted test run.
+        const isInstall = cmd === 'npx' && args[1] === 'install';
+        const code = isInstall ? 0 : script(call, { out: child.stdout, err: child.stderr });
         if (code === 'hang') return;
         setImmediate(() => child.emit('close', code));
       });
@@ -233,8 +246,9 @@ test('caseRun: npm ci then playwright, minimal env, redacted events, report and 
   );
   const res = await caseRun({ cfg: fx.cfg, signal: new AbortController().signal, runId: 'run-1', emit: (l, s, m) => events.push([l, s, m]) }, params(fx), deps);
 
-  assert.deepEqual(calls.map((c) => [c.cmd, c.args[0]]), [['npm', 'ci'], ['npx', 'playwright']]);
-  const pw = calls[1];
+  assert.deepEqual(calls.map((c) => [c.cmd, c.args[0]]), [['npm', 'ci'], ['npx', 'playwright'], ['npx', 'playwright']]);
+  assert.deepEqual(calls[1].args, ['playwright', 'install', 'chromium'], 'web specs install the repo\'s browser build');
+  const pw = calls[2];
   assert.deepEqual(pw.args, ['playwright', 'test', 'tests/web/a.spec.ts', '--project=web-*', '-g', 'TC-REG-001', '--workers=1', '--retries=0', '--reporter=json,list']);
   for (const c of calls) {
     assert.equal(c.opts.shell, false);
@@ -271,6 +285,7 @@ test('caseRun: second run skips npm ci when the lockfile hash matches; failures 
   fs.mkdirSync(path.join(fx.repo, 'node_modules'));
   const { createHash } = await import('node:crypto');
   fs.writeFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), createHash('sha256').update(fs.readFileSync(path.join(fx.repo, 'package-lock.json'))).digest('hex'));
+  fs.copyFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), path.join(fx.repo, 'node_modules/.qa-browsers'));
   const calls: Call[] = [];
   const deps = fakeDeps(fx, (call, c) => {
     c.out.write('1 failed\n');
@@ -318,6 +333,7 @@ test('caseRun: abort kills the process group (TERM then KILL) and rejects', asyn
   fs.mkdirSync(path.join(fx.repo, 'node_modules'));
   const { createHash } = await import('node:crypto');
   fs.writeFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), createHash('sha256').update(fs.readFileSync(path.join(fx.repo, 'package-lock.json'))).digest('hex'));
+  fs.copyFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), path.join(fx.repo, 'node_modules/.qa-browsers'));
   const ctrl = new AbortController();
   const p = caseRun({ cfg: fx.cfg, signal: ctrl.signal, runId: 'r', emit: () => undefined }, params(fx), deps);
   setTimeout(() => ctrl.abort(new Error('run exceeded 1s timeout')), 30);
