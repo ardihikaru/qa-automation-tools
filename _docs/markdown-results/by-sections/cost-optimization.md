@@ -1,2 +1,0 @@
-# Cost Optimization
-Caching strategies.
