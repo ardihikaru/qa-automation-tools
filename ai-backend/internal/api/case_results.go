@@ -9,6 +9,7 @@ package api
 import (
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,6 +25,24 @@ func IsResultsIngestPath(path string) bool { return path == "/api/v1/results/pla
 
 // SetResultsIngestToken enables the CI route. Empty = disabled (503, fail-closed).
 func (r *Router) SetResultsIngestToken(token string) { r.resultsToken = token }
+
+// SetOnResultsStored sets the hook called with the product id after an upload stored at least one
+// result (GAOS_COLLABORATION.md: the push carries the results). It must return at once; a nil hook
+// (the default) does nothing. A panic in it never reaches the upload.
+func (r *Router) SetOnResultsStored(fn func(productID int)) { r.onResultsStored = fn }
+
+func (r *Router) notifyResultsStored(pid int) {
+	fn := r.onResultsStored
+	if fn == nil {
+		return
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("case-results: hook for product %d panicked: %v", pid, rec)
+		}
+	}()
+	fn(pid)
+}
 
 // ResultsIngestEnabled reports whether the CI token is set.
 func (r *Router) ResultsIngestEnabled() bool { return r.resultsToken != "" }
@@ -96,6 +115,9 @@ func (r *Router) ingestReport(w http.ResponseWriter, req *http.Request, pid int,
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "store failed")
 		return
+	}
+	if out.Stored > 0 {
+		r.notifyResultsStored(pid)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tests": rep.Tests, "cases": len(rep.Results), "run_ref": runRef, "run_at": rep.StartedAt.Format(time.RFC3339),
