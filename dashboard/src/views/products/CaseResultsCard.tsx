@@ -101,7 +101,7 @@ export default function CaseResultsCard({ product }: { product: Product }) {
           </p>
           {summary.unmatched_count > 0 && (
             <div className="text-amber-800">
-              <p>{summary.unmatched_count} codes are not active cases of this product</p>
+              <p>{summary.unmatched_count} {summary.unmatched_count === 1 ? "code is not an active case" : "codes are not active cases"} of this product</p>
               <p className="font-mono text-xs break-all">
                 {codes.slice(0, SHOWN_CODES).join(', ')}
                 {summary.unmatched_count > Math.min(codes.length, SHOWN_CODES) ? ', …' : ''}
