@@ -93,9 +93,11 @@ func TestApprovalPermissionAndBody(t *testing.T) {
 
 func TestExistingJobRoutesStillWork(t *testing.T) {
 	r := NewRouter(nil, nil, nil, nil)
-	w := dispatchAs(r, asUser("QA"), http.MethodPost, "/api/jobs/qa/run", `{}`)
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("qa/run: %d", w.Code)
+	// The legacy enqueue routes are gone.
+	for _, p := range []string{"/api/jobs/qa/run", "/api/jobs/docs/generate"} {
+		if w := dispatchAs(r, asUser("QA"), http.MethodPost, p, `{}`); w.Code != http.StatusNotFound {
+			t.Fatalf("%s: %d", p, w.Code)
+		}
 	}
 	if w := dispatchAs(r, asUser("QA"), http.MethodGet, "/api/jobs/job-unknown", ""); w.Code != http.StatusNotFound {
 		t.Errorf("get job: %d", w.Code)

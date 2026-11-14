@@ -74,7 +74,7 @@ func main() {
 	router := api.NewRouter(database, aiService, learningService, skillsService)
 
 	// Playwright jobs run in playwright-executor (systemd service on app-host).
-	// Without PLAYWRIGHT_EXECUTOR_URL, /api/jobs/* stay simulated.
+	// Without PLAYWRIGHT_EXECUTOR_URL, case_run jobs fail fast (no executor).
 	if exe := executor.New(executor.Config{URL: cfg.Backend.Executor.URL, Token: cfg.Backend.Executor.Token}); exe != nil {
 		router.SetExecutor(exe, time.Duration(cfg.Backend.Executor.TimeoutMinutes)*time.Minute)
 	}
