@@ -695,3 +695,17 @@ func TestEnvFailure(t *testing.T) {
 		t.Fatal("a failing assertion is not an env failure")
 	}
 }
+
+func TestValidateAllowsTargetsImportOnly(t *testing.T) {
+	mk := func(imp string) GeneratedFile {
+		return GeneratedFile{Path: "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts",
+			Content: "import { test } from '@playwright/test';\nimport { x } from '" + imp + "';\ntest('TC-VSYS-001 ok', async () => {});\n"}
+	}
+	o := ValidateOptions{Code: "TC-VSYS-001"}
+	if err := Validate(mk("@config/targets"), o); err != nil {
+		t.Fatalf("@config/targets must be allowed: %v", err)
+	}
+	if err := Validate(mk("@config/env"), o); err == nil {
+		t.Fatal("@config/env must stay forbidden")
+	}
+}
