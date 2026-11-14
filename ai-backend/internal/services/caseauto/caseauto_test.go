@@ -425,7 +425,7 @@ func TestHappyPath(t *testing.T) {
 	if out.PRURL != "https://github.com/o/r/pull/7" || out.SpecPath != specPath || out.Repairs != 0 {
 		t.Fatalf("%+v", out)
 	}
-	if !r.repo.pushed || r.repo.prs != 1 || len(r.repo.committed) != 1 || !strings.HasPrefix(r.repo.committed[0], "test(TC-PATREG-020): automate Check-in") {
+	if !r.repo.pushed || r.repo.prs != 1 || len(r.repo.committed) != 1 || !strings.HasPrefix(r.repo.committed[0], "test(TC-PATREG-020): automate check-in writes") {
 		t.Fatalf("repo: %+v", r.repo)
 	}
 	if len(r.in.created) != 1 || r.in.created[0].ExternalID != "qa-job-1-pr" || len(r.in.created[0].Options) != 3 || r.in.created[0].ExpiresInHours != 72 {
@@ -707,5 +707,15 @@ func TestValidateAllowsTargetsImportOnly(t *testing.T) {
 	}
 	if err := Validate(mk("@config/env"), o); err == nil {
 		t.Fatal("@config/env must stay forbidden")
+	}
+}
+
+func TestSpecTitle(t *testing.T) {
+	src := "test('TC-VSYS-001 the liveness probe answers 200', async () => {});"
+	if got := specTitle(src, "TC-VSYS-001"); got != "the liveness probe answers 200" {
+		t.Fatalf("got %q", got)
+	}
+	if specTitle("nothing", "TC-VSYS-001") != "" {
+		t.Fatal("no test means empty")
 	}
 }
