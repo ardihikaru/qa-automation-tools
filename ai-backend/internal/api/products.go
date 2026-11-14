@@ -524,6 +524,9 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "sync":
 		r.handleGAOSSync(w, req, id)
 
+	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "decisions":
+		r.handleGAOSDecisions(w, req, id)
+
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
 	}

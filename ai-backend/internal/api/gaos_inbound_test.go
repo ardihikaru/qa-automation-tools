@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/qa-automation/ai-backend/internal/auth"
+	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/testdb"
 )
 
@@ -172,9 +173,52 @@ func TestGAOSInboundDB(t *testing.T) {
 	if dec != "planned" {
 		t.Fatalf("stale push overwrote: %s", dec)
 	}
+	// Tombstone: a removed case is sent as implemented:false without a spec.
+	must(`UPDATE kb_test_cases SET removed_at = NOW() WHERE code = 'TC-AUTH-001'`)
+	w = inboundCall(r, "GET", "/api/v1/gaos/results?product=p-6", bearer, "")
+	var pg gaosResultsPage
+	_ = json.Unmarshal(w.Body.Bytes(), &pg)
+	found := false
+	for _, it := range pg.Items {
+		if it.CaseID == "TC-AUTH-001" {
+			found = true
+			if it.Implemented || it.Spec != "" {
+				t.Fatalf("removed case not a tombstone: %+v", it)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("removed case missing from results: %s", w.Body)
+	}
+	must(`UPDATE kb_test_cases SET removed_at = NULL WHERE code = 'TC-AUTH-001'`)
+
+	// Decisions view: stored row compared with our derivation (no story/features here, so module/features match;
+	// GAOS sent features [A13.03] which we do not derive).
+	r.SetGAOS(gaossync.New(d, "", ""))
+	dreq := httptest.NewRequest("GET", "/api/products/1/gaos/decisions?diff=1", nil)
+	dw := httptest.NewRecorder()
+	r.handleGAOSDecisions(dw, dreq, 1)
+	if dw.Code != 200 || !strings.Contains(dw.Body.String(), `"differing"`) {
+		t.Fatalf("decisions: %d %s", dw.Code, dw.Body)
+	}
 	var n int
 	_ = d.QueryRow(ctx, `SELECT COUNT(*) FROM gaos_decisions WHERE product_id=1`).Scan(&n)
 	if n != 1 {
 		t.Fatalf("stored %d decisions", n)
+	}
+}
+
+func TestDiffDerived(t *testing.T) {
+	a := gaossync.Derived{Epic: "AUTH", Module: "A13", Features: []string{"A13.02", "A13.01"}, Level: "API"}
+	b := gaossync.Derived{Epic: "AUTH", Module: "A13", Features: []string{"A13.01", "A13.02"}, Level: "API"}
+	if d := diffDerived(a, &b); len(d) != 0 {
+		t.Fatalf("order must not matter: %v", d)
+	}
+	b.Module, b.Features = "A14", []string{"A13.01"}
+	if d := diffDerived(a, &b); len(d) != 2 || d[0] != "module" || d[1] != "features" {
+		t.Fatalf("got %v", d)
+	}
+	if d := diffDerived(a, nil); len(d) != 0 {
+		t.Fatalf("no derivation = no diff: %v", d)
 	}
 }
