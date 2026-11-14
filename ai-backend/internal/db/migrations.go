@@ -701,6 +701,26 @@ ALTER TABLE product_settings
   ADD COLUMN gaos_last_sync_at DATETIME NULL,
   ADD COLUMN gaos_last_status VARCHAR(20) NOT NULL DEFAULT '',
   ADD COLUMN gaos_last_note VARCHAR(300) NOT NULL DEFAULT '';`,
+
+	// GAOS_INBOUND.md: planning decisions GAOS pushes to POST /api/v1/gaos/catalog. Never touches kb_*.
+	`CREATE TABLE IF NOT EXISTS gaos_decisions (
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  epic VARCHAR(16) NOT NULL DEFAULT '',
+  module VARCHAR(16) NOT NULL DEFAULT '',
+  features JSON NOT NULL,
+  user_story VARCHAR(32) NOT NULL DEFAULT '',
+  polarity VARCHAR(4) NOT NULL DEFAULT '',
+  level VARCHAR(8) NOT NULL DEFAULT '',
+  pri VARCHAR(4) NOT NULL DEFAULT '',
+  decision ENUM('planned','blocked','manual-only','wont') NOT NULL,
+  reason VARCHAR(300) NOT NULL DEFAULT '',
+  cat_rev BIGINT NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (product_id, case_code),
+  CONSTRAINT fk_gaos_decisions_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

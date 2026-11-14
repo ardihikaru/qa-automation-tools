@@ -46,6 +46,8 @@ type Router struct {
 	kb *knowledge.Syncer
 	// gaos pushes flagged products' test cases to GAOS (nil or unconfigured = off). See products_gaos.go.
 	gaos *gaossync.Syncer
+	// gaosInboundToken guards /api/v1/gaos/* (GAOS_INBOUND.md); empty = disabled.
+	gaosInboundToken string
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
@@ -572,6 +574,11 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	if req.URL.Path == "/health" {
 		r.serveHealth(w)
+		return
+	}
+	// GAOS inbound: bearer token instead of the session cookie (GAOS_INBOUND.md).
+	if IsGAOSInboundPath(req.URL.Path) {
+		r.serveGAOSInbound(w, req)
 		return
 	}
 
