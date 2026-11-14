@@ -348,6 +348,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | `AI_TIMEOUT_SECONDS` | LLM call timeout | `180` |
 | `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | **Dormant** MiniMax settings (unused) | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
 | `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | playwright-executor endpoint, bearer token, max wait per job | empty (simulated), —, `30` |
+| `GAOS_API_URL`, `GAOS_API_TOKEN` | GAOS REST API base URL (https, or http to loopback/`10.10.0.0/24` only) and the QA bearer (`gaos_...`, secret); both empty = the GAOS integration is off ([GAOS_INTEGRATION.md](docs/designs/GAOS_INTEGRATION.md)) | empty, — |
 | `PORT`, `BACKEND_HOST` | Listen address | `8080`, `0.0.0.0` |
 | `DASHBOARD_ORIGIN` | CORS origin when auth is on | `http://localhost:6173` |
 | `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE` | Session cookie | `qa_session`, `12`, `false` |

@@ -122,6 +122,8 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/automation/central, remove repo) |
 | `/api/products/{id}/repos/{rid}/branches` | PUT | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (save branch list and default) |
 | `/api/products/{id}/repos/{rid}/verify`, `/clone`, `/checkout` | POST | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (Verify, Clone, Sync branches) |
+| `/api/products/{id}` | PUT `{gaos_integrated, gaos_product_id}` | `views/products/GaosCard.tsx` (Admin/DevOps; the list's `gaos_configured` says whether the server can push) |
+| `/api/products/{id}/gaos/sync` | POST (200 result, 202 still running, 409 busy) | `views/products/GaosCard.tsx` (Sync to GAOS now) |
 | `/api/products/{id}` | PUT `{knowledge_format}` | `views/knowledge/KnowledgeCard.tsx` (Admin/DevOps set the catalog format) |
 | `/api/products/{id}/knowledge/summary`, `/tree`, `/syncs`, `/syncs/{sid}`, `/epics`, `/stories`, `/test-cases`, `/features`, `/modules`, `/coverage?by=`, `/{parts\|modules\|submodules\|features\|epics\|stories\|test-cases}/{code}` | GET | `views/knowledge/api.ts` (all knowledge views; the case grid pages through `test-cases?{part\|module\|submodule\|epic}=…&page_size=200`) |
 | `/api/products/{id}/knowledge/sync` | POST (202 `{sync_id}`; 409 with `sync_id` is followed, not shown as an error) | `views/knowledge/KnowledgeCard.tsx`, `views/knowledge/useKnowledgeSync.ts` (products list rows, knowledge base top bar) |
