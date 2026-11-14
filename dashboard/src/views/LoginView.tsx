@@ -21,7 +21,7 @@ export default function LoginView() {
 
   if (user) {
     const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-    return <Navigate to={from || '/docs'} replace />;
+    return <Navigate to={from || '/products'} replace />;
   }
 
   const canSubmit = username.trim().length > 0 && password.length > 0 && !submitting;
@@ -33,7 +33,7 @@ export default function LoginView() {
     setError(null);
     try {
       await login(username.trim().toLowerCase(), password);
-      navigate('/docs', { replace: true });
+      navigate('/products', { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Invalid username or password';
       setError(message);

@@ -1,11 +1,7 @@
 import { ReactNode, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
-  FileText,
-  Bug,
-  AlertTriangle,
   DollarSign,
-  CheckCircle,
   X,
   Zap,
   GitBranch,
@@ -24,11 +20,7 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { path: '/docs', label: 'Documentation', icon: FileText },
-  { path: '/qa', label: 'QA Insights', icon: Bug },
-  { path: '/issues', label: 'Issue Debugger', icon: AlertTriangle },
   { path: '/cost', label: 'Cost Analytics', icon: DollarSign },
-  { path: '/fixes', label: 'Fix Tracking', icon: CheckCircle },
   { path: '/skills', label: 'Skills', icon: Zap },
   { path: '/agents', label: 'Agents', icon: Bot },
   { path: '/rules', label: 'Rules', icon: ScrollText },
