@@ -59,7 +59,7 @@ var CoverageStates = []string{"untested", "none", "partial", "full"}
 var CoverageBys = []string{"part", "module", "submodule", "feature", "epic", "story"}
 
 // Scope narrows a coverage query (empty fields are ignored).
-type Scope struct{ Part, Module, Submodule, Epic string }
+type Scope struct{ Part, Module, Submodule, Epic, Feature string }
 
 // CoverageBy returns the coverage of every active entity of one type, keyed by code. Entities
 // without test cases are present with State "untested". Feature-based groupings count each test
@@ -85,6 +85,10 @@ func (s *Syncer) CoverageBy(ctx context.Context, pid int, by string, sc Scope) (
 			where += " AND f.submodule_code = ?"
 			args = append(args, sc.Submodule)
 		}
+		if sc.Feature != "" {
+			where += " AND f.code = ?"
+			args = append(args, sc.Feature)
+		}
 		if by == "submodule" {
 			where += " AND f.submodule_code IS NOT NULL"
 		}
@@ -107,6 +111,12 @@ WHERE %s GROUP BY 1, 2`, col, where)
 			}
 			cw += " AND epic_code = ?"
 			args = append(args, sc.Epic)
+		}
+		if sc.Feature != "" && by == "story" {
+			in := " AND %s IN (SELECT story_code FROM kb_story_features WHERE product_id = ? AND feature_code = ?)"
+			kw += fmt.Sprintf(in, "code")
+			cw += fmt.Sprintf(in, "story_code")
+			args = append(args, pid, sc.Feature)
 		}
 		keysQ = fmt.Sprintf("SELECT code FROM %s WHERE %s", table, kw)
 		countQ = fmt.Sprintf("SELECT %s, status, COUNT(*) FROM kb_test_cases WHERE %s GROUP BY 1, 2", col, cw)
@@ -168,7 +178,7 @@ func (s *Syncer) coverageOf(ctx context.Context, pid int, et, code string) (*Cov
 	case TypeSubmodule:
 		by, sc = "submodule", Scope{Submodule: code}
 	case TypeFeature:
-		by = "feature"
+		by, sc = "feature", Scope{Feature: code}
 	case TypeEpic:
 		by, sc = "epic", Scope{Epic: code}
 	case TypeStory:
@@ -299,7 +309,28 @@ func (s *Syncer) Features(ctx context.Context, pid int, f Filter) (Item, error) 
 	if items, err = filterCoverage(items, f.Coverage); err != nil {
 		return nil, err
 	}
+	if err := sortItems(items, f.Sort); err != nil {
+		return nil, err
+	}
 	return pageItems(items, f), nil
+}
+
+// sortItems orders items by "tested" (default: items with test cases first, then by code) or "code".
+func sortItems(items []Item, by string) error {
+	switch by {
+	case "", "tested":
+		rank := func(it Item) int {
+			if c, ok := it["coverage"].(*Coverage); ok && c.TestCases > 0 {
+				return 0
+			}
+			return 1
+		}
+		sort.SliceStable(items, func(i, j int) bool { return rank(items[i]) < rank(items[j]) })
+	case "code":
+	default:
+		return badInput("sort must be tested or code")
+	}
+	return nil
 }
 
 // Modules lists modules (with part and sub-module counts) and their coverage.
