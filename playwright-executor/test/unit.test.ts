@@ -5,7 +5,7 @@ import { checkBearer } from '../src/auth';
 import { ExecutorConfig, parseCredentials } from '../src/config';
 import { RunQueue } from '../src/queue';
 import { createServer } from '../src/server';
-import { RunRecord } from '../src/types';
+import { RunParams, RunRecord } from '../src/types';
 import { parseRunRequest, RunRequest } from '../src/validate';
 
 const TOKEN = 'x'.repeat(40);
@@ -46,7 +46,7 @@ test('parseRunRequest validates type, roles and max_steps', () => {
   assert.deepEqual(ok.ok && ok.value.params, { roles: ['cashier'], max_steps: 5, interactive_skills: false, flows: [] });
 
   const def = parseRunRequest({ type: 'docs_generate' }, ROLES, ['admin']);
-  assert.ok(def.ok && def.value.params.roles[0] === 'admin' && def.value.params.max_steps === 10);
+  assert.ok(def.ok && (def.value.params as RunParams).roles[0] === 'admin' && (def.value.params as RunParams).max_steps === 10);
 
   for (const bad of [
     null,
@@ -131,6 +131,9 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     runTimeoutMs: 1000,
     maxQueue: 1,
     headless: true,
+    repoPool: '/tmp/unused',
+    envDir: '/tmp/unused',
+    allowedHosts: ['staging.invalid'],
   };
   const q = new RunQueue(async () => ({ done: true }), { maxQueue: 1, timeoutMs: 1000, ttlMs: 60_000 });
   const server = createServer(cfg, q);

@@ -1,12 +1,14 @@
 import { randomUUID } from 'crypto';
-import { RunRecord } from './types';
+import { EVENT_RING, RunEventLevel, RunRecord } from './types';
 import { RunRequest } from './validate';
 
 /**
  * Runs one job at a time. `signal` aborts when the run exceeds its timeout or
  * the service shuts down; handlers must close their browser when it fires.
  */
-export type RunHandler = (run: RunRecord, signal: AbortSignal) => Promise<Record<string, unknown>>;
+export type EmitEvent = (level: RunEventLevel, step: string, message: string) => void;
+
+export type RunHandler = (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => Promise<Record<string, unknown>>;
 
 export interface QueueOptions {
   maxQueue: number;
@@ -20,6 +22,7 @@ export class RunQueue {
   private pending: string[] = [];
   private active: { id: string; ctrl: AbortController } | null = null;
   private stopped = false;
+  private eventSeq = new Map<string, number>();
 
   constructor(private handler: RunHandler, private opts: QueueOptions) {}
 
@@ -35,6 +38,7 @@ export class RunQueue {
       type: req.type,
       params: req.params,
       status: 'queued',
+      events: [],
       created_at: new Date().toISOString(),
     };
     this.runs.set(run.id, run);
@@ -43,8 +47,19 @@ export class RunQueue {
     return run;
   }
 
-  get(id: string): RunRecord | undefined {
-    return this.runs.get(id);
+  /** The record; with `since`, a copy holding only events whose n > since. */
+  get(id: string, since?: number): RunRecord | undefined {
+    const r = this.runs.get(id);
+    if (!r || since === undefined) return r;
+    return { ...r, events: r.events.filter((e) => e.n > since) };
+  }
+
+  /** Appends an event to the run's ring (last EVENT_RING kept). */
+  emit(run: RunRecord, level: RunEventLevel, step: string, message: string): void {
+    const n = (this.eventSeq.get(run.id) ?? 0) + 1;
+    this.eventSeq.set(run.id, n);
+    run.events.push({ n, at: new Date().toISOString(), level, step, message });
+    if (run.events.length > EVENT_RING) run.events.splice(0, run.events.length - EVENT_RING);
   }
 
   stats(): { busy: boolean; queued: number; active?: string } {
@@ -82,7 +97,7 @@ export class RunQueue {
       () => ctrl.abort(new Error(`run exceeded ${Math.round(this.opts.timeoutMs / 1000)}s timeout`)),
       this.opts.timeoutMs,
     );
-    const work = Promise.resolve().then(() => this.handler(run, ctrl.signal));
+    const work = Promise.resolve().then(() => this.handler(run, ctrl.signal, (l, st, m) => this.emit(run, l, st, m)));
     try {
       const aborted = new Promise<never>((_, reject) => {
         ctrl.signal.addEventListener('abort', () => reject(ctrl.signal.reason), { once: true });
@@ -113,7 +128,10 @@ export class RunQueue {
   private prune(): void {
     const cutoff = Date.now() - this.opts.ttlMs;
     for (const [id, r] of this.runs) {
-      if (r.completed_at && Date.parse(r.completed_at) < cutoff) this.runs.delete(id);
+      if (r.completed_at && Date.parse(r.completed_at) < cutoff) {
+        this.runs.delete(id);
+        this.eventSeq.delete(id);
+      }
     }
   }
 }
