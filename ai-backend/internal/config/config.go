@@ -64,6 +64,8 @@ type GAOSConfig struct {
 	APIToken string // GAOS_API_TOKEN (QA bearer, gaos_...); never logged
 	// InboundToken is the bearer GAOS presents to /api/v1/gaos/* (GAOS_INBOUND_TOKEN); never logged.
 	InboundToken string
+	// ResultsToken is the bearer CI presents to POST /api/v1/results/playwright (RESULTS_INGEST_TOKEN); never logged.
+	ResultsToken string
 }
 
 // ExecutorConfig points at playwright-executor (systemd service on app-host).
@@ -337,6 +339,7 @@ func LoadConfig() *Config {
 				APIURL:       getEnvString("GAOS_API_URL", ""),
 				APIToken:     getEnvString("GAOS_API_TOKEN", ""),
 				InboundToken: getEnvString("GAOS_INBOUND_TOKEN", ""),
+				ResultsToken: getEnvString("RESULTS_INGEST_TOKEN", ""),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),

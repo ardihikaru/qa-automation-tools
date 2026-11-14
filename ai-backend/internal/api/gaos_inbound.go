@@ -110,6 +110,18 @@ type gaosResultItem struct {
 	CaseID      string `json:"caseId"`
 	Implemented bool   `json:"implemented"`
 	Spec        string `json:"spec,omitempty"`
+	Result      string `json:"result,omitempty"`
+	RunAt       int64  `json:"runAt,omitempty"`
+	RunRef      string `json:"runRef,omitempty"`
+}
+
+func asciiPrintable(s string) bool {
+	for _, c := range s {
+		if c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 type gaosResultsPage struct {
@@ -187,11 +199,16 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "bad cursor")
 		return
 	}
-	rows, err := r.getDB().Query(ctx, `SELECT id, UNIX_TIMESTAMP(updated_at), code, automated, spec_paths, removed_at IS NOT NULL FROM kb_test_cases
-		WHERE product_id = ? AND origin = 'sync'
-		  AND updated_at <= NOW() - INTERVAL ? SECOND
-		  AND (updated_at > FROM_UNIXTIME(?) OR (updated_at = FROM_UNIXTIME(?) AND id > ?))
-		ORDER BY updated_at, id LIMIT ?`, pid, gaosCursorLagSeconds, ts, ts, id, limit+1)
+	// ts is the later of the case's own change and its result's change, so a new result is re-sent.
+	rows, err := r.getDB().Query(ctx, `SELECT id, UNIX_TIMESTAMP(ts), code, automated, spec_paths, removed, result, run_at, run_ref FROM (
+		SELECT c.id, GREATEST(c.updated_at, COALESCE(r.updated_at, c.updated_at)) AS ts, c.code, c.automated, c.spec_paths,
+		       c.removed_at IS NOT NULL AS removed, r.result AS result,
+		       TIMESTAMPDIFF(SECOND, '1970-01-01', r.run_at) AS run_at, r.run_ref AS run_ref
+		FROM kb_test_cases c LEFT JOIN kb_case_results r ON r.product_id = c.product_id AND r.case_code = c.code
+		WHERE c.product_id = ? AND c.origin = 'sync') x
+		WHERE ts <= NOW() - INTERVAL ? SECOND
+		  AND (ts > FROM_UNIXTIME(?) OR (ts = FROM_UNIXTIME(?) AND id > ?))
+		ORDER BY ts, id LIMIT ?`, pid, gaosCursorLagSeconds, ts, ts, id, limit+1)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "query failed")
 		return
@@ -204,7 +221,9 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 		var code string
 		var automated, removed bool
 		var specs []byte
-		if err := rows.Scan(&rid, &rts, &code, &automated, &specs, &removed); err != nil {
+		var res, ref sql.NullString
+		var runAt sql.NullInt64
+		if err := rows.Scan(&rid, &rts, &code, &automated, &specs, &removed, &res, &runAt, &ref); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "query failed")
 			return
 		}
@@ -221,6 +240,13 @@ func (r *Router) gaosResults(w http.ResponseWriter, req *http.Request) {
 		// A removed case is a tombstone: implemented:false, no spec.
 		if sp := gaosUsableSpec(specs); automated && !removed && sp != "" {
 			it.Implemented, it.Spec = true, sp
+		}
+		// Result facts (CASE_RESULTS.md): result comes with runAt; runRef only when printable and short.
+		if res.Valid && runAt.Valid && !removed {
+			it.Result, it.RunAt = res.String, runAt.Int64
+			if ref.Valid && ref.String != "" && len(ref.String) <= 120 && asciiPrintable(ref.String) {
+				it.RunRef = ref.String
+			}
 		}
 		page.Items = append(page.Items, it)
 	}

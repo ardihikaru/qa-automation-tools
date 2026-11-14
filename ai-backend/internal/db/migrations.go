@@ -721,6 +721,18 @@ ALTER TABLE product_settings
   PRIMARY KEY (product_id, case_code),
   CONSTRAINT fk_gaos_decisions_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// CASE_RESULTS.md: the latest automated result of each test case, from a Playwright JSON report.
+	`CREATE TABLE IF NOT EXISTS kb_case_results (
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  result ENUM('pass','fail','skipped') NOT NULL,
+  run_at DATETIME NOT NULL COMMENT 'UTC start of the run that produced the result',
+  run_ref VARCHAR(120) NOT NULL DEFAULT '',
+  source VARCHAR(40) NOT NULL DEFAULT '',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (product_id, case_code),
+  CONSTRAINT fk_kb_case_results_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
