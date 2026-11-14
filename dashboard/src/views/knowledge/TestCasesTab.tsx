@@ -6,6 +6,7 @@ import { useDebounced, useLoad } from './hooks';
 import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
+import CaseAutomation from './CaseAutomation';
 import { Paging, useClampPage, useResetOnChange } from './paging';
 
 
@@ -17,11 +18,13 @@ interface Props {
   refreshKey: number;
   selected: string | null;
   onOpen: (t: Target) => void;
+  canWrite?: boolean;
+  hasRepo?: boolean;
 }
 
 const flat = (s: string) => s.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
 
-export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, selected, onOpen }: Props) {
+export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, selected, onOpen, canWrite = false, hasRepo = false }: Props) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [level, setLevel] = useState('');
@@ -95,7 +98,7 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
 
       {data && data.items.length > 0 && (
         <div className={`card overflow-x-auto ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-          <table className="w-full min-w-[59rem] table-fixed text-sm">
+          <table className="w-full min-w-[72rem] table-fixed text-sm">
             <colgroup>
               <col className="w-[11rem]" />
               <col />
@@ -104,6 +107,7 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
               <col className="w-[4.5rem]" />
               <col className="w-[3rem]" />
               <col className="w-[8rem]" />
+              <col className="w-[13rem]" />
               <col className="w-[3rem]" />
             </colgroup>
             <thead className="bg-gray-50 text-left text-gray-600">
@@ -115,6 +119,7 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
                 <th className="px-3 py-2 font-medium">Priority</th>
                 <th className="px-3 py-2 font-medium" title="Polarity">±</th>
                 <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Automation</th>
                 <th className="px-1 py-2 font-medium">
                   <span className="sr-only">Quick peek</span>
                 </th>
@@ -149,6 +154,9 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
                         <CaseStatusChip status={c.status} />
                         {c.automated && c.status !== 'automated' && <Bot className="w-3.5 h-3.5 text-green-600" aria-label="automated" />}
                       </span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <CaseAutomation pid={pid} code={c.code} specPaths={c.spec_paths} hasRepo={hasRepo} canWrite={canWrite} removed={removed} compact />
                     </td>
                     <td className="px-1 py-1">
                       <PeekButton label={`Quick peek at test case ${c.code}`} active={selected === c.code} onClick={() => onOpen({ type: 'test_case', code: c.code })} />
