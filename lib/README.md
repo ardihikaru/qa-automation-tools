@@ -4,14 +4,8 @@
 
 `lib/config.ts` is the shared TypeScript config loader for the Node projects. It finds and parses a `config.yaml` file using the `yaml` package, applies environment overrides, caches the result in memory, and exposes typed getters for each section.
 
-Who imports it (checked by grep across `dashboard`, `playwright-qa`, `playwright-docs`, and `this-qa-automation-system-playwright`, excluding `node_modules`):
+Who imports it (checked by grep across `dashboard`, `playwright-executor` and `this-qa-automation-system-playwright`, excluding `node_modules`): **nobody**. Its only importers, `playwright-docs` and `playwright-qa`, were removed in the legacy cleanup, so the file is currently unused (kept as the shared loader for future Node tools).
 
-- **playwright-docs:**
-  - [`src/index.ts`](../playwright-docs/src/index.ts) imports `loadConfig`, `getStaging`, `getCredentials`, `getPlaywrightDocs`, `getAllCredentials`, `getBackendURL`, and `getAI`.
-  - [`src/recorder/recordFlow.ts`](../playwright-docs/src/recorder/recordFlow.ts) and [`src/summarizer/summarizeFlow.ts`](../playwright-docs/src/summarizer/summarizeFlow.ts) import only the `AIConfig` type.
-- **playwright-qa:**
-  - [`src/explorer/random.ts`](../playwright-qa/src/explorer/random.ts) imports from `'../../lib/config'`. From `playwright-qa/src/explorer/` that path resolves to `playwright-qa/lib/config`, which does not exist, so the import does not reach this file.
-- **dashboard, this-qa-automation-system-playwright:** no imports found.
 - **ai-backend:** no imports. It is Go and has its own config package, even though the file header comment lists `ai-backend` and `dashboard` as users.
 
 ## Interface

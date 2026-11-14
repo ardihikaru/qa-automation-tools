@@ -11,7 +11,7 @@ This document outlines the test plan for verifying the QA Automation System itse
 
 ### Dashboard (Web UI)
 - **Base URL**: http://localhost:3000
-- **Routes**: /docs, /qa, /issues, /cost, /fixes, /skills
+- **Routes**: /products, /cost, /skills, /navigation, /learning
 
 ## Test Coverage
 
@@ -19,21 +19,6 @@ This document outlines the test plan for verifying the QA Automation System itse
 
 #### 1.1 Health & Status
 - [ ] GET /health - Returns status, database connection, minimax config
-- [ ] GET /api/analytics - Returns system analytics
-
-#### 1.2 Flows API
-- [ ] GET /api/flows - List all flows
-- [ ] POST /api/flows - Create new flow
-
-#### 1.3 Roles API
-- [ ] GET /api/roles - List all roles
-- [ ] POST /api/roles - Create new role
-
-#### 1.4 Issues API
-- [ ] GET /api/issues - List issues with pagination
-- [ ] POST /api/issues - Create new issue
-- [ ] POST /api/issues/status - Update issue fix status
-- [ ] POST /api/issues/notes - Add notes to issue
 
 #### 1.5 Skills API
 - [ ] GET /api/skills - List active skills
@@ -51,39 +36,15 @@ This document outlines the test plan for verifying the QA Automation System itse
 - [ ] POST /api/learning - Add learning record
 - [ ] DELETE /api/learning - Delete learning record
 
-#### 1.8 Search API
-- [ ] GET /api/search - Semantic search
-
-#### 1.9 Cache APIs
-- [ ] GET /api/ai-cache - Get AI cache
-- [ ] POST /api/ai-cache - Store AI response
-- [ ] GET /api/embedding-cache - Get embedding cache
-
 ### 2. Dashboard Tests
 
 #### 2.1 Navigation
-- [ ] Home page redirects to /docs
+- [ ] Home page redirects to /products
 - [ ] All navigation links work correctly
-
-#### 2.2 Docs View (/docs)
-- [ ] Page loads without errors
-- [ ] Documentation list displays
-
-#### 2.3 QA Insights View (/qa)
-- [ ] Page loads without errors
-- [ ] Analytics cards display
-
-#### 2.4 Issues View (/issues)
-- [ ] Page loads without errors
-- [ ] Issue list displays
 
 #### 2.5 Cost Analytics View (/cost)
 - [ ] Page loads without errors
 - [ ] Cost overview cards display
-
-#### 2.6 Fix Tracking View (/fixes)
-- [ ] Page loads without errors
-- [ ] Issues table displays
 
 #### 2.7 Skills View (/skills)
 - [ ] Page loads without errors

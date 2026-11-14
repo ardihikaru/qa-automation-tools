@@ -88,29 +88,4 @@ test.describe('Learning API', () => {
     expect(Array.isArray(body)).toBe(true);
   });
 
-  test('GET /api/learning/stats - should return learning statistics', async ({ request }) => {
-    const response = await request.get(`${config.backendUrl}/api/learning/stats`);
-    
-    expect(response.status()).toBe(200);
-    
-    const body = await response.json();
-    // Stats should contain some numeric values
-    expect(body).toBeDefined();
-  });
-
-  test('GET /api/search?q=test - should perform semantic search', async ({ request }) => {
-    const response = await request.get(`${config.backendUrl}/api/search?q=login`);
-    
-    expect(response.status()).toBe(200);
-    
-    const body = await response.json();
-    expect(Array.isArray(body)).toBe(true);
-  });
-
-  test('GET /api/search - should return 400 without query', async ({ request }) => {
-    const response = await request.get(`${config.backendUrl}/api/search`);
-    
-    expect(response.status()).toBe(400);
-  });
-
 });

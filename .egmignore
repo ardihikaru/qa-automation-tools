@@ -1,6 +1,4 @@
 # Paths egm-bootstrap / drift-report must skip (in addition to .gitignore)
-_docs/
-_prompts/
 _data/
 assessments/
 product-documentations/

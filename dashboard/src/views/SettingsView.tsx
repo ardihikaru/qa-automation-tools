@@ -116,7 +116,7 @@ export default function SettingsView() {
               </Row>
               <Row label="Playwright executor">
                 <span className={statusBadge(data.executor.status)}>{data.executor.status}</span>{' '}
-                <span className="text-gray-500">{data.executor.host || 'simulated mode'}</span>
+                <span className="text-gray-500">{data.executor.host || 'not configured'}</span>
               </Row>
             </dl>
           </section>

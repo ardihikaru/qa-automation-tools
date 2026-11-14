@@ -32,7 +32,6 @@ Methods come from the `req.Method` checks or `switch req.Method` inside each han
 | `/api/auth/impersonate` | POST | `AuthHandlers.Impersonate` (auth wired only; real role Admin/Service) |
 | `/api/auth/impersonate/stop` | POST | `AuthHandlers.StopImpersonation` (auth wired only) |
 | `/api/users` | GET | `AuthHandlers.ListUsers` (auth wired only; real role Admin/Service) |
-| `/api/flows` | GET, POST | `handleFlows` |
 | `/api/products` | GET, POST | `handleProducts` (`products.go`): list products with their `repos` (main, then automation, then central, then by name; each repo has `is_main`, `is_automation`, `is_central`), `allow_non_automation_work`, and the legacy fields mirrored from the **automation** repo. POST takes `{name, staging_url, repos:[...]}` (exactly one `is_main`, at most one `is_automation`; none defaults to the main repo, two is 400) or the legacy flat `{repo_url, root_dir, branch}` (one repo named `main`, also the automation repo; both forms is 400). Writes: Admin/DevOps/Developer |
 | `/api/products/{id}` | GET, PUT, DELETE | PUT applies `name`, `staging_url` and `allow_non_automation_work` (Admin/DevOps only; another role changing it gets 403 and nothing is saved); legacy `repo_url`/`root_dir`/`branch` in the body are ignored with 200. DELETE removes registry rows (repos, branches, settings cascade), never checkouts |
 
@@ -50,16 +49,9 @@ Product and repo request bodies (create, update, repo add/update, branches) are 
 | `/api/assistants` | GET | `handleAssistants`: synced agents, skills, rules, commands and instructions of every product (`product_id`, `kind`, `q`, paging; `kinds` counts) |
 | `/api/products/{id}/verify`, `/clone`, `/checkout` | POST | Legacy routes, all on the **automation** repo; `checkout` takes optional `{branch}` (made the automation repo's default, added to the list if absent). 409 `product has no main repo` (checked first) or `product has no automation repo` for a degraded product |
 | `/api/settings` | GET | `handleSettings` (`settings.go`): non-secret config snapshot injected by `SetSettings`; returns gateway host only (no URL path, userinfo or keys) and `pinned_to_claude_v3` |
-| `/api/roles` | GET, POST, DELETE (`?id=`) | `handleRoles` |
-| `/api/docs` | GET | `handleDocs` |
-| `/api/videos` | GET | `handleVideos` |
-| `/api/issues` | GET, POST | `handleIssues` |
-| `/api/issues/status` | POST | `handleIssueStatus` |
-| `/api/issues/notes` | POST | `handleIssueNotes` |
 | `/api/skills` | GET | `handleSkills` |
 | `/api/skills/logs` | GET, POST | `handleSkillLogs` |
 | `/api/skills/stats` | GET | `handleSkillStats` |
-| `/api/search` | GET (`?q=` required) | `handleSearch` |
 | `/api/cost/overview` | GET | `handleCostOverview` |
 | `/api/cost/trend` | GET | `handleCostTrend` |
 | `/api/cost/efficiency` | GET | `handleCostEfficiency` |
@@ -70,18 +62,9 @@ Product and repo request bodies (create, update, repo add/update, branches) are 
 | `/api/cost/gateway` | GET (`month=YYYY-MM\|all`) | `handleCostGateway` (ai-manager usage + local totals) |
 
 All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`YYYY-MM-DD`, UTC, inclusive, default last 30 days, max 366) plus optional `feature`, `provider`, `model`, `status=ok|error`. Day buckets are UTC. `/trend` is zero-filled. `/gateway` answers 200 with `available:false` and an `error` when ai-manager is unreachable or not the active provider.
-| `/api/analytics` | GET | `handleAnalytics` |
 | `/api/learning` | GET, POST, DELETE (`?id=`) | `handleLearning` |
 | `/api/learning/navigation` | GET, POST | `handleLearningNavigation` |
-| `/api/learning/sequences` | GET, POST | `handleLearningSequences` |
-| `/api/learning/context` | GET, POST | `handleLearningContext` |
-| `/api/learning/stats` | GET | `handleLearningStats` |
-| `/api/ai-cache` | GET, POST, DELETE (`?hash=`) | `handleAICache` |
-| `/api/embedding-cache` | GET, POST, DELETE (`?hash=`) | `handleEmbeddingCache` |
-| `/api/goal-events` | GET, POST, DELETE (`?id=`) | `handleGoalEvents` |
 | `/api/jobs` | GET | `handleListJobs` |
-| `/api/jobs/qa/run` | POST (202) | `handleRunQAJob` |
-| `/api/jobs/docs/generate` | POST (202) | `handleGenerateDocsJob` |
 | `/api/jobs/{id}` | GET | `handleJobs` -> `handleGetJob` |
 | `/api/jobs/{id}/events?since=<seq>` | GET | `handleJobEvents` (`job_events.go`): `{events:[{seq,at,level,step,message}], status, phase, job_type, error?, case_code?, branch?, product_id?, pr_url?, spec?:{path,content}, report?:{passed,failed,skipped}, approval?:{status,gaos_created,answer_text,answered_by,external_id}}`; at most 500 events per call |
 | `/api/jobs/{id}/approval` | POST | `handleJobApproval`: `{decision: approve\|reject\|changes, text?}` (Admin, DevOps, Developer, QA, QC; `changes` needs text); 200 `{status}`, 404 no approval, 409 already answered |
@@ -108,16 +91,13 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
   - `Logout` while impersonating ends the impersonation (audit reason `logout`) and revokes the real session.
 - `auth_helpers.go:validateNewPassword` requires a new password of at least 8 characters that differs from both the username (case-insensitive) and the current password.
 - Jobs (`router.go:enqueueJob`) get IDs `job-<unixnano>`. The in-memory `jobManager` map is guarded by `sync.RWMutex`. Every state change is upserted into `job_runs`.
-  - **Executor configured** (`SetExecutor`, from `PLAYWRIGHT_EXECUTOR_URL`): `jobs_executor.go:runExecutorJob` submits `qa_run` / `docs_generate` to playwright-executor. It forwards only `roles`, `max_steps`, `interactive_skills` and `flows` (top-level or under `params`). It polls every 3 s, for up to `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES`.
+  - **Executor configured** (`SetExecutor`, from `PLAYWRIGHT_EXECUTOR_URL`): `jobs_executor.go:runExecutorJob` submits `case_run` jobs (the only executor job type) to playwright-executor.
+  - **Not configured:** the job is marked `failed` with `playwright-executor is not configured`; there are no simulated jobs.
   - `case_run` (CASE_AUTOMATION.md): `runExecutorJob` forwards only `repo_dir, case_code, spec_paths, env_file, repair`, polls every 2 s and copies the executor's new events into `job_events`. On completion `finishCaseRun` parses the report with `caseresults.Parse`, saves it with `caseresults.Save(..., runRef = job id, source "case-run")`, calls the `SetOnResultsStored` hook (the GAOS push), drops the raw report from the job result (keeps `summary` and `verdict`), and fails the job when the report is missing or has no test titled with the case code (`no test titled <code> in <spec>`). A failing test is a completed job with a `fail` verdict.
   - `case_create` is run by `runCaseCreate` (the `caseauto` state machine) instead of the executor loop, with its own 76 h context. Its repo ops (`poolRepo`) re-check every path; `Push` and `OpenPR` call `repoWriteAllowed(RepoOpPush / RepoOpOpenPR)` first. A job with an open `case_approvals` row survives a restart: `FailOrphanedJobs` skips it and `ResumeCaseApprovals` (called after the GAOS wiring) continues at the approval step.
   - At most one active `case_run`/`case_create` per product and case (`activeCaseJob`, checked under a mutex); the executor itself still runs one job at a time.
   - States: `queued` -> `running` (once the executor starts) -> `completed` | `failed`. The result is the executor's result plus `executor_run_id`.
-  - For `qa_run`, issues go into `raw_issues` (`recordExecutorIssues`, `error_type = executor:<type>`, skipping exact duplicates of open issues), and their count is stored in `issues_recorded`.
-  - For `docs_generate`, `summarizeDocsRun` adds `documentation_markdown` (ai-manager / claude-v3), or `ai_error` if that call fails.
-  - **Not configured:** the job completes after a simulated 200 ms with `result.simulated = true`.
   - At startup, `FailOrphanedJobs` marks `queued`/`running` rows left by a previous process as `failed`.
-- `handleSearch` does a `LIKE` substring match on `learning_cache.intent`, returns at most 10 rows, and never calls the vector or AI services.
 
 ## Product repo pool invariants
 
@@ -134,12 +114,10 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
 ## Side Effects
 
-- MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `flows`, `roles`, `raw_issues`, `issue_suggestions`, `skills`, `skill_logs`, `learning_cache`, `ai_call_log` (cost endpoints; written by `ai.SQLRecorder`), `ai_cache`, `embedding_cache`, `goal_events`, `navigation_edges`, `action_sequences`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
+- MySQL reads and writes through `db.DB`. Tables touched in `router.go`: `skills`, `skill_logs`, `learning_cache`, `ai_call_log` (cost endpoints; written by `ai.SQLRecorder`), `navigation_edges`, `job_runs` (`upsertJobRecord` runs `INSERT ... ON DUPLICATE KEY UPDATE`).
 - `auth_handlers.go`: `Login` inserts into `sessions` (via `auth.CreateSession`) and sets the HttpOnly, SameSite=Lax cookie (`auth_helpers.go:setSessionCookie`). `Logout` deletes the session row and expires the cookie. `ChangePassword` runs `UPDATE users SET password_hash = ?, must_change_pw = 0`.
 - Products: clone/sync write under `REPO_POOL_DIR` (worktrees in `<root_dir>.branches/<slug>`); tables `products`, `product_settings`, `product_repos`, `product_repo_branches`; verify makes one outbound GET to `staging_url`.
-- LLM call: `POST /api/issues` calls `aiService.ClassifyIssue` when the category is empty and the service is non-nil, then updates `raw_issues.category`. `/health` calls `aiService.Health`. Both go through the `services/ai` ChatProvider.
-- Learning endpoints delegate to `learningService` (`AddNavigationEdge`, `GetNavigationEdges`, `AddActionSequence`, `GetActionSequences`, `AddContextRecord`, `GetContextRecord`, `GetLearningStats`).
-- Filesystem reads relative to the process CWD: `handleDocs` reads `../product-documentations`, and `handleVideos` reads `../playwright-docs/output/videos` (`os.ReadDir`).
+- Learning endpoints delegate to `learningService` (`AddNavigationEdge`, `GetNavigationEdges`).
 - Each enqueued job starts a background goroutine (`enqueueJob`).
 
 ## Verification
@@ -148,3 +126,5 @@ Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 - The tests use no build tags. `router_test.go` runs without a DB. The integration tests (`crud_integration_test.go`, `search_integration_test.go`) call `t.Skip` when no database URL is configured or the DB is unreachable. `testenv_integration_test.go:loadIntegrationEnvFiles` loads `DB_*`/`DATABASE_URL` from nearby `.env` files.
 - When a DB is reachable, `setupCRUDIntegrationRouter` runs `db.RunMigrations` and the CRUD tests write rows to that database. Point the tests at a disposable MySQL instance.
 - Some search tests also skip when the MiniMax API key is not configured.
+
+> Removed in the legacy cleanup: `/api/{flows,roles,docs,videos,issues*,search,analytics,ai-cache,embedding-cache,goal-events}`, `/api/learning/{sequences,context,stats}`, `/api/jobs/qa/run`, `/api/jobs/docs/generate`. Their DB tables (`flows`, `roles`, `raw_issues`, `issue_suggestions`, `ai_cache`, `embedding_cache`, `goal_events`, `action_sequences`, `context_records`) are kept untouched.

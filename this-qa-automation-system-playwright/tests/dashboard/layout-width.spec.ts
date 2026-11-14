@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import { config } from '../../config';
 
-const ROUTES = ['docs', 'qa', 'issues', 'cost', 'fixes', 'skills', 'navigation', 'learning', 'products', 'settings'];
+const ROUTES = ['cost', 'skills', 'navigation', 'learning', 'products', 'settings'];
 
 test.describe('Layout width (all pages fill the content area)', () => {
   test.skip(!process.env.QA_USERNAME || !process.env.QA_PASSWORD, 'set QA_USERNAME and QA_PASSWORD');

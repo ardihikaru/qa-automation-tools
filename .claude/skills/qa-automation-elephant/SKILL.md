@@ -17,7 +17,6 @@ You are the **Elephant**: the agent that carries the long-lived context of this 
 - [ai-backend/README.md](../../../ai-backend/README.md), with sub-contracts for `internal/api`, `auth`, `db`, `config`, `services/ai`, `services/skills` and `services/learning`.
 - [dashboard/README.md](../../../dashboard/README.md)
 - [playwright-executor/README.md](../../../playwright-executor/README.md): **the** Playwright runtime. Ops are in [deploy/playwright-executor/README.md](../../../deploy/playwright-executor/README.md).
-- [playwright-qa/README.md](../../../playwright-qa/README.md) and [playwright-docs/README.md](../../../playwright-docs/README.md): **deprecated**, kept for reference only.
 - [this-qa-automation-system-playwright/README.md](../../../this-qa-automation-system-playwright/README.md)
 - [deploy/qa-tool/README.md](../../../deploy/qa-tool/README.md): the production topology.
 
@@ -49,7 +48,6 @@ You are the **Elephant**: the agent that carries the long-lived context of this 
 - `router.go` is a single file of about 3k lines, with gofmt debt.
 - `GenerateSuggestion` parses its LLM output with a fragile `Sscanf`.
 - `ai-backend/vendor/` is stale; use `-mod=mod`.
-- `playwright-qa`/`playwright-docs` are deprecated and still contain hard-coded staging credentials (`guided.ts`, `planner.ts`, `exploreSystem.ts`). A cleanup PR should delete them.
 - Executor run state is in memory only, and screenshots are on app-host disk (not served over HTTP yet).
 
 ## 6. How to work here
