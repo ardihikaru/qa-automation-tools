@@ -53,6 +53,37 @@ export interface GaosPushResult {
   status: 'ok' | 'partial' | 'failed' | 'running' | '';
   note?: string;
 }
+/** One side of a GAOS decision comparison (GAOS's classification, or the QA tools' own). */
+export interface GaosDecisionFields {
+  epic: string;
+  module: string;
+  features: string[];
+  user_story: string;
+  polarity: string;
+  level: string;
+  pri: string;
+}
+export interface GaosDecisionItem {
+  code: string;
+  decision: 'planned' | 'blocked' | 'manual-only' | 'wont' | string;
+  reason: string;
+  cat_rev: string | number;
+  updated_at: string;
+  theirs: GaosDecisionFields;
+  /** null: the case is not in the QA tools' push. */
+  ours: GaosDecisionFields | null;
+  /** Names of the fields where theirs and ours differ. */
+  differs: string[];
+}
+/** Answer of GET /api/products/{id}/gaos/decisions. */
+export interface GaosDecisionsPage {
+  items: GaosDecisionItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  decisions: number;
+  differing: number;
+}
 export const GAOS_ID_RE = /^p-[0-9]+$/;
 
 export interface Product {

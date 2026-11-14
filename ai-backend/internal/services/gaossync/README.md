@@ -7,6 +7,7 @@ GAOS integration (spec: [GAOS_INTEGRATION.md](../../../../docs/designs/GAOS_INTE
 - `New(db, apiURL, token) *Syncer`; `Configured()` is true only with a valid `GAOS_API_URL` and `GAOS_API_TOKEN` (`ValidateConfig`, `config.go`). `ValidProductID` (`^p-[0-9]+$`, at most 40).
 - `Start(productID) (*Run, error)`: a manual push in the background. Errors: `ErrNotConfigured`, `ErrNotIntegrated`, `ErrBusy`. `Run.Done` closes at the end; `Run.Result()` is the last pass's `Result` (`status` ok/partial/failed, `note`, counts, `rejected_sample`).
 - `Trigger(productID)`: automatic start (never blocks, never errors, ignores a product that is not integrated); a trigger during a push makes the running push run once more. `Retry(productID)`: `Trigger` only when the last outcome is not `ok`.
+- `Derive(ctx, productID)` (`derived.go`) returns the planning fields the push derives per case; the decisions view compares them with `gaos_decisions`.
 - Wired by `cmd/server/main.go` to `knowledge.Syncer.OnSucceeded` and `OnUnchanged`, and to the products API (`internal/api/products_gaos.go`).
 
 ## Invariants
