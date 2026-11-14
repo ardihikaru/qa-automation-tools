@@ -49,6 +49,7 @@ The result is cached in a package-level singleton. Consumers include
 | `GAOS_API_URL` | `Backend.GAOS.APIURL` | empty = GAOS integration off. https, or http only to a loopback / `10.8.0.0/24` IP literal; no userinfo, query or fragment (validated by `gaossync.ValidateConfig`) |
 | `GAOS_API_TOKEN` | `Backend.GAOS.APIToken` | empty (secret, never logged). Starts with `gaos_`, at least 37 characters |
 | `REPO_POOL_DIR` | `Backend.Products.PoolDir` | empty (clone/verify disabled). Prod: `/data/repos` |
+| `REPO_POOL_HOST_DIR` | `Backend.Products.PoolHostDir` | empty (case run / create-automation answer 503). The pool as playwright-executor sees it on app-host, e.g. `/home/qa/devel/projects/qa-automation-tools/repos` |
 | `PRODUCTS_VERIFY_INTERVAL_MINUTES` | `Backend.Products.VerifyIntervalMinutes` | `360` (`0` disables the scheduled verify) |
 | `REPO_POOL_ALLOWED_OWNERS` | `Backend.Products.AllowedOwners` | empty (any owner). Comma-separated GitHub owners allowed to be cloned |
 | `GH_TOKEN` | not in `Config` | read by `gh`/`git` directly from the process env (secret, never logged) |
