@@ -52,6 +52,8 @@ type Router struct {
 
 	// caseAuto is the state of run / create-automation (CASE_AUTOMATION.md). See case_automation.go.
 	caseAuto caseAuto
+	// epicDriver is the tick guard of the epic batch driver (EPIC_AUTOMATION.md). See epic_batches.go.
+	epicDriver epicDriverState
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
@@ -198,6 +200,18 @@ func (r *Router) handleJobs(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *jobRecord {
+	job, _ := r.enqueueJobWith(jobType, payload, false)
+	return job
+}
+
+// enqueueJobTx is enqueueJob for callers that must not run a job whose row was not stored
+// (the epic driver derives a batch's state from job_runs): a failed insert returns the error
+// and starts nothing.
+func (r *Router) enqueueJobTx(jobType string, payload map[string]interface{}) (*jobRecord, error) {
+	return r.enqueueJobWith(jobType, payload, true)
+}
+
+func (r *Router) enqueueJobWith(jobType string, payload map[string]interface{}, strict bool) (*jobRecord, error) {
 	job := &jobRecord{
 		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
 		Type:      jobType,
@@ -206,18 +220,25 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 		CreatedAt: time.Now().UTC(),
 	}
 
+	if strict {
+		if err := r.upsertJobRecordErr(context.Background(), job); err != nil {
+			return nil, err
+		}
+	}
 	r.jobs.mu.Lock()
 	r.jobs.jobs[job.ID] = job
 	r.jobs.mu.Unlock()
-	r.upsertJobRecord(context.Background(), job)
+	if !strict {
+		r.upsertJobRecord(context.Background(), job)
+	}
 
 	if jobType == "case_create" {
 		go r.runCaseCreate(job.ID, payload, false)
-		return job
+		return job, nil
 	}
 	if r.executor != nil {
 		go r.runExecutorJob(job.ID, jobType, payload)
-		return job
+		return job, nil
 	}
 
 	// No playwright-executor configured: nothing can run the job.
@@ -227,7 +248,7 @@ func (r *Router) enqueueJob(jobType string, payload map[string]interface{}) *job
 		j.Error = "playwright-executor is not configured"
 		j.CompletedAt = &now
 	})
-	return job
+	return job, nil
 }
 
 func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID string) {
@@ -414,17 +435,25 @@ func (r *Router) handleListJobs(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) upsertJobRecord(ctx context.Context, job *jobRecord) {
+	if err := r.upsertJobRecordErr(ctx, job); err != nil {
+		log.Printf("failed to upsert job record id=%s: %v", job.ID, err)
+	}
+}
+
+// upsertJobRecordErr stores the record and returns the database error, if any.
+func (r *Router) upsertJobRecordErr(ctx context.Context, job *jobRecord) error {
 	db := r.getDB()
 	if db == nil || job == nil {
-		return
+		return nil
 	}
 
 	var payload interface{}
 	if len(job.Payload) > 0 {
 		raw, err := json.Marshal(job.Payload)
-		if err == nil {
-			payload = raw
+		if err != nil {
+			return err // a job whose payload cannot be stored would lose its batch id
 		}
+		payload = raw
 	}
 	var result interface{}
 	if len(job.Result) > 0 {
@@ -448,8 +477,9 @@ func (r *Router) upsertJobRecord(ctx context.Context, job *jobRecord) {
 			completed_at = VALUES(completed_at),
 			duration_ms = VALUES(duration_ms)
 	`, job.ID, job.Type, string(job.Status), payload, result, job.Error, job.CreatedAt, job.StartedAt, job.CompletedAt, job.DurationMs); err != nil {
-		log.Printf("failed to upsert job record id=%s: %v", job.ID, err)
+		return err
 	}
+	return nil
 }
 
 type dbRowScanner interface {
@@ -629,6 +659,12 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 	// Products: /api/products and /api/products/{id}[/verify|clone|checkout].
 	if req.URL.Path == "/api/products" || strings.HasPrefix(req.URL.Path, "/api/products/") {
 		r.handleProducts(w, req)
+		return
+	}
+
+	// EPIC_AUTOMATION.md: /api/epic-batches/{id}/cancel.
+	if strings.HasPrefix(req.URL.Path, "/api/epic-batches/") {
+		r.handleEpicBatches(w, req)
 		return
 	}
 
