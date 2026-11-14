@@ -92,15 +92,26 @@ export function listEnvFiles(envDir: string): string[] {
 /** Parses dotenv text: KEY=VALUE, optional `export`, quotes, `#` comments. */
 export function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
     if (!line || line.startsWith('#')) continue;
     const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
     if (!m) continue;
     let v = m[2];
     const q = v[0];
-    if ((q === '"' || q === "'") && v.lastIndexOf(q) > 0) {
-      v = v.slice(1, v.lastIndexOf(q));
+    if (q === '"' || q === "'") {
+      // A quoted value may span lines (a PEM key): read on until the closing quote.
+      while (v.lastIndexOf(q) === 0 && i + 1 < lines.length) {
+        i++;
+        v += '\n' + lines[i];
+      }
+      const end = v.lastIndexOf(q);
+      if (end > 0) {
+        v = v.slice(1, end);
+        // Like dotenv, a double-quoted value expands \n, so a PEM fits on one line too.
+        if (q === '"') v = v.replace(/\\n/g, '\n');
+      }
     } else {
       v = v.replace(/\s+#.*$/, '').trim();
     }
