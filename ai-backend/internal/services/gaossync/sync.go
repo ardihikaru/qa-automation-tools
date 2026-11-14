@@ -345,7 +345,10 @@ func (s *Syncer) push(ctx context.Context, productID int, pid string, cat *catal
 		res.Unchanged += *out.Unchanged
 		res.EpicsAdded += out.EpicsAdded
 		res.CardsAdded += out.CardsAdded
-		res.CardsDeferred += out.CardsDeferred
+		// GAOS gives a reason, not a count: the epics that got no card are the difference.
+		if out.CardsDeferred != "" && out.EpicsAdded > out.CardsAdded {
+			res.CardsDeferred += out.EpicsAdded - out.CardsAdded
+		}
 		res.CatHead = rawString(out.CatHead, res.CatHead)
 		addRejects(*out.Rejected)
 		for _, x := range *out.Rejected {
