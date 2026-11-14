@@ -50,6 +50,8 @@ type Router struct {
 	gaosInboundToken string
 	// resultsToken guards POST /api/v1/results/playwright (CASE_RESULTS.md); empty = disabled.
 	resultsToken string
+	// onResultsStored is told the product id after an upload stored results (nil = off).
+	onResultsStored func(productID int)
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
