@@ -26,7 +26,6 @@
       "Read(./**/.env)",
       "Read(./**/.env.prod)",
       "Read(./config.yaml)",
-      "Read(./playwright-docs/config/credentials.yaml)",
       "Read(./_data/**)",
       "Read(~/.config/qa-automation/**)"
     ]

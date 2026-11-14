@@ -49,7 +49,7 @@ fi
 mkdir -p "$CONF_DIR"
 chmod 700 "$CONF_DIR"
 if [ ! -f "$ENV_FILE" ]; then
-  log "creating placeholder $ENV_FILE from .env.example (fill EXECUTOR_TOKEN, HISV3_STAGING_URL, credentials)"
+  log "creating placeholder $ENV_FILE from .env.example (fill EXECUTOR_TOKEN and the case_run settings)"
   (umask 077; cp "$APP_DIR/.env.example" "$ENV_FILE")
 fi
 chmod 600 "$ENV_FILE"
