@@ -27,6 +27,10 @@ import (
 func main() {
 	// Load configuration from .env file
 	cfg := config.LoadConfig()
+	// The server's context: the background loops that must stop with it. There is no graceful
+	// shutdown (ListenAndServe ends in log.Fatal), so the process exit is what stops them today.
+	serverCtx, stopServer := context.WithCancel(context.Background())
+	defer stopServer()
 
 	log.Println("📦 QA Automation Backend")
 	log.Printf("   Port: %d", cfg.Backend.Port)
@@ -105,6 +109,9 @@ func main() {
 			router.SetOnResultsStored(gaos.Trigger) // a stored run is pushed like a synced catalog
 			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
 			log.Printf("   GAOS integration: configured=%v", gaos.Configured())
+			// Durable delivery: a push owed (the outbox marker in product_settings) survives a restart
+			// and a GAOS outage; the sweeper re-sends it (GAOS_INTEGRATION.md, "Durable delivery").
+			gaos.StartSweeper(serverCtx, time.Minute)
 			if tok := cfg.Backend.GAOS.InboundToken; tok != "" {
 				if len(tok) < 37 || !strings.HasPrefix(tok, "gaos_") || tok == cfg.Backend.GAOS.APIToken {
 					log.Printf("   GAOS inbound: GAOS_INBOUND_TOKEN is invalid (needs gaos_ prefix, 37+ chars, differ from GAOS_API_TOKEN); disabled")
