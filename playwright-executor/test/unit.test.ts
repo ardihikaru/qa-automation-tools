@@ -1,19 +1,21 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
 import { AddressInfo } from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { test } from 'node:test';
 import { checkBearer } from '../src/auth';
-import { ExecutorConfig, parseCredentials } from '../src/config';
+import { ExecutorConfig } from '../src/config';
 import { RunQueue } from '../src/queue';
 import { createServer } from '../src/server';
-import { RunParams, RunRecord } from '../src/types';
+import { RunRecord } from '../src/types';
 import { parseRunRequest, RunRequest } from '../src/validate';
 
 const TOKEN = 'x'.repeat(40);
-const ROLES = ['admin', 'doctor_gp', 'cashier'];
 const req = (over: Partial<RunRequest> = {}): RunRequest => ({
   job_id: 'job-1',
-  type: 'qa_run',
-  params: { roles: ['admin'], max_steps: 1, interactive_skills: false, flows: [] },
+  type: 'case_run',
+  params: { repo_dir: '/x', case_code: 'TC-A-001', spec_paths: ['tests/web/a.spec.ts'], env_file: 'automation-1.env' },
   ...over,
 });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,33 +36,9 @@ test('checkBearer accepts only the exact token', () => {
   assert.equal(checkBearer('Bearer ', ''), false);
 });
 
-test('parseCredentials keeps only complete entries', () => {
-  const c = parseCredentials(JSON.stringify({ a: { username: 'u', password: 'p' }, b: { username: 'u' }, c: null }));
-  assert.deepEqual(Object.keys(c), ['a']);
-  assert.throws(() => parseCredentials('[]'));
-});
-
-test('parseRunRequest validates type, roles and max_steps', () => {
-  const ok = parseRunRequest({ type: 'qa_run', job_id: 'j', params: { roles: ['cashier'], max_steps: 5 } }, ROLES, ['admin']);
-  assert.ok(ok.ok);
-  assert.deepEqual(ok.ok && ok.value.params, { roles: ['cashier'], max_steps: 5, interactive_skills: false, flows: [] });
-
-  const def = parseRunRequest({ type: 'docs_generate' }, ROLES, ['admin']);
-  assert.ok(def.ok && (def.value.params as RunParams).roles[0] === 'admin' && (def.value.params as RunParams).max_steps === 10);
-
-  for (const bad of [
-    null,
-    [],
-    { type: 'rm -rf' },
-    { type: 'qa_run', params: { roles: ['root'] } },
-    { type: 'qa_run', params: { roles: 'admin' } },
-    { type: 'qa_run', params: { max_steps: 0 } },
-    { type: 'qa_run', params: { max_steps: 51 } },
-    { type: 'qa_run', params: { max_steps: 2.5 } },
-    { type: 'qa_run', job_id: 'j'.repeat(129) },
-    { type: 'qa_run', params: { roles: ['a', 'b', 'c', 'd', 'e', 'f'] } },
-  ]) {
-    assert.equal(parseRunRequest(bad, [...ROLES, 'a', 'b', 'c', 'd', 'e', 'f'], ['admin']).ok, false, JSON.stringify(bad));
+test('parseRunRequest rejects anything but a well-formed case_run', () => {
+  for (const bad of [null, [], { type: 'rm -rf' }, { type: 'qa_run' }, { type: 'docs_generate' }, { type: 'case_run', job_id: 'j'.repeat(129) }]) {
+    assert.equal(parseRunRequest(bad, { repoPool: '/tmp/unused', envDir: '/tmp/unused' }).ok, false, JSON.stringify(bad));
   }
 });
 
@@ -119,20 +97,23 @@ test('RunQueue fails a run that exceeds its timeout and keeps going', async () =
 });
 
 test('HTTP API: health is public, runs need the bearer token', async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'exec-http-')));
+  const pool = path.join(root, 'pool');
+  const envDir = path.join(root, 'env');
+  fs.mkdirSync(path.join(pool, 'auto/tests/web'), { recursive: true });
+  fs.mkdirSync(envDir);
+  fs.writeFileSync(path.join(pool, 'auto/playwright.config.ts'), '');
+  fs.writeFileSync(path.join(pool, 'auto/tests/web/a.spec.ts'), '');
+  fs.writeFileSync(path.join(envDir, 'automation-1.env'), 'BASE_URL=https://staging.invalid\n', { mode: 0o600 });
+  const caseParams = { repo_dir: path.join(pool, 'auto'), case_code: 'TC-A-001', spec_paths: ['tests/web/a.spec.ts'], env_file: 'automation-1.env' };
   const cfg: ExecutorConfig = {
     bind: '127.0.0.1',
     port: 0,
     token: TOKEN,
-    stagingUrl: 'https://staging.invalid',
-    credentials: { admin: { username: 'u', password: 'p' } },
-    defaultRoles: ['admin'],
-    outputDir: '/tmp/unused',
-    retentionDays: 7,
     runTimeoutMs: 1000,
     maxQueue: 1,
-    headless: true,
-    repoPool: '/tmp/unused',
-    envDir: '/tmp/unused',
+    repoPool: pool,
+    envDir,
     allowedHosts: ['staging.invalid'],
   };
   const q = new RunQueue(async () => ({ done: true }), { maxQueue: 1, timeoutMs: 1000, ttlMs: 60_000 });
@@ -150,7 +131,7 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     assert.equal((await fetch(`${base}/v1/runs`, { method: 'POST', headers: auth, body: '{"type":"nope"}' })).status, 400);
     assert.equal((await fetch(`${base}/v1/runs`, { method: 'POST', headers: auth, body: 'not json' })).status, 400);
 
-    const created = await fetch(`${base}/v1/runs`, { method: 'POST', headers: auth, body: JSON.stringify({ type: 'qa_run', job_id: 'j1' }) });
+    const created = await fetch(`${base}/v1/runs`, { method: 'POST', headers: auth, body: JSON.stringify({ type: 'case_run', job_id: 'j1', params: caseParams }) });
     assert.equal(created.status, 202);
     const { id } = await created.json();
     let run: RunRecord | undefined;
@@ -164,5 +145,6 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     assert.equal((await fetch(`${base}/v1/runs/run-missing`, { headers: auth })).status, 404);
   } finally {
     server.close();
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

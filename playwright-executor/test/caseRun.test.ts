@@ -54,7 +54,7 @@ const good = (fx: Fx): Record<string, unknown> => ({
   env_file: 'automation-1.env',
 });
 const parse = (fx: Fx, params: unknown) =>
-  parseRunRequest({ type: 'case_run', job_id: 'j', params }, [], [], { repoPool: fx.pool, envDir: fx.envDir });
+  parseRunRequest({ type: 'case_run', job_id: 'j', params }, { repoPool: fx.pool, envDir: fx.envDir });
 
 test('case_run validation accepts a good request and returns strict params', () => {
   const fx = fixture();
@@ -90,8 +90,8 @@ test('case_run validation rejects every bad param', () => {
     ['repair string', { ...g, repair: '1' }],
   ];
   for (const [name, p] of bad) assert.equal(parse(fx, p).ok, false, name);
-  assert.equal(parseRunRequest({ type: 'case_run', job_id: 'j' }, [], [], { repoPool: fx.pool, envDir: fx.envDir }).ok, false);
-  assert.equal(parseRunRequest({ type: 'case_run', params: good(fx) }, [], []).ok, false, 'no case env configured');
+  assert.equal(parseRunRequest({ type: 'case_run', job_id: 'j' }, { repoPool: fx.pool, envDir: fx.envDir }).ok, false);
+  assert.equal(parseRunRequest({ type: 'case_run', params: good(fx) }).ok, false, 'no case env configured');
 });
 
 test('confinement: symlinked repo, spec and config cannot escape the pool', () => {
@@ -161,7 +161,7 @@ test('events ring keeps the last 500 and ?since filters by n', async () => {
     },
     { maxQueue: 1, timeoutMs: 5000, ttlMs: 60_000 },
   );
-  const run = q.submit({ job_id: 'j', type: 'qa_run', params: { roles: [], max_steps: 1, interactive_skills: false, flows: [] } })!;
+  const run = q.submit({ job_id: 'j', type: 'case_run', params: { repo_dir: '/x', case_code: 'TC-A-001', spec_paths: ['tests/web/a.spec.ts'], env_file: 'automation-1.env' } })!;
   const end = Date.now() + 2000;
   while (q.get(run.id)!.status !== 'completed' && Date.now() < end) await new Promise((r) => setTimeout(r, 5));
   const all = q.get(run.id)!.events;

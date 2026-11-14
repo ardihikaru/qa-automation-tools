@@ -13,13 +13,10 @@ import * as http from 'http';
 import * as path from 'path';
 import { chromium } from 'playwright';
 import { checkBearer } from './auth';
-import { launchBrowser } from './browser';
 import { ExecutorConfig, loadConfig } from './config';
 import { EmitEvent, RunQueue } from './queue';
-import { docsGenerate } from './runs/docsGenerate';
-import { qaRun } from './runs/qaRun';
 import { caseRun } from './runs/caseRun';
-import { CaseRunParams, RunParams, RunRecord } from './types';
+import { CaseRunParams, RunRecord } from './types';
 import { parseRunRequest } from './validate';
 
 const MAX_BODY = 64 * 1024;
@@ -48,39 +45,9 @@ function cgroupMemory(): { current_mb?: number; max_mb?: number; peak_mb?: numbe
   }
 }
 
-function pruneArtifacts(cfg: ExecutorConfig): void {
-  const cutoff = Date.now() - cfg.retentionDays * 86_400_000;
-  let entries: string[] = [];
-  try {
-    entries = fs.readdirSync(cfg.outputDir);
-  } catch {
-    return;
-  }
-  for (const e of entries) {
-    const p = path.join(cfg.outputDir, e);
-    try {
-      if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 function makeHandler(cfg: ExecutorConfig) {
-  return async (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => {
-    // case_run drives child processes in the repo pool, not an executor-owned browser.
-    if (run.type === 'case_run') return caseRun({ cfg, signal, runId: run.id, emit }, run.params as CaseRunParams);
-    pruneArtifacts(cfg);
-    const outDir = path.join(cfg.outputDir, run.id);
-    fs.mkdirSync(outDir, { recursive: true });
-    const browser = await launchBrowser(cfg.headless, signal);
-    try {
-      const ctx = { cfg, browser, signal, runId: run.id, outDir };
-      return run.type === 'qa_run' ? await qaRun(ctx, run.params as RunParams) : await docsGenerate(ctx, run.params as RunParams);
-    } finally {
-      await browser.close().catch(() => undefined);
-    }
-  };
+  // case_run drives child processes in the repo pool, not an executor-owned browser.
+  return (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => caseRun({ cfg, signal, runId: run.id, emit }, run.params);
 }
 
 function send(res: http.ServerResponse, status: number, body: unknown): void {
@@ -116,7 +83,6 @@ function readJson(req: http.IncomingMessage): Promise<unknown> {
 export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server {
   const chromiumPath = chromium.executablePath();
   const chromiumInstalled = fs.existsSync(chromiumPath);
-  const knownRoles = Object.keys(cfg.credentials);
 
   return http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://x');
@@ -127,7 +93,6 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
           service: 'playwright-executor',
           ...queue.stats(),
           chromium: chromiumInstalled ? 'installed' : 'missing',
-          roles: knownRoles.length,
           memory: cgroupMemory(),
           rss_mb: Math.round(process.memoryUsage().rss / 1048576),
         });
@@ -143,11 +108,11 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
         } catch (err) {
           return send(res, 400, { error: (err as Error).message });
         }
-        const parsed = parseRunRequest(body, knownRoles, cfg.defaultRoles, { repoPool: cfg.repoPool, envDir: cfg.envDir });
+        const parsed = parseRunRequest(body, { repoPool: cfg.repoPool, envDir: cfg.envDir });
         if (!parsed.ok) return send(res, 400, { error: parsed.error });
         const run = queue.submit(parsed.value);
         if (!run) return send(res, 429, { error: 'queue full', ...queue.stats() });
-        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, roles: (run.params as RunParams).roles });
+        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, case_code: run.params.case_code });
         return send(res, 202, { id: run.id, status: run.status, job_id: run.job_id });
       }
 
@@ -172,7 +137,6 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  fs.mkdirSync(cfg.outputDir, { recursive: true });
   const queue = new RunQueue(makeHandler(cfg), {
     maxQueue: cfg.maxQueue,
     timeoutMs: cfg.runTimeoutMs,
@@ -184,9 +148,7 @@ async function main(): Promise<void> {
     log('listening', {
       bind: cfg.bind,
       port: cfg.port,
-      staging: new URL(cfg.stagingUrl).host,
-      roles: Object.keys(cfg.credentials).length,
-      default_roles: cfg.defaultRoles,
+      allowed_hosts: cfg.allowedHosts,
       memory: cgroupMemory(),
     }),
   );
