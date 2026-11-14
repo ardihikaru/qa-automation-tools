@@ -3,6 +3,7 @@ package gaossync
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,14 +17,36 @@ const (
 	LinkUnreachable  = "unreachable"  // transport failure, timeout or a bad answer
 )
 
-// WebURL is the GAOS web app (back office) derived from GAOS_API_URL: the origin plus /app/.
-// "" when the service is not configured.
+// SetWebURL sets the public GAOS web app URL the dashboard links to (GAOS_WEB_URL). An invalid
+// value (not http/https, has userinfo) is ignored and logged by name only.
+func (s *Syncer) SetWebURL(raw string) {
+	raw = strings.TrimSpace(raw)
+	if s == nil || raw == "" {
+		return
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
+		log.Printf("gaossync: GAOS_WEB_URL is invalid; ignored")
+		return
+	}
+	s.webURL = u.String()
+}
+
+// WebURL is the URL the products badge links to: GAOS_WEB_URL when set, else the https origin of
+// GAOS_API_URL plus /app/ (an http API URL is usually an internal address, so it is not exposed).
+// "" when nothing usable is known.
 func (s *Syncer) WebURL() string {
-	if s == nil || s.cl == nil {
+	if s == nil {
+		return ""
+	}
+	if s.webURL != "" {
+		return s.webURL
+	}
+	if s.cl == nil {
 		return ""
 	}
 	u, err := url.Parse(s.cl.base)
-	if err != nil || u.Host == "" {
+	if err != nil || u.Scheme != "https" || u.Host == "" {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host + "/app/"

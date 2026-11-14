@@ -53,6 +53,18 @@ func TestWebURL(t *testing.T) {
 	if got := s.WebURL(); got != "https://gaos.mfardiansyah.id/app/" {
 		t.Fatalf("got %q", got)
 	}
+	s = &Syncer{cl: &client{base: "http://10.8.0.9:18301/api/v1"}}
+	if s.WebURL() != "" {
+		t.Fatal("an http API URL must not be exposed as the web link")
+	}
+	s.SetWebURL("https://gaos.mfardiansyah.id/app/")
+	if s.WebURL() != "https://gaos.mfardiansyah.id/app/" {
+		t.Fatalf("GAOS_WEB_URL not used: %q", s.WebURL())
+	}
+	s.SetWebURL("javascript:alert(1)")
+	if s.WebURL() != "https://gaos.mfardiansyah.id/app/" {
+		t.Fatal("an invalid GAOS_WEB_URL must be ignored")
+	}
 	if (*Syncer)(nil).WebURL() != "" {
 		t.Fatal("nil syncer must give an empty URL")
 	}
