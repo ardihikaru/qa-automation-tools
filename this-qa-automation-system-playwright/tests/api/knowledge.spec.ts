@@ -51,6 +51,22 @@ test.describe('Knowledge base API', () => {
     for (const tc of tcs.items) expect(tc.automated).toBe(true);
   });
 
+  // EPIC_AUTOMATION.md: read-only; starting a batch spends LLM budget and is never done here.
+  test('an epic reports what could be automated, and bad epics are refused', async () => {
+    const epics = await (await api.get(`${base}/epics?page_size=1`)).json();
+    test.skip(!epics.items?.length, 'no epics synced');
+    const code = epics.items[0].code as string;
+    const res = await api.get(`${base}/epics/${encodeURIComponent(code)}/automation`);
+    expect(res.status()).toBe(200);
+    const out = await res.json();
+    expect(typeof out.repo).toBe('boolean');
+    expect(out.eligible).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(out.sample)).toBe(true);
+    const bad = await api.get(`${base}/epics/NO-SUCH-EPIC-X/automation`);
+    expect(bad.status()).toBe(400);
+    expect((await bad.json()).code).toBe('unknown_epic');
+  });
+
   test('rejects bad filters and unknown codes', async () => {
     expect((await api.get(`${base}/test-cases?level=BOGUS`)).status()).toBe(400);
     expect((await api.get(`${base}/stories/US-NOPE-99`)).status()).toBe(404);

@@ -71,6 +71,9 @@ All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`
 | `/api/products/{id}/knowledge/test-cases/{code}/run` | POST | `handleCaseAction` (`case_automation.go`): 202 `{job_id}`; 403 role; 404 case; 409 no `spec_paths` / unsupported spec path / no automation repo / a job is active (body has `job_id`); 503 executor, pool, `REPO_POOL_HOST_DIR` missing |
 | `/api/products/{id}/knowledge/test-cases/{code}/create-automation` | POST | same handler: 202 `{job_id}`; 409 the case already has a spec / no automation repo / a job is active; 503 also when AI is not configured |
 | `/api/products/{id}/knowledge/test-cases/{code}/jobs` | GET | last 10 `case_run` / `case_create` jobs of the case |
+| `/api/products/{id}/knowledge/epics/{epic}/automation` | GET | `handleEpicAutomation` (`epic_batches.go`, EPIC_AUTOMATION.md): `{repo, eligible, sample[≤10], batch}`, `batch` = the epic's newest batch with each case's derived state; 400 `bad_epic` / `unknown_epic` |
+| `/api/products/{id}/knowledge/epics/{epic}/automate` | POST | body `{"max_cases": 1..25}` (default 10): 202 `{batch_id, planned}`; 400 `bad_range` / `bad_epic` / `unknown_epic`; 403; 409 `no_repo` / `nothing_eligible` / `batch_active` (one running batch per product); 503 not configured or draining. The driver enqueues the cases (two in flight) through `enqueueCaseAction` |
+| `/api/epic-batches/{id}/cancel` | POST | 200 the batch; 403; 404; 409 `bad_transition` unless running. Takes `caseAuto.mu`, so no job of the batch starts after it returns |
 
 Any other path returns 404 `Not Found` (`dispatchAuthenticated` default).
 
