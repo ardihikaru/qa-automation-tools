@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -347,6 +348,48 @@ Rules:
 - REST specs MUST call the service through one of the repo's client fixtures listed under AVAILABLE FIXTURES (for example the vendor API client), exactly as the example specs do. The raw 'request' fixture has NO base URL in the api projects: never call request.get('/path') or build URLs yourself, and never call a client method the examples or fixture files do not show.\n- Do not read configuration with an import from @config/*: use the fixtures. If a credential the case needs is not provided by any fixture, still write the best spec against the fixtures and do not invent env variables.\n- No child processes, no eval, no dynamic import or require, no file-system access.
 - At most 20 KiB.`
 
+var (
+	apiImportRe = regexp.MustCompile(`from '@api/([^']+)'`)
+	methodRe    = regexp.MustCompile(`(?m)^ {2}(?:public\s+)?(?:async\s+)?([a-zA-Z_]\w*)\(`)
+)
+
+// clientDocs summarises the client classes the fixture files import from @api/*: the head of
+// each client file (constructor, base helpers) and its method names. The generator otherwise
+// invents methods (vendorApi.serviceStatus) that do not exist. Bounded to ~6 KiB.
+func (m *Machine) clientDocs(r *run, fixtureSrc []string) string {
+	var out strings.Builder
+	seen := map[string]bool{}
+	for _, src := range fixtureSrc {
+		for _, mm := range apiImportRe.FindAllStringSubmatch(src, -1) {
+			rel := mm[1]
+			if !strings.HasSuffix(rel, ".client") || seen[rel] || strings.Contains(rel, "..") {
+				continue
+			}
+			seen[rel] = true
+			b, err := m.Repo.ReadFile(r.ws, "src/api/"+rel+".ts")
+			if err != nil {
+				continue
+			}
+			text := string(b)
+			head := text
+			if lines := strings.Split(text, "\n"); len(lines) > 60 {
+				head = strings.Join(lines[:60], "\n")
+			}
+			var names []string
+			for _, nm := range methodRe.FindAllStringSubmatch(text, -1) {
+				if nm[1] != "constructor" {
+					names = append(names, nm[1])
+				}
+			}
+			fmt.Fprintf(&out, "// src/api/%s.ts (head)\n%s\n// methods: %s\n\n", rel, Clip(head, 2500), strings.Join(names, ", "))
+			if out.Len() > 6000 {
+				break
+			}
+		}
+	}
+	return Clip(out.String(), 6500)
+}
+
 // initialConvo reads the repo guide and two style examples and builds the first prompt.
 func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	job := r.job
@@ -387,6 +430,7 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 		}
 	}
 	r.opts.Fixtures = FixtureNames(fixtureSrc...)
+	clientDocs := m.clientDocs(r, fixtureSrc)
 	c := job.Case
 	var sb strings.Builder
 	sb.WriteString(systemRules)
@@ -410,6 +454,9 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 		for _, src := range fixtureSrc {
 			sb.WriteString("\nFIXTURE FILE (clipped):\n```ts\n" + Clip(src, 5000) + "\n```\n")
 		}
+	}
+	if clientDocs != "" {
+		sb.WriteString("\nCLIENTS BEHIND THE FIXTURES (these are the ONLY methods that exist; call nothing else):\n" + clientDocs + "\n")
 	}
 	for _, e := range examples {
 		sb.WriteString("\nEXAMPLE SPEC:\n```ts\n" + e + "\n```\n")
