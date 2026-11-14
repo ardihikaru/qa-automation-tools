@@ -462,7 +462,7 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 				writeOpError(w, "list", err)
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"products": list, "pool_enabled": r.repoPool != nil, "gaos_configured": r.gaos.Configured()})
+			writeJSON(w, http.StatusOK, map[string]any{"products": list, "pool_enabled": r.repoPool != nil, "gaos_configured": r.gaos.Configured(), "gaos_web_url": r.gaos.WebURL()})
 		case http.MethodPost:
 			if !canManage {
 				writeJSONError(w, http.StatusForbidden, "your role cannot manage products")
@@ -526,6 +526,9 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 
 	case len(parts) == 2 && parts[1] == "case-results":
 		r.handleCaseResults(w, req, id, canVerify)
+
+	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "status":
+		r.handleGAOSStatus(w, req, id)
 
 	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "decisions":
 		r.handleGAOSDecisions(w, req, id)

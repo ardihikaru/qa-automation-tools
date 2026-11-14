@@ -125,6 +125,31 @@ func (c *client) post(ctx context.Context, path, step string, body, out any) *Fa
 	}
 }
 
+// get makes one read-only request (no retry); a non-200 status is returned, not turned into a Failure.
+func (c *client) get(ctx context.Context, path string) (int, []byte, *Failure) {
+	rctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(rctx, http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return 0, nil, &Failure{Note: "could not build the request"}
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(rctx.Err(), context.DeadlineExceeded) {
+			return 0, nil, &Failure{Note: "no answer from GAOS in time"}
+		}
+		return 0, nil, &Failure{Note: "could not reach GAOS"}
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil || len(data) > maxResponseBytes {
+		return 0, nil, &Failure{Note: "reading the GAOS answer failed"}
+	}
+	return resp.StatusCode, data, nil
+}
+
 // once makes one request. The Failure it returns covers transport errors and an oversized body.
 func (c *client) once(ctx context.Context, path string, payload []byte) (status int, retryAfter time.Duration, data []byte, f *Failure) {
 	rctx, cancel := context.WithTimeout(ctx, c.timeout)
