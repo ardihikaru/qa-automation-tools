@@ -702,6 +702,14 @@ ALTER TABLE product_settings
   ADD COLUMN gaos_last_status VARCHAR(20) NOT NULL DEFAULT '',
   ADD COLUMN gaos_last_note VARCHAR(300) NOT NULL DEFAULT '';`,
 
+	// GAOS_INTEGRATION.md (durable push): the outbox marker. gaos_push_requested_at is "a push is owed"
+	// (NULL = nothing owed); gaos_push_attempts counts failed passes since the marker was set.
+	// One ALTER, so it is atomic; the guard tests its first column.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_settings' AND column_name = 'gaos_push_requested_at'
+ALTER TABLE product_settings
+  ADD COLUMN gaos_push_requested_at DATETIME(6) NULL,
+  ADD COLUMN gaos_push_attempts INT NOT NULL DEFAULT 0;`,
+
 	// GAOS_INBOUND.md: planning decisions GAOS pushes to POST /api/v1/gaos/catalog. Never touches kb_*.
 	`CREATE TABLE IF NOT EXISTS gaos_decisions (
   product_id INT NOT NULL,

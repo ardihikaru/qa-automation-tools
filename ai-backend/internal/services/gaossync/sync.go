@@ -95,12 +95,16 @@ type Syncer struct {
 	slot    chan struct{} // one push at a time per token
 	mu      sync.Mutex
 	running map[int]*state
+
+	backoffStep time.Duration // sweeper backoff per failed attempt (backoffStepDefault)
+	sweepMu     sync.Mutex    // at most one sweep at a time
+	startDelay  time.Duration // sweeper delay before its first sweep
 }
 
 // New returns a Syncer; with an empty or invalid URL/token it reports Configured() false and
 // never sends. An invalid value is logged by variable name only (never the value).
 func New(d *db.DB, apiURL, token string) *Syncer {
-	s := &Syncer{db: d, budget: pushBudget, slot: make(chan struct{}, 1), running: map[int]*state{}}
+	s := &Syncer{db: d, budget: pushBudget, slot: make(chan struct{}, 1), running: map[int]*state{}, backoffStep: backoffStepDefault, startDelay: sweeperStartDelay}
 	base, err := ValidateConfig(apiURL, token)
 	switch {
 	case err != nil:
@@ -120,12 +124,13 @@ type settings struct {
 	integrated bool
 	productID  string
 	lastStatus string
+	requested  sql.NullTime // the outbox marker: gaos_push_requested_at
 }
 
 func (s *Syncer) loadSettings(ctx context.Context, productID int) (settings, error) {
 	var st settings
-	err := s.db.QueryRow(ctx, `SELECT gaos_integrated, gaos_product_id, gaos_last_status FROM product_settings WHERE product_id = ?`, productID).
-		Scan(&st.integrated, &st.productID, &st.lastStatus)
+	err := s.db.QueryRow(ctx, `SELECT gaos_integrated, gaos_product_id, gaos_last_status, gaos_push_requested_at FROM product_settings WHERE product_id = ?`, productID).
+		Scan(&st.integrated, &st.productID, &st.lastStatus, &st.requested)
 	if errors.Is(err, sql.ErrNoRows) {
 		return settings{}, nil
 	}
@@ -182,17 +187,32 @@ func (s *Syncer) trigger(productID int, onlyIfNotOK bool) {
 		if !st.integrated || st.productID == "" || (onlyIfNotOK && st.lastStatus == "ok") {
 			return
 		}
-		s.mu.Lock()
-		if cur, busy := s.running[productID]; busy {
-			cur.dirty = true
-			s.mu.Unlock()
-			return
+		s.markRequested(ctx, productID)
+		if run, ok := s.startOrCoalesce(productID); ok {
+			s.loop(productID, run)
 		}
-		run := newRun()
-		s.running[productID] = &state{run: run}
-		s.mu.Unlock()
-		s.loop(productID, run)
 	}()
+}
+
+// markRequested persists "a push is owed" (the outbox marker) before the in-memory push starts.
+// A failure is logged (no secrets) and swallowed: the in-memory push still runs, best effort.
+func (s *Syncer) markRequested(ctx context.Context, productID int) {
+	if _, err := s.db.Exec(ctx, `UPDATE product_settings SET gaos_push_attempts = IF(gaos_push_requested_at IS NULL, 0, gaos_push_attempts), gaos_push_requested_at = UTC_TIMESTAMP(6) WHERE product_id = ?`, productID); err != nil {
+		log.Printf("gaossync: product %d: persist push request: %v", productID, err)
+	}
+}
+
+// startOrCoalesce marks a running push dirty (false) or registers a new run the caller must loop (true).
+func (s *Syncer) startOrCoalesce(productID int) (*Run, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cur, busy := s.running[productID]; busy {
+		cur.dirty = true
+		return nil, false
+	}
+	run := newRun()
+	s.running[productID] = &state{run: run}
+	return run, true
 }
 
 func newRun() *Run {
@@ -237,6 +257,7 @@ func (s *Syncer) pass(productID int) (res Result) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("gaossync: product %d: push panicked: %v", productID, r)
+			s.noteFailure(productID)
 			res = Result{Status: "failed", Note: "internal error", FinishedAt: time.Now().UTC()}
 		}
 	}()
@@ -246,6 +267,7 @@ func (s *Syncer) pass(productID int) (res Result) {
 	case s.slot <- struct{}{}:
 		defer func() { <-s.slot }()
 	case <-wait.C:
+		s.noteFailure(productID)
 		return Result{Status: "failed", Note: "time budget reached waiting for another push", FinishedAt: time.Now().UTC()}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.budget)
@@ -254,11 +276,13 @@ func (s *Syncer) pass(productID int) (res Result) {
 	st, err := s.loadSettings(ctx, productID)
 	if err != nil {
 		log.Printf("gaossync: product %d: read settings: %v", productID, err)
+		s.noteFailure(productID)
 		return Result{Status: "failed", Note: "internal error", FinishedAt: time.Now().UTC()}
 	}
 	if !st.integrated || st.productID == "" || !ValidProductID(st.productID) {
 		return Result{}
 	}
+	token := st.requested // the request this pass serves; a newer marker survives it
 	res = Result{StartedAt: time.Now().UTC(), RejectedSample: []Reject{}}
 	cat, err := s.readCatalog(ctx, productID)
 	if err != nil {
@@ -271,8 +295,39 @@ func (s *Syncer) pass(productID int) (res Result) {
 		}
 	}
 	res.FinishedAt = time.Now().UTC()
+	// Clear the marker before the outcome is visible: once a caller sees the outcome, the push is
+	// over (and a crash between the two leaves a stale outcome, never a lost push).
+	if res.Status == "ok" || res.Status == "partial" {
+		s.complete(productID, st.productID, token)
+	}
 	s.store(productID, st.productID, &res)
 	return res
+}
+
+// noteFailure counts a failed pass that never reached store (slot budget, settings read error,
+// panic) so the sweeper's backoff sees it: one attempt and a fresh last-attempt time, only while
+// a push is owed.
+func (s *Syncer) noteFailure(productID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := s.db.Exec(ctx, `UPDATE product_settings SET gaos_push_attempts = gaos_push_attempts + 1, gaos_last_sync_at = UTC_TIMESTAMP()
+WHERE product_id = ? AND gaos_push_requested_at IS NOT NULL`, productID); err != nil {
+		log.Printf("gaossync: product %d: count failed attempt: %v", productID, err)
+	}
+}
+
+// complete clears the outbox marker of a delivered pass, only if no newer request arrived since
+// the pass read it (the marker still equals, or is older than, the token).
+func (s *Syncer) complete(productID int, pid string, token sql.NullTime) {
+	if !token.Valid {
+		return // a manual push with nothing owed
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := s.db.Exec(ctx, `UPDATE product_settings SET gaos_push_requested_at = NULL, gaos_push_attempts = 0
+WHERE product_id = ? AND gaos_integrated = 1 AND gaos_product_id = ? AND gaos_push_requested_at <= ?`, productID, pid, token.Time); err != nil {
+		log.Printf("gaossync: product %d: clear push request: %v", productID, err)
+	}
 }
 
 // store writes the outcome with a fresh context, only when the flag is still on and the id is
@@ -280,8 +335,10 @@ func (s *Syncer) pass(productID int) (res Result) {
 func (s *Syncer) store(productID int, pid string, res *Result) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := s.db.Exec(ctx, `UPDATE product_settings SET gaos_last_sync_at = UTC_TIMESTAMP(), gaos_last_status = ?, gaos_last_note = ?
-WHERE product_id = ? AND gaos_integrated = 1 AND gaos_product_id = ?`, res.Status, res.Note, productID, pid); err != nil {
+	// A failed pass counts an attempt while a push is owed (the sweeper's backoff reads it).
+	if _, err := s.db.Exec(ctx, `UPDATE product_settings SET gaos_last_sync_at = UTC_TIMESTAMP(), gaos_last_status = ?, gaos_last_note = ?,
+  gaos_push_attempts = gaos_push_attempts + IF(? = 'failed' AND gaos_push_requested_at IS NOT NULL, 1, 0)
+WHERE product_id = ? AND gaos_integrated = 1 AND gaos_product_id = ?`, res.Status, res.Note, res.Status, productID, pid); err != nil {
 		log.Printf("gaossync: product %d: store outcome: %v", productID, err)
 	}
 }
