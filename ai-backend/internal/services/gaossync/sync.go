@@ -171,10 +171,16 @@ func (s *Syncer) trigger(productID int, onlyIfNotOK bool) {
 	if !s.Configured() {
 		return
 	}
-	go func() {
+	// The settings read and the marker write happen HERE, before trigger returns to its caller (an
+	// upload's HTTP handler, a knowledge sync's hook): from the moment the caller gets control back the
+	// push is owed durably, so a restart a few milliseconds later cannot lose it. Only the push itself
+	// runs in the background. (Found on production: with both inside the goroutine, a restart ~100 ms
+	// after an upload lost the request. Two small queries on the caller's path are the price.)
+	ok := func() (ok bool) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("gaossync: trigger for product %d panicked: %v", productID, r)
+				ok = false
 			}
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -182,13 +188,24 @@ func (s *Syncer) trigger(productID int, onlyIfNotOK bool) {
 		st, err := s.loadSettings(ctx, productID)
 		if err != nil {
 			log.Printf("gaossync: product %d: read settings: %v", productID, err)
-			return
+			return false
 		}
 		if !st.integrated || st.productID == "" || (onlyIfNotOK && st.lastStatus == "ok") {
-			return
+			return false
 		}
 		s.markRequested(ctx, productID)
-		if run, ok := s.startOrCoalesce(productID); ok {
+		return true
+	}()
+	if !ok {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("gaossync: trigger for product %d panicked: %v", productID, r)
+			}
+		}()
+		if run, started := s.startOrCoalesce(productID); started {
 			s.loop(productID, run)
 		}
 	}()
