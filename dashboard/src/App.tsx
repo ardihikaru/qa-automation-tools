@@ -10,6 +10,7 @@ import LearningProgressView from './views/LearningProgressView';
 import ProductsView from './views/ProductsView';
 import KnowledgeView from './views/knowledge/KnowledgeView';
 import KnowledgeEntityPage from './views/knowledge/pages/KnowledgeEntityPage';
+import JobView from './views/JobView';
 import SettingsView from './views/SettingsView';
 import LoginView from './views/LoginView';
 import ChangePasswordView from './views/ChangePasswordView';
@@ -44,6 +45,7 @@ function App() {
                 <Route path="/products" element={<ProductsView />} />
                 <Route path="/products/:id/knowledge" element={<KnowledgeView />} />
                 <Route path="/products/:id/knowledge/:type/:code" element={<KnowledgeEntityPage />} />
+                <Route path="/jobs/:id" element={<JobView />} />
                 <Route path="/settings" element={<SettingsView />} />
               </Routes>
             </Layout>

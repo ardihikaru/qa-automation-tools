@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom';
-import { TestCaseDetail, entityHref } from '../api';
+import { Summary, TestCaseDetail, entityHref, getSummary } from '../api';
+import CaseAutomation from '../CaseAutomation';
+import { useLoad } from '../hooks';
 import { Scenario } from '../EntityPanel';
 import EntityShell from './EntityShell';
 import { CoverageRow, CoverageSection, Fields, LinkedFeatures, SectionHead, StatusLabel } from './kit';
@@ -12,6 +14,7 @@ export default function TestCasePage({ ctx, e }: { ctx: PageCtx; e: TestCaseDeta
   const epic = e.epic?.[0];
   const story = e.story?.[0];
   const features = e.features ?? [];
+  const { data: summary } = useLoad<Summary>(`${pid}:summary`, (sig) => getSummary(pid, sig));
 
   return (
     <EntityShell
@@ -41,6 +44,7 @@ export default function TestCasePage({ ctx, e }: { ctx: PageCtx; e: TestCaseDeta
 
       <section aria-labelledby="kb-attrs" className="space-y-3">
         <SectionHead id="kb-attrs" title="Automation" />
+        <CaseAutomation pid={pid} code={e.code} specPaths={e.spec_paths} hasRepo={!!summary?.repo} canWrite={ctx.canWrite} removed={!!e.removed_at} />
         <Fields
           rows={[
             ['Status', <StatusLabel status={e.status} />],

@@ -349,7 +349,7 @@ export default function KnowledgeView() {
                     <StoriesTab pid={pid} paging={pagingFor('stories')} epics={epics} features={featureOptions} refreshKey={refreshKey} selected={target?.type === 'story' ? selectedCode : null} onOpen={open} />
                   )}
                   {t.id === 'test-cases' && (
-                    <TestCasesTab pid={pid} paging={pagingFor('test-cases')} enums={summary.enums} epics={epics} refreshKey={refreshKey} selected={target?.type === 'test_case' ? selectedCode : null} onOpen={open} />
+                    <TestCasesTab pid={pid} paging={pagingFor('test-cases')} enums={summary.enums} epics={epics} refreshKey={refreshKey} selected={target?.type === 'test_case' ? selectedCode : null} onOpen={open} canWrite={canWrite} hasRepo={!!summary.repo} /> 
                   )}
                   {t.id === 'syncs' && <SyncsTab pid={pid} paging={pagingFor('syncs')} refreshKey={refreshKey} onOpen={open} />}
                 </div>
