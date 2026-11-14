@@ -664,3 +664,34 @@ func TestEventsAreRedactedAndClipped(t *testing.T) {
 		t.Errorf("event not redacted/clipped (%d bytes): %.80s", len(got), got)
 	}
 }
+
+func TestValidateFixtures(t *testing.T) {
+	known := FixtureNames("export interface ApiFixtures {\n  vendorApi: X;\n  hisBackendUser: Y;\n}\n")
+	if !known["vendorApi"] || !known["hisBackendUser"] {
+		t.Fatalf("fixture names not extracted: %v", known)
+	}
+	spec := func(fx string) GeneratedFile {
+		return GeneratedFile{Path: "tests/api/rest/his-vendor-backend/TC-DMASTER-007.spec.ts",
+			Content: "import { test } from '@playwright/test';\ntest('TC-DMASTER-007 ok', async ({ " + fx + " }) => {});\n"}
+	}
+	o := ValidateOptions{Code: "TC-DMASTER-007", Fixtures: known}
+	if err := Validate(spec("vendorApi, request"), o); err != nil {
+		t.Fatalf("known fixtures must pass: %v", err)
+	}
+	if err := Validate(spec("hisVendorBackendMasterDataRest"), o); err == nil {
+		t.Fatal("a guessed fixture must be rejected")
+	}
+	o.Fixtures = nil
+	if err := Validate(spec("anything"), o); err != nil {
+		t.Fatalf("no fixture info means no check: %v", err)
+	}
+}
+
+func TestEnvFailure(t *testing.T) {
+	if envFailure("Error: Invalid configuration for TEST_ENV=staging:\n x") == "" {
+		t.Fatal("config load error must be detected")
+	}
+	if envFailure("Error: expected 200 received 500") != "" {
+		t.Fatal("a failing assertion is not an env failure")
+	}
+}
