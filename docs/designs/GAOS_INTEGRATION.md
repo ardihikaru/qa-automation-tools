@@ -40,7 +40,7 @@ Base URL `GAOS_API_URL` (e.g. `https://gaos.mfardiansyah.id/api/v1`), header `Au
 
 ## Non-Goals
 *   **The reverse direction.** GAOS reading results from, or sending a catalog to, the QA tools (`GET /api/v1/gaos/results`, `POST /api/v1/gaos/catalog` on the QA tools) is built in [GAOS_INBOUND.md](GAOS_INBOUND.md).
-*   **Run records.** The QA tools have no run records for catalog cases, so `runAt`, `result` and `runRef` are never sent.
+*   **Run records.** The push (QA tools to GAOS) never sends `runAt`, `result` or `runRef`; per-case results reach GAOS only through the pull endpoint ([CASE_RESULTS.md](CASE_RESULTS.md)).
 *   **Updating planning fields in GAOS.** GAOS refuses it by design; a changed scenario in the catalog is reported as informational (`exists-differs`), not as a failure. A case that later becomes `blocked`, `manual-only` or `wont`, or disappears from the catalog, stays on the GAOS kanban: there is no withdraw call (Open question 4).
 *   **Pushing local edits.** Local drafts (`L-` codes) are never sent and a local edit does not trigger a push; only a knowledge sync, the flag, or the button does.
 *   **Cases that are not plannable.** Cases with status `blocked`, `manual-only` or `wont` are not sent.
