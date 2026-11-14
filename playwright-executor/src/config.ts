@@ -22,6 +22,12 @@ export interface ExecutorConfig {
   runTimeoutMs: number;
   maxQueue: number;
   headless: boolean;
+  /** case_run: directory holding the automation repo clones. */
+  repoPool: string;
+  /** case_run: directory holding automation-*.env files (mode 600). */
+  envDir: string;
+  /** case_run: hostnames a case env file's base URLs may point at (`*.suffix` allowed). */
+  allowedHosts: string[];
 }
 
 type Env = Record<string, string | undefined>;
@@ -72,6 +78,11 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     .map((s) => s.trim())
     .filter((r) => r && credentials[r]);
 
+  const allowedHosts = (env.EXECUTOR_ALLOWED_HOSTS ?? new URL(stagingUrl).hostname)
+    .split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+
   return {
     bind: env.EXECUTOR_BIND || '127.0.0.1',
     port: int(env, 'EXECUTOR_PORT', 8141, 1, 65535),
@@ -84,5 +95,8 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     runTimeoutMs: int(env, 'RUN_TIMEOUT_SECONDS', 900, 30, 7200) * 1000,
     maxQueue: int(env, 'MAX_QUEUE', 10, 0, 100),
     headless: (env.EXECUTOR_HEADLESS ?? 'true') !== 'false',
+    repoPool: env.EXECUTOR_REPO_POOL || '/home/qa/devel/projects/qa-automation-tools/repos',
+    envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/qa'}/.config/qa-automation`,
+    allowedHosts,
   };
 }
