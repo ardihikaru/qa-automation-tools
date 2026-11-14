@@ -2,7 +2,7 @@
 
 ## Overview
 
-UI for exploring docs, viewing issues, tracking fixes. A Vite + React 18 single-page
+UI for products, repos, product knowledge, case automation jobs, skills, agents, learning and cost. A Vite + React 18 single-page
 app (`package.json` name `qa-dashboard`) that renders the QA Automation backend's data
 behind a cookie-session login. It holds no data of its own: every view reads from the
 backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/internal/api/README.md)).
@@ -45,14 +45,10 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 
 | Route | View | Description |
 |-------|------|-------------|
-| `/login` | `LoginView` | Public login form; redirects to the `from` location or `/docs` |
+| `/login` | `LoginView` | Public login form; redirects to the `from` location or `/products` |
 | `/change-password` | `ChangePasswordView` | Protected; forced when `mustChangePassword` is set |
-| `/` | redirect | `Navigate` to `/docs` |
-| `/docs` | `DocsView` | Browse generated docs/videos |
-| `/qa` | `QAInsights` | Skills failures summary, job audit, trigger QA run / docs generation |
-| `/issues` | `IssueDebugger` | Issues with suggestions + patches |
+| `/` | redirect | `Navigate` to `/products` |
 | `/cost` | `CostAnalytics` | AI usage, spend, errors, latency, recent calls and the ai-manager gateway view |
-| `/fixes` | `FixTracking` | is_fixed checkboxes + notes |
 | `/skills` | `SkillsView` | Switch in `?view=`: QA checks (default; skills table, stats and logs; each check shows Global or its product) or `repo` (Claude skills synced from automation repos, `kind=skill`). Product filter in `?product=` (`global` = global QA checks only; ignored on stats and logs) |
 | `/agents` | `assistants/AgentsView` | Agents synced from each product's automation repo (`.claude/agents`): product filter `?product=`, search `?q=`, `?page=`; rows show model, tools and path |
 | `/rules` | `assistants/RulesView` | Rules, commands and instructions (`CLAUDE.md`/`AGENTS.md`); segmented filter `?kind=rule\|command\|instructions` (empty = all three, counts from `kinds`), same product filter and search; rules show their `paths` globs |
@@ -108,16 +104,9 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/users` | GET | `auth/api.ts` `listUsers` (Admin/Service only) |
 | `/api/auth/impersonate` | POST | `auth/api.ts` `impersonate` |
 | `/api/auth/impersonate/stop` | POST | `auth/api.ts` `stopImpersonation` |
-| `/api/docs?limit&page&search&product&sort_by` | GET | `views/DocsView.tsx` |
-| `/api/flows`, `/api/roles` | GET | `views/DocsView.tsx` |
-| `/api/analytics`, `/api/cost/overview`, `/api/issues?...`, `/api/jobs?page&limit&sort_by` | GET | `views/QAInsights.tsx` (only when `USE_MOCK_QA_INSIGHTS` is false) |
-| `/api/jobs/{jobId}` | GET | `views/QAInsights.tsx` |
-| `/api/jobs/qa/run`, `/api/jobs/docs/generate` | POST | `views/QAInsights.tsx` |
-| `/api/issues?limit=50&target&search` | GET | `views/IssueDebugger.tsx` |
-| `/api/issues?...` | GET | `views/FixTracking.tsx` |
-| `/api/issues/status`, `/api/issues/notes` | POST | `views/FixTracking.tsx` |
 | `/api/cost/{overview,trend,by-feature,by-model,efficiency,filters}?from&to&feature&provider&model&status`, `/api/cost/recent?...&limit&offset`, `/api/cost/gateway?month=YYYY-MM|all` | GET | `views/CostAnalytics.tsx` (types in `utils/costTypes.ts`) |
 | `/api/settings` | GET | `views/SettingsView.tsx` |
+| `/api/jobs/{id}`, `/api/jobs/{id}/events`, `/api/jobs/{id}/approval` | GET; GET; POST | `views/JobView.tsx`, `views/knowledge/api.ts` (case automation job log and approval) |
 | `/api/products`, `/api/products/{id}` | GET, POST, PUT, DELETE | `views/ProductsView.tsx`, `views/products/ProductDetail.tsx` (PUT: name, staging URL, `allow_non_automation_work`) |
 | `/api/products/{id}/repos`, `/api/products/{id}/repos/{rid}` | POST; PUT, DELETE | `views/products/ProductDetail.tsx` (add, edit, set main/automation/central, remove repo) |
 | `/api/products/{id}/repos/{rid}/branches` | PUT | `views/products/ProductDetail.tsx` / `RepoCard.tsx` (save branch list and default) |
@@ -188,21 +177,12 @@ The product views share `views/products/api.ts` (fetch helper, types, form valid
   `Service` in cyan); unknown roles fall back to the `Admin` (slate) style. Roles are
   display-only in the dashboard, except that the impersonation button is shown only to
   `Admin`/`Service`; the backend enforces every permission.
-- `QAInsights` has `USE_MOCK_QA_INSIGHTS = true` hard-coded, so its summary panels
-  render `generateMockQAInsightsData()` output instead of calling the backend; the job
-  detail and job trigger actions still call the real API.
-- `FixTracking` imports only types from `utils/fixTrackingMockGenerator.ts`;
-  `installFixTrackingMockApi()` (which monkey-patches `window.fetch` for `/api/issues*`)
-  is not installed anywhere in `src/`.
 
 ## Side Effects
 
 - Network: same-origin HTTP calls to the backend paths listed above. Mutating calls are
-  `POST /api/auth/login|logout|change-password|impersonate|impersonate/stop`, `POST /api/jobs/qa/run`,
-  `POST /api/jobs/docs/generate` (body `{ triggered_by: 'dashboard', source: 'qa_insights' }`),
-  `POST /api/issues/status`, and `POST /api/issues/notes`.
+  `POST /api/auth/login|logout|change-password|impersonate|impersonate/stop`, plus the product, repo, knowledge and case-automation calls listed above.
 - Cookies: login/logout cause the backend to set/clear the session cookie in the browser.
-- `QAInsights` navigates with `window.location.href = '/issues'` (full page load).
 - `AuthContext` `impersonate`/`stopImpersonation` reload the app with
   `window.location.assign('/')`.
 - `ImpersonationBanner` adds a window `focus` listener (only while impersonating) that

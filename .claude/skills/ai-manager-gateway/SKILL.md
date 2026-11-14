@@ -23,13 +23,12 @@ ai-manager is the Go gateway in the personal-workspace repo (`apps/ai-manager`).
 
 ## In this repo
 - Go: `ai-backend/internal/services/ai/aimanager.go` (`aiManagerProvider`) sits behind `ChatProvider`. The factory is `ai.NewFromConfig`, and callers only use `*ai.Service`.
-- Go caller added 2026-11-13: `internal/api/jobs_executor.go` `summarizeDocsRun`, which turns playwright-executor `docs_generate` recordings into Markdown. playwright-executor itself never calls an LLM.
-- TS: `callAI` in `playwright-docs/src/summarizer/summarizeFlow.ts` (the package is deprecated).
+- playwright-executor never calls an LLM. (The former `summarizeDocsRun` docs caller was removed in the legacy cleanup.)
 - MiniMax (`AI_PROVIDER=minimax`, `minimax.go`, `chatViaMiniMax`) is **dormant**: the code is kept but unsupported. Never enable it, or any upstream other than `claude-v3`, without the user's explicit approval.
 - Env: `AI_PROVIDER=ai-manager`, `AI_MANAGER_URL=http://10.8.0.4:8099`, `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`, `AI_MANAGER_PROVIDER=claude-v3`, `AI_MANAGER_NO_FALLBACK=true`, `AI_MANAGER_MODEL` (empty = `claude-opus-5`), `AI_TIMEOUT_SECONDS=180`.
 - Pinning is enforced twice. Requests send `provider: claude-v3` and `no_fallback: true`, and the client **rejects** any reply whose `provider` isn't `claude-v3` or that is flagged `fallback: true`. `/health` shows `ai_upstream: claude-v3`, and `ai` becomes `upstream_disabled:claude-v3` if ai-manager stops listing it as enabled.
 - Credentials: the shared ai-stack Basic credentials are in `~/.config/ai-stack/basic-auth.json` (`login_id`, `secret_key`) on db-host and app-host. **Never print them.**
-- Every request sets `caller` to `qa-automation` or `qa-automation-playwright-docs`, so usage shows up under that name in ai-manager's `/admin/usage/recent`.
+- Every request sets `caller` to `qa-automation`, so usage shows up under that name in ai-manager's `/admin/usage/recent`.
 
 ## Smoke test
 ```bash

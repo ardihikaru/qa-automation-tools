@@ -15,10 +15,8 @@ It runs on the host rather than in Docker because:
 | Listen | `10.8.0.9:8141` (WireGuard IP only). The ai-backend container reaches it there. |
 | Runtime | `mise exec -- node dist/src/server.js` in `~/devel/projects/qa-automation-tools/playwright-executor`. Node comes from that directory's `mise.toml`. |
 | Env file | `~/.config/qa-automation/playwright-executor.env` (mode 600) |
-| Credentials | `~/.config/qa-automation/sut-credentials.json` (mode 600) |
 | Automation env files | `~/.config/qa-automation/automation-<productId>.env` (mode 600, `EXECUTOR_ENV_DIR`). Loaded only into `case_run` child processes; the executor refuses a file that is not mode 600. |
 | Repo pool | `EXECUTOR_REPO_POOL`, default `~/devel/projects/qa-automation-tools/repos` (automation repo clones, with their own `node_modules`). |
-| Artifacts | `~/qa-executor-data/runs/<run_id>/`, kept for 7 days |
 | Logs | `journalctl --user -u playwright-executor` |
 
 ### Resource budget
@@ -102,4 +100,4 @@ curl -s http://10.8.0.9:8141/health     # status ok, chromium installed
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://10.8.0.9:8141/v1/runs   # 401
 ```
 
-For an end-to-end check, trigger **Run QA** in the dashboard (or `POST /api/jobs/qa/run` with a session cookie) and poll `/api/jobs/<id>` until it reaches `completed`. The result should contain `executor_run_id`, `summary` and `issues_recorded`. Backend `/health` should report `"executor":"ok"`.
+For an end-to-end check, start a case run from the dashboard (the product's case view) and poll `/api/jobs/<id>` until it reaches `completed`. The result should contain `executor_run_id`, `summary` and `verdict`. Backend `/health` should report `"executor":"ok"`.
