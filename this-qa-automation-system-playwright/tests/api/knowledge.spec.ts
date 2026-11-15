@@ -54,8 +54,8 @@ test.describe('Knowledge base API', () => {
   // EPIC_AUTOMATION.md: read-only; starting a batch spends LLM budget and is never done here.
   test('an epic reports what could be automated, and bad epics are refused', async () => {
     const epics = await (await api.get(`${base}/epics?page_size=1`)).json();
-    test.skip(!epics.items?.length, 'no epics synced');
-    const code = epics.items[0].code as string;
+    test.skip(!epics.epics?.length, 'no epics synced');
+    const code = epics.epics[0].code as string;
     const res = await api.get(`${base}/epics/${encodeURIComponent(code)}/automation`);
     expect(res.status()).toBe(200);
     const out = await res.json();
