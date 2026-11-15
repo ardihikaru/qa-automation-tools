@@ -15,7 +15,7 @@ It runs on the host rather than in Docker because:
 | Listen | `10.10.0.9:8141` (WireGuard IP only). The ai-backend container reaches it there. |
 | Runtime | `mise exec -- node dist/src/server.js` in `~/devel/projects/qa-automation-tools/playwright-executor`. Node comes from that directory's `mise.toml`. |
 | Env file | `~/.config/qa-automation/playwright-executor.env` (mode 600) |
-| Automation env files | `~/.config/qa-automation/automation-<productId>.env` (mode 600, `EXECUTOR_ENV_DIR`). Loaded only into `case_run` child processes; the executor refuses a file that is not mode 600. |
+| Automation env files | `~/.config/qa-automation/automation-<productId>.env` (mode 600, `EXECUTOR_ENV_DIR`). Loaded only into `case_run` child processes; the executor refuses a file that is not mode 600. Create one from `playwright-executor/automation.env.example` (`install -m 600 …`); real files are git-ignored (`automation-*.env`). |
 | Repo pool | `EXECUTOR_REPO_POOL`, default `~/devel/projects/qa-automation-tools/repos` (automation repo clones, with their own `node_modules`). |
 | Logs | `journalctl --user -u playwright-executor` |
 
