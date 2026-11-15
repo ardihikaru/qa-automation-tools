@@ -44,6 +44,12 @@ TEST-RESULTS.md
 .env.prod
 .env.*.local
 
+# Per-product env of the automation repo for case_run (staging credentials). The real files live in
+# EXECUTOR_ENV_DIR on rnd-v3 (~/.config/qa-automation), never in git; commit only automation.env.example.
+automation-*.env
+automation-*.env.*
+*.env.bak*
+
 # EGM scratch drafts (approved specs go to docs/designs/)
 .dev/docs/
 
