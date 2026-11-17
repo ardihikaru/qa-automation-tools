@@ -620,3 +620,52 @@ export const getEpicAutomation = (pid: number, epic: string, signal?: AbortSigna
 export const automateEpic = (pid: number, epic: string, maxCases: number) =>
   api<{ batch_id: string; planned: string[] }>(`${epicUrl(pid, epic)}/automate`, json('POST', { max_cases: maxCases }));
 export const cancelEpicBatch = (id: string) => api<EpicBatch>(`/api/epic-batches/${enc(id)}/cancel`, { method: 'POST' });
+
+// ---- module checklist export (docs/designs/MODULE_CHECKLIST_EXPORT.md) ----
+
+export type ChecklistFormat = 'pdf' | 'xlsx' | 'csv';
+export type ChecklistCache = 'hit' | 'miss' | 'regenerated' | 'bypass';
+
+export interface ChecklistOptions {
+  format: ChecklistFormat;
+  lastUpdate: boolean;
+  force: boolean;
+}
+
+/**
+ * Downloads the modules checklist and saves it through a temporary object URL.
+ * Resolves with the `X-Export-Cache` value, or null when the header is unreadable (cross-origin
+ * local development, where Content-Disposition is unreadable too and a generated name is used).
+ */
+export async function downloadChecklist(pid: number, opts: ChecklistOptions, signal?: AbortSignal): Promise<ChecklistCache | null> {
+  const qs = new URLSearchParams({ format: opts.format, last_update: opts.lastUpdate ? '1' : '0', force: opts.force ? '1' : '0' });
+  const res = await fetch(`/api/products/${pid}/knowledge/exports/modules-checklist?${qs}`, { credentials: 'include', signal });
+  if (!res.ok) {
+    let body: Record<string, unknown> = {};
+    try {
+      body = await res.json();
+    } catch {
+      // not JSON
+    }
+    const msg = typeof body.error === 'string' && body.error ? body.error : `Request failed (${res.status})`;
+    throw new ApiError(msg, res.status, body);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition') ?? '';
+  const name = /filename="([^"\r\n]+)"/.exec(cd)?.[1] ?? `product-${pid}-MODULE-CHECKLIST.${opts.format}`;
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Revoke after the browser has started the save.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+  const cache = res.headers.get('X-Export-Cache');
+  return cache === 'hit' || cache === 'miss' || cache === 'regenerated' || cache === 'bypass' ? cache : null;
+}
