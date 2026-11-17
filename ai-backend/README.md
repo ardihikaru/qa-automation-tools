@@ -33,6 +33,7 @@ It builds to a single binary from `cmd/server` (module `github.com/qa-automation
 | `internal/services/skills/` | Skill registry and built-in skills | [README](./internal/services/skills/README.md) |
 | `internal/services/gaossync/` | GAOS integration: pushes a flagged product's test cases to the GAOS kanban REST API (create-only, idempotent) after each knowledge sync, on flag-on and on demand | [README](./internal/services/gaossync/README.md) |
 | `internal/services/knowledge/` | Product knowledge base: format adapters (`test-catalog-v1`), sync engine (bare-mirror read, diff/upsert, AI change summary, scheduler), queries for `/api/products/{id}/knowledge/*` | [README](./internal/services/knowledge/README.md) |
+| `internal/services/objectstore/` | Prefix-locked MinIO/S3 client (`Stat`, `Get`, `Put` only) caching the module checklist export | [README](./internal/services/objectstore/README.md) |
 | `internal/services/repopool/` | Product repo pool: clone, branch worktrees, verify, sync-owned bare mirrors | [README](./internal/services/repopool/README.md) |
 | `internal/services/learning/` | Learning cache, navigation, sequences and context records | [README](./internal/services/learning/README.md) |
 | `internal/seed/` | `SeedUsers`: imports users from the taskmgr Neo4j (read-only, `TASKMGR_NEO4J_*`), plus an `ADMIN_USERNAME`/`ADMIN_PASSWORD` admin and an `AI_SERVICE_USERNAME`/`AI_SERVICE_PASSWORD` AI service account (role `Service`, may impersonate) | n/a |

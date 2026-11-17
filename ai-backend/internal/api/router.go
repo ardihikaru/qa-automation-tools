@@ -41,6 +41,8 @@ type Router struct {
 	repoPool *repopool.Pool
 	// knowledge runs and serves product knowledge syncs (nil without a DB).
 	kb *knowledge.Syncer
+	// exports serves the module checklist export from the object store (nil = not configured, 503).
+	exports *knowledge.ExportCache
 	// gaos pushes flagged products' test cases to GAOS (nil or unconfigured = off). See products_gaos.go.
 	gaos *gaossync.Syncer
 	// gaosInboundToken guards /api/v1/gaos/* (GAOS_INBOUND.md); empty = disabled.

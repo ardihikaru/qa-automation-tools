@@ -50,6 +50,10 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, knowledge.ErrNoAutomation):
 		writeJSONError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, knowledge.ErrNoSucceededSync):
+		writeJSONError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, knowledge.ErrExportTooLarge):
+		writeJSONError(w, http.StatusRequestEntityTooLarge, err.Error())
 	case errors.Is(err, knowledge.ErrUnavailable):
 		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
 	default:
@@ -122,6 +126,10 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 		q := req.URL.Query()
 		m, err := s.CoverageBy(ctx, pid, q.Get("by"), knowledge.Scope{Part: q.Get("part"), Module: q.Get("module"), Submodule: q.Get("submodule"), Epic: q.Get("epic")})
 		respond(w, map[string]any{"by": q.Get("by"), "coverage": m}, err)
+
+	case seg == "exports" && len(rest) == 2 && rest[1] == "modules-checklist":
+		// MODULE_CHECKLIST_EXPORT.md. Any authenticated reader; no deny() (the cache write is not a user-data write).
+		r.handleChecklistExport(w, req, pid)
 
 	case seg == "tree" && len(rest) == 1:
 		if method != http.MethodGet {
