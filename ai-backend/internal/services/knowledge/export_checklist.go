@@ -62,7 +62,10 @@ type ChecklistSnapshot struct {
 	CommitSHA   string
 	SyncedAt    time.Time // the sync's finished_at (UTC)
 	Skipped     int       // orphan rows left out
-	Parts       []ChecklistPart
+	// HistoryMaxID is COALESCE(MAX(id), 0) of the product's status history, read in the same
+	// transaction (0 when history was not requested). The cache key uses it.
+	HistoryMaxID int64
+	Parts        []ChecklistPart
 }
 
 // FeatureCount is the number of feature rows in the snapshot.
@@ -212,6 +215,14 @@ func readProductName(ctx context.Context, tx *sql.Tx, pid int) (string, error) {
 	return name, err
 }
 
+// ProductExists returns ErrNotFound when the product does not exist (ErrUnavailable without a DB).
+func (s *Syncer) ProductExists(ctx context.Context, pid int) error {
+	if s == nil || s.DB == nil {
+		return ErrUnavailable
+	}
+	return s.productExists(ctx, pid)
+}
+
 // ChecklistKeyInfo reads the latest succeeded sync id, the product name and (with withHistory)
 // the history watermark in one small read-only transaction.
 func (s *Syncer) ChecklistKeyInfo(ctx context.Context, pid int, withHistory bool) (KeyInfo, error) {
@@ -323,7 +334,11 @@ func (s *Syncer) ChecklistSnapshot(ctx context.Context, pid int, withHistory boo
 		return nil, ErrExportTooLarge
 	}
 
+	var histMax int64
 	if withHistory {
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM kb_feature_status_history WHERE product_id = ?`, pid).Scan(&histMax); err != nil {
+			return nil, err
+		}
 		in.dates = statusDates{}
 		rs, err = tx.QueryContext(ctx, `SELECT feature_code, release_status, source, MAX(changed_at) FROM kb_feature_status_history WHERE product_id = ? GROUP BY feature_code, release_status, source`, pid)
 		if err != nil {
@@ -343,7 +358,7 @@ func (s *Syncer) ChecklistSnapshot(ctx context.Context, pid int, withHistory boo
 		}
 	}
 
-	snap := &ChecklistSnapshot{ProductName: name, SyncID: l.id, CommitSHA: l.sha.String}
+	snap := &ChecklistSnapshot{ProductName: name, SyncID: l.id, CommitSHA: l.sha.String, HistoryMaxID: histMax}
 	switch {
 	case l.finishedAt.Valid:
 		snap.SyncedAt = l.finishedAt.Time.UTC()
