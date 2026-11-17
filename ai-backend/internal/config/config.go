@@ -3,9 +3,12 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -56,6 +59,71 @@ type BackendConfig struct {
 	Executor ExecutorConfig `yaml:"-"`
 	Products ProductsConfig `yaml:"-"`
 	GAOS     GAOSConfig     `yaml:"-"`
+	// ObjectStore is the MinIO cache of the module checklist export (MODULE_CHECKLIST_EXPORT.md).
+	ObjectStore ObjectStoreConfig `yaml:"-"`
+}
+
+// ObjectStoreConfig points at the S3-compatible object store (the staging MinIO that HISv3 uses)
+// where generated export files are cached. Env only. Unset or invalid means "not configured": the
+// export answers 503 and nothing else is affected.
+type ObjectStoreConfig struct {
+	Endpoint       string // MINIO_ENDPOINT, host:port without a scheme
+	AccessKey      string // MINIO_ACCESS_KEY (secret)
+	SecretKey      string // MINIO_SECRET_KEY (secret)
+	Bucket         string // MINIO_BUCKET, the permanent bucket (not the temp bucket)
+	KeyNamespace   string // MINIO_KEY_NAMESPACE, mandatory key segment: ^[a-z0-9][a-z0-9-]{0,31}$
+	UseSSL         bool   // MINIO_USE_SSL
+	TimeoutSeconds int    // MINIO_TIMEOUT_SECONDS, per call (default 30)
+}
+
+var objectStoreNamespaceRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+
+// wireGuardNet is the only network where a plaintext (non-TLS) object store is accepted.
+var wireGuardNet = &net.IPNet{IP: net.IPv4(10, 10, 0, 0), Mask: net.CIDRMask(24, 32)}
+
+// String and GoString use a value receiver so %v, %+v and %#v of a value or a pointer never print a secret.
+func (c ObjectStoreConfig) String() string {
+	return fmt.Sprintf("ObjectStoreConfig{Endpoint:%s Bucket:%s KeyNamespace:%s UseSSL:%t TimeoutSeconds:%d AccessKey:*** SecretKey:***}",
+		c.Endpoint, c.Bucket, c.KeyNamespace, c.UseSSL, c.TimeoutSeconds)
+}
+
+// GoString implements fmt.GoStringer (see String).
+func (c ObjectStoreConfig) GoString() string { return c.String() }
+
+// Timeout is the per-call timeout (30 s when unset or not positive).
+func (c ObjectStoreConfig) Timeout() time.Duration {
+	if c.TimeoutSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(c.TimeoutSeconds) * time.Second
+}
+
+// Configured reports whether every required value is set (validity is Check's job).
+func (c ObjectStoreConfig) Configured() bool {
+	return c.Endpoint != "" && c.AccessKey != "" && c.SecretKey != "" && c.Bucket != "" && c.KeyNamespace != ""
+}
+
+// Check returns nil when the config is usable. The error names the setting, never a value.
+func (c ObjectStoreConfig) Check() error {
+	if !c.Configured() {
+		return fmt.Errorf("MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_BUCKET and MINIO_KEY_NAMESPACE must all be set")
+	}
+	if !objectStoreNamespaceRe.MatchString(c.KeyNamespace) {
+		return fmt.Errorf("MINIO_KEY_NAMESPACE must match ^[a-z0-9][a-z0-9-]{0,31}$")
+	}
+	if strings.Contains(c.Endpoint, "://") || strings.ContainsAny(c.Endpoint, "/ ") {
+		return fmt.Errorf("MINIO_ENDPOINT must be host:port without a scheme or path")
+	}
+	if !c.UseSSL {
+		host := c.Endpoint
+		if h, _, err := net.SplitHostPort(c.Endpoint); err == nil {
+			host = h
+		}
+		if ip := net.ParseIP(host); ip == nil || !wireGuardNet.Contains(ip) {
+			return fmt.Errorf("MINIO_USE_SSL=false is accepted only for an endpoint inside 10.10.0.0/24")
+		}
+	}
+	return nil
 }
 
 // GAOSConfig points at the GAOS REST API (GAOS_INTEGRATION.md). Env only; unset = not configured.
@@ -350,6 +418,15 @@ func LoadConfig() *Config {
 				WebURL:       getEnvString("GAOS_WEB_URL", ""),
 				InboundToken: getEnvString("GAOS_INBOUND_TOKEN", ""),
 				ResultsToken: getEnvString("RESULTS_INGEST_TOKEN", ""),
+			},
+			ObjectStore: ObjectStoreConfig{
+				Endpoint:       getEnvString("MINIO_ENDPOINT", ""),
+				AccessKey:      getEnvString("MINIO_ACCESS_KEY", ""),
+				SecretKey:      getEnvString("MINIO_SECRET_KEY", ""),
+				Bucket:         getEnvString("MINIO_BUCKET", ""),
+				KeyNamespace:   getEnvString("MINIO_KEY_NAMESPACE", ""),
+				UseSSL:         getEnvBool("MINIO_USE_SSL", true),
+				TimeoutSeconds: getEnvInt("MINIO_TIMEOUT_SECONDS", 30),
 			},
 			Executor: ExecutorConfig{
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),

@@ -273,7 +273,7 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 			return err
 		}
 		probs := append([]Problem{}, problems...)
-		d, err := apply(ctx, tx, t.productID, id, snap, func(p Problem) { probs = append(probs, p) })
+		d, err := apply(ctx, tx, t.productID, id, sha, !hasPrev, snap, func(p Problem) { probs = append(probs, p) })
 		if err != nil {
 			return err
 		}
