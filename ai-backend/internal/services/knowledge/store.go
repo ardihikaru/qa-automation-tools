@@ -145,6 +145,7 @@ type existing struct {
 	origin  string
 	hash    string
 	removed bool
+	status  string // release_status; features only
 	file    sql.NullString
 	line    sql.NullInt64
 }
@@ -194,20 +195,28 @@ func inList(n int) string { return strings.TrimSuffix(strings.Repeat("?,", n), "
 
 // apply writes the snapshot of one sync inside tx and returns the diff. Unchanged rows are not
 // written; rows with only a new location get their location columns refreshed without a diff entry.
-func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, snap *Snapshot, prob func(Problem)) (*Diff, error) {
+//
+// sha is the commit the sync read (kb_syncs.commit_sha is written only at the end of the
+// transaction). firstSync is true when the product has no earlier succeeded sync; features added
+// then get source='backfill' history rows because the first observation is not a change date.
+func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, sha string, firstSync bool, snap *Snapshot, prob func(Problem)) (*Diff, error) {
 	diff := newDiff()
 	byType := rowsOf(snap)
 	for _, et := range EntityTypes {
 		t := tables[et]
 		have := map[string]existing{}
-		rs, err := tx.QueryContext(ctx, fmt.Sprintf("SELECT code, origin, content_hash, removed_at IS NOT NULL, source_file, source_line FROM %s WHERE product_id = ?", t.name), productID)
+		statusCol := "'' AS release_status"
+		if et == TypeFeature {
+			statusCol = "release_status"
+		}
+		rs, err := tx.QueryContext(ctx, fmt.Sprintf("SELECT code, origin, content_hash, removed_at IS NOT NULL, %s, source_file, source_line FROM %s WHERE product_id = ?", statusCol, t.name), productID)
 		if err != nil {
 			return nil, err
 		}
 		for rs.Next() {
 			var code string
 			var e existing
-			if err := rs.Scan(&code, &e.origin, &e.hash, &e.removed, &e.file, &e.line); err != nil {
+			if err := rs.Scan(&code, &e.origin, &e.hash, &e.removed, &e.status, &e.file, &e.line); err != nil {
 				rs.Close()
 				return nil, err
 			}
@@ -220,6 +229,7 @@ func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, snap *S
 
 		seen := map[string]bool{}
 		var write, relocate []row
+		var hist []statusEvent
 		for _, r := range byType[et] {
 			seen[r.code] = true
 			e, ok := have[r.code]
@@ -227,14 +237,27 @@ func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, snap *S
 			case !ok:
 				write = append(write, r)
 				diff.add(et, "added", r.code)
+				if et == TypeFeature {
+					src := "sync"
+					if firstSync {
+						src = "backfill"
+					}
+					hist = append(hist, statusEvent{code: r.code, status: featureStatus(r), source: src})
+				}
 			case e.origin == "local":
 				prob(Problem{File: r.file, Line: r.line, Msg: fmt.Sprintf("%s %s exists as a local draft; repo entry ignored", et, r.code)})
 			case e.removed:
 				write = append(write, r)
 				diff.add(et, "restored", r.code)
+				if et == TypeFeature && featureStatus(r) != e.status {
+					hist = append(hist, statusEvent{code: r.code, status: featureStatus(r), prev: e.status, hasPrev: true, source: "sync"})
+				}
 			case e.hash != r.hash():
 				write = append(write, r)
 				diff.add(et, "updated", r.code)
+				if et == TypeFeature && featureStatus(r) != e.status {
+					hist = append(hist, statusEvent{code: r.code, status: featureStatus(r), prev: e.status, hasPrev: true, source: "sync"})
+				}
 			case e.file.String != clipRunes(r.file, 300) || int(e.line.Int64) != r.line:
 				relocate = append(relocate, r)
 			}
@@ -243,6 +266,9 @@ func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, snap *S
 			return nil, err
 		}
 		if err := upsert(ctx, tx, productID, syncID, t, relocate, false); err != nil {
+			return nil, err
+		}
+		if err := insertStatusHistory(ctx, tx, productID, syncID, sha, hist); err != nil {
 			return nil, err
 		}
 		var gone []string
@@ -271,6 +297,50 @@ func apply(ctx context.Context, tx *sql.Tx, productID int, syncID int64, snap *S
 		return nil, err
 	}
 	return diff, nil
+}
+
+// statusEvent is one kb_feature_status_history row to write.
+type statusEvent struct {
+	code    string
+	status  string
+	prev    string
+	hasPrev bool
+	source  string // 'sync' or 'backfill'
+}
+
+// featureStatus is the release status of a feature row (vals order: module_code, submodule_code,
+// name, repo_entry, release_status, ...; see rowsOf).
+func featureStatus(r row) string {
+	s, _ := r.vals[4].(string)
+	return s
+}
+
+// insertStatusHistory writes the history rows of one sync inside the sync's transaction. The
+// unique key (product_id, feature_code, sync_id, source) plus ON DUPLICATE KEY UPDATE id = id
+// makes a re-executed write a no-op (INSERT IGNORE would also hide truncation and FK errors).
+func insertStatusHistory(ctx context.Context, tx *sql.Tx, productID int, syncID int64, sha string, evs []statusEvent) error {
+	for start := 0; start < len(evs); start += batchSize {
+		batch := evs[start:min(start+batchSize, len(evs))]
+		var sb strings.Builder
+		args := make([]any, 0, len(batch)*6)
+		for i, e := range batch {
+			if i > 0 {
+				sb.WriteByte(',')
+			}
+			sb.WriteString("(?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), ?)")
+			var prev any
+			if e.hasPrev {
+				prev = e.prev
+			}
+			args = append(args, productID, e.code, e.status, prev, syncID, nullIfEmpty(sha), e.source)
+		}
+		q := "INSERT INTO kb_feature_status_history (product_id, feature_code, release_status, prev_status, sync_id, commit_sha, changed_at, source) VALUES " +
+			sb.String() + " ON DUPLICATE KEY UPDATE id = id"
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			return fmt.Errorf("insert status history: %w", err)
+		}
+	}
+	return nil
 }
 
 type link struct{ story, feature string }

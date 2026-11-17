@@ -787,6 +787,36 @@ ALTER TABLE product_settings
   INDEX idx_epic_batches_product (product_id, epic_code, created_at),
   CONSTRAINT fk_epic_batches_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// MODULE_CHECKLIST_EXPORT.md: when each feature's release status changed. Written by the sync
+	// (store.go apply) in the sync's transaction. No FK to kb_features: codes are the link.
+	`CREATE TABLE IF NOT EXISTS kb_feature_status_history (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  feature_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  release_status VARCHAR(20) NOT NULL,
+  prev_status VARCHAR(20) NULL,
+  sync_id INT NULL,
+  commit_sha CHAR(40) NULL,
+  changed_at DATETIME NOT NULL,
+  source ENUM('sync','backfill') NOT NULL,
+  CONSTRAINT fk_kb_fsh_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_kb_fsh_feature (product_id, feature_code, changed_at),
+  UNIQUE KEY uq_kb_fsh_event (product_id, feature_code, sync_id, source)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// MODULE_CHECKLIST_EXPORT.md: backfill of a starting (approximate) date for existing features.
+	// Unguarded on purpose: the status-aware NOT EXISTS makes a second run a no-op and also repairs
+	// the deploy window (a status changed by the old binary after the first run). The no-op UPDATE
+	// qualifies the column: a bare "id" is ambiguous in an INSERT ... SELECT over kb_features.
+	`INSERT INTO kb_feature_status_history
+  (product_id, feature_code, release_status, prev_status, sync_id, commit_sha, changed_at, source)
+SELECT f.product_id, f.code, f.release_status, NULL, f.changed_sync_id, s.commit_sha, s.started_at, 'backfill'
+FROM kb_features f
+JOIN kb_syncs s ON s.id = f.changed_sync_id AND s.product_id = f.product_id
+WHERE f.origin = 'sync' AND f.removed_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM kb_feature_status_history h
+                  WHERE h.product_id = f.product_id AND h.feature_code = f.code
+                    AND h.release_status = f.release_status)
+ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history.id;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
