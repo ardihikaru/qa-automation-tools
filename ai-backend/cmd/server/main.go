@@ -22,6 +22,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
+	"github.com/qa-automation/ai-backend/internal/services/objectstore"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
@@ -105,12 +106,26 @@ func main() {
 	router.SetCaseAutomation(api.CaseAutomationConfig{
 		PoolHostDir: cfg.Backend.Products.PoolHostDir,
 		Secrets: []string{os.Getenv("GH_TOKEN"), cfg.Backend.GAOS.APIToken, cfg.Backend.GAOS.InboundToken, cfg.Backend.GAOS.ResultsToken,
-			cfg.Backend.Executor.Token, cfg.Backend.AI.ManagerSecretKey},
+			cfg.Backend.Executor.Token, cfg.Backend.AI.ManagerSecretKey,
+			cfg.Backend.ObjectStore.AccessKey, cfg.Backend.ObjectStore.SecretKey},
 	})
 	router.FailOrphanedJobs(context.Background())
 	// Product knowledge base: sync of the automation repo's docs/ catalog (PRODUCT_KNOWLEDGE_SYNC.md).
 	if syncer := knowledge.NewSyncer(database, pool, aiService); syncer != nil {
 		router.SetKnowledge(syncer)
+		// Module checklist export cache (MODULE_CHECKLIST_EXPORT.md). Unset or invalid config leaves it
+		// off (the endpoint answers 503); the connection is lazy, so a MinIO outage never stops startup.
+		// Only values of the interface type are assigned after the error check: no typed nil.
+		if store, err := objectstore.New(cfg.Backend.ObjectStore); err != nil {
+			if cfg.Backend.ObjectStore.Configured() {
+				log.Printf("   object storage: not configured (invalid settings: %v)", err)
+			} else {
+				log.Printf("   object storage: not configured")
+			}
+		} else {
+			router.SetExportCache(knowledge.NewExportCache(syncer, store, cfg.Backend.ObjectStore.KeyNamespace, cfg.Backend.ObjectStore.Timeout()))
+			log.Printf("   object storage: configured")
+		}
 		// GAOS integration (GAOS_INTEGRATION.md): push flagged products' test cases after each sync.
 		// The hooks are set before the scheduler starts. Unset URL/token = never sends.
 		if database != nil {
@@ -145,7 +160,7 @@ func main() {
 	}
 	router.ResumeCaseApprovals(context.Background()) // an open approval survives a restart (CASE_AUTOMATION.md)
 	router.ResumeOrphanedJobs(context.Background())  // other case_run/case_create jobs are retried (max 2), not failed
-	router.StartEpicDriver(serverCtx, 0)                // EPIC_AUTOMATION.md: works through running epic batches (after the resume steps)
+	router.StartEpicDriver(serverCtx, 0)             // EPIC_AUTOMATION.md: works through running epic batches (after the resume steps)
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs

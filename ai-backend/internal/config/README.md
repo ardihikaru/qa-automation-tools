@@ -52,6 +52,9 @@ The result is cached in a package-level singleton. Consumers include
 | `REPO_POOL_HOST_DIR` | `Backend.Products.PoolHostDir` | empty (case run / create-automation answer 503). The pool as playwright-executor sees it on app-host, e.g. `/home/qa/devel/projects/qa-automation-tools/repos` |
 | `PRODUCTS_VERIFY_INTERVAL_MINUTES` | `Backend.Products.VerifyIntervalMinutes` | `360` (`0` disables the scheduled verify) |
 | `REPO_POOL_ALLOWED_OWNERS` | `Backend.Products.AllowedOwners` | empty (any owner). Comma-separated GitHub owners allowed to be cloned |
+| `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_KEY_NAMESPACE` | `Backend.ObjectStore` | all empty = object storage not configured (the checklist export answers 503). Access and secret key are secrets; `ObjectStoreConfig.String`/`GoString` (value receivers) print `***` for both. Namespace must match `^[a-z0-9][a-z0-9-]{0,31}$`. Endpoint is `host:port` without a scheme |
+| `MINIO_USE_SSL` | `Backend.ObjectStore.UseSSL` | `true`. `false` is accepted only when the endpoint host is an IP inside `10.8.0.0/24` (`ObjectStoreConfig.Check`), otherwise the config counts as invalid |
+| `MINIO_TIMEOUT_SECONDS` | `Backend.ObjectStore.TimeoutSeconds` | `30` (per call) |
 | `GH_TOKEN` | not in `Config` | read by `gh`/`git` directly from the process env (secret, never logged) |
 | `MINIMAX_API_KEY` (dormant) | `Backend.AI.APIKey` | empty (secret) |
 | `AI_MODEL` | `Backend.AI.Model` | `MiniMax-M2.5` |
