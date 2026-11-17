@@ -1,6 +1,6 @@
 import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Download, Plus } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { usePageHeader } from '../../components/pageHeader';
 import { Product, api } from '../products/api';
@@ -21,6 +21,7 @@ import {
 import Drawer from './Drawer';
 import EntityPanel, { Target } from './EntityPanel';
 import DraftModal, { DraftKind } from './DraftModal';
+import ChecklistDialog from './ChecklistDialog';
 import ModulesTab from './ModulesTab';
 import FeaturesTab from './FeaturesTab';
 import StoriesTab from './StoriesTab';
@@ -69,6 +70,7 @@ export default function KnowledgeView() {
   const [panelKey, setPanelKey] = useState(0);
   const [visited, setVisited] = useState<Set<TabId>>(() => new Set([tab]));
   const [draft, setDraft] = useState<{ kind: DraftKind; existing?: StoryDetail | TestCaseDetail } | null>(null);
+  const [checklistOpen, setChecklistOpen] = useState(false);
   // The drawer keeps showing the last entity while it slides out.
   const [shown, setShown] = useState<Target | null>(target);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -280,14 +282,23 @@ export default function KnowledgeView() {
               )}
             </p>
           </div>
-          {canWrite && summary.configured && (
+          {summary.configured && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-secondary text-sm inline-flex items-center gap-1.5 min-h-8" onClick={() => setDraft({ kind: 'story' })}>
-                <Plus className="w-4 h-4" aria-hidden="true" /> New story draft
-              </button>
-              <button type="button" className="btn btn-secondary text-sm inline-flex items-center gap-1.5 min-h-8" onClick={() => setDraft({ kind: 'test_case' })}>
-                <Plus className="w-4 h-4" aria-hidden="true" /> New test case draft
-              </button>
+              {canWrite && (
+                <>
+                  <button type="button" className="btn btn-secondary text-sm inline-flex items-center gap-1.5 min-h-8" onClick={() => setDraft({ kind: 'story' })}>
+                    <Plus className="w-4 h-4" aria-hidden="true" /> New story draft
+                  </button>
+                  <button type="button" className="btn btn-secondary text-sm inline-flex items-center gap-1.5 min-h-8" onClick={() => setDraft({ kind: 'test_case' })}>
+                    <Plus className="w-4 h-4" aria-hidden="true" /> New test case draft
+                  </button>
+                </>
+              )}
+              {tab === 'modules' && (
+                <button type="button" className="btn btn-secondary text-sm inline-flex items-center gap-1.5 min-h-8" onClick={() => setChecklistOpen(true)}>
+                  <Download className="w-4 h-4" aria-hidden="true" /> Download checklist
+                </button>
+              )}
             </div>
           )}
         </header>
@@ -372,6 +383,8 @@ export default function KnowledgeView() {
           />
         )}
       </Drawer>
+
+      {checklistOpen && <ChecklistDialog pid={pid} onClose={() => setChecklistOpen(false)} />}
 
       {draft && (
         <DraftModal
