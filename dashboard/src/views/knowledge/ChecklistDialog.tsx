@@ -23,7 +23,7 @@ const CACHE_NOTE: Record<ChecklistCache, string> = {
 
 export default function ChecklistDialog({ pid, onClose }: Props) {
   const [format, setFormat] = useState<ChecklistFormat>('pdf');
-  const [lastUpdate, setLastUpdate] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
