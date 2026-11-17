@@ -189,3 +189,86 @@ func TestStatusHistoryBackfillMigration(t *testing.T) {
 		t.Fatalf("deploy window: %+v", h)
 	}
 }
+
+func TestChecklistSnapshotDB(t *testing.T) {
+	d := testdb.New(t)
+	ctx := context.Background()
+	pid := setupProduct(t, d, TestCatalogFormatName)
+	repo := &fakeRepo{}
+	s := &Syncer{DB: d, ReadTree: repo.read, syncTimeout: time.Minute, aiTimeout: time.Minute}
+	run := historySyncer(t, d, pid, repo)
+
+	// No such product, then no succeeded sync.
+	if _, err := s.ChecklistKeyInfo(ctx, pid+99, false); err != ErrNotFound {
+		t.Fatalf("missing product: %v", err)
+	}
+	if _, err := s.ChecklistKeyInfo(ctx, pid, false); err != ErrNoSucceededSync {
+		t.Fatalf("no sync (key info): %v", err)
+	}
+	if _, err := s.ChecklistSnapshot(ctx, pid, true); err != ErrNoSucceededSync {
+		t.Fatalf("no sync (snapshot): %v", err)
+	}
+
+	files := func(mod string) map[string]string {
+		return map[string]string{"docs/modules/A-core.md": mod, "docs/test-catalog/svc/out.md": epic}
+	}
+	repo.set("1111111111111111111111111111111111111111", files(modA))
+	id1 := run()
+	ki, err := s.ChecklistKeyInfo(ctx, pid, true)
+	if err != nil || ki.SyncID != id1 || ki.ProductName != "SUT" || ki.HistoryMaxID == 0 {
+		t.Fatalf("key info: %+v %v", ki, err)
+	}
+	if k0, _ := s.ChecklistKeyInfo(ctx, pid, false); k0.HistoryMaxID != 0 {
+		t.Errorf("watermark without the option: %+v", k0)
+	}
+	snap, err := s.ChecklistSnapshot(ctx, pid, true)
+	if err != nil || snap.SyncID != id1 || snap.FeatureCount() != 2 || snap.Skipped != 0 || snap.SyncedAt.IsZero() || snap.CommitSHA != strings.Repeat("1", 40) {
+		t.Fatalf("snapshot: %+v %v", snap, err)
+	}
+	for _, r := range snap.Parts[0].Modules[0].Rows {
+		if r.DateSource != "backfill" || r.StatusSince == nil {
+			t.Errorf("first-sync row should carry a backfill date: %+v", r)
+		}
+	}
+	plain, _ := s.ChecklistSnapshot(ctx, pid, false)
+	if plain.Parts[0].Modules[0].Rows[0].StatusSince != nil {
+		t.Error("dates present without the option")
+	}
+
+	// A sync committing while snapshots are read: every snapshot is internally consistent.
+	modB := modA + "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | | | | |\n"
+	repo.set("2222222222222222222222222222222222222222", files(modB))
+	stop := make(chan struct{})
+	bad := make(chan string, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			sn, err := s.ChecklistSnapshot(ctx, pid, true)
+			if err != nil {
+				bad <- err.Error()
+				return
+			}
+			if (sn.SyncID == id1 && sn.FeatureCount() != 2) || (sn.SyncID > id1 && sn.FeatureCount() != 3) {
+				bad <- "inconsistent snapshot"
+				return
+			}
+		}
+	}()
+	id2 := run()
+	close(stop)
+	<-done
+	select {
+	case m := <-bad:
+		t.Fatal(m)
+	default:
+	}
+	if sn, _ := s.ChecklistSnapshot(ctx, pid, true); sn.SyncID != id2 || sn.FeatureCount() != 3 {
+		t.Fatalf("after sync: %+v", sn)
+	}
+}
