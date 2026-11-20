@@ -130,6 +130,8 @@ export interface CaseResultsSummary {
   stale: number;
   unmatched: string[];
   unmatched_count: number;
+  /** The run's id in the run history (0 when it could not be recorded). */
+  run_id?: number;
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {

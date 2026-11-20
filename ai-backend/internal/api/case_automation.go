@@ -35,6 +35,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/services/caseresults"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
+	"github.com/qa-automation/ai-backend/internal/services/runhistory"
 )
 
 // CaseAutomationConfig wires the feature. PoolHostDir is the repo pool as playwright-executor
@@ -419,6 +420,8 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 	if v.Report == nil {
 		return errors.New(v.Message)
 	}
+	// RUN_HISTORY.md: every report is logged, skipped cases and a report without this case included.
+	r.recordRun(ctx, runhistory.RunIn{ProductID: pid, Source: runhistory.SourceCaseRun, RunRef: jobID, JobID: jobID, CaseCode: code}, v.Report)
 	if _, ok := v.Report.Results[code]; !ok {
 		r.addJobEvent(jobID, "error", caseauto.StepDone, v.Message)
 		return errors.New(v.Message)
@@ -858,6 +861,10 @@ func (e *executorRunner) RunCase(ctx context.Context, req caseauto.RunRequest, e
 		return caseauto.RunResult{}, fmt.Errorf("playwright-executor: %s", final.Error)
 	}
 	v := caseauto.VerdictFromResult(final.Result, req.CaseCode, req.SpecPath, time.Now().UTC())
+	if v.Report != nil {
+		idx := req.Repair
+		e.r.recordRun(ctx, runhistory.RunIn{ProductID: e.pid, Source: runhistory.SourceCaseCreate, RunRef: e.jobID, JobID: e.jobID, CaseCode: req.CaseCode, RunIndex: &idx}, v.Report)
+	}
 	tail, _ := final.Result["tail"].(string)
 	return caseauto.RunResult{Pass: v.Pass, Message: v.Message, Tail: tail, Passed: v.Passed, Failed: v.Failed, Skipped: v.Skipped}, nil
 }

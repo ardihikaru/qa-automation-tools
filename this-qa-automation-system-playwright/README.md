@@ -4,7 +4,7 @@
 
 This directory contains Playwright-based tests for verifying the QA Automation System itself. The tests ensure that both the REST API backend ([../ai-backend/README.md](../ai-backend/README.md)) and the Dashboard UI are functioning correctly. The detailed test plan is in [TEST-PLAN.md](./TEST-PLAN.md).
 
-There are 83 tests in 13 spec files: 48 API tests under `tests/api/` (Playwright `request` fixture) and 35 dashboard tests under `tests/dashboard/` (Playwright `page` fixture). All of them target **local** services at fixed URLs from `config.ts`. They do not target the deployed QA stack ([../deploy/qa-tool/README.md](../deploy/qa-tool/README.md)).
+There are 66 tests in 14 spec files (counted with `npx playwright test --list`): 38 API tests under `tests/api/` (Playwright `request` fixture) and 28 dashboard tests under `tests/dashboard/` (Playwright `page` fixture). All of them target **local** services at fixed URLs from `config.ts`. They do not target the deployed QA stack ([../deploy/qa-tool/README.md](../deploy/qa-tool/README.md)).
 
 > **Current drift (read before running):** these tests were written before two
 > backend changes and have not been updated:
@@ -96,6 +96,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 - `config.ts` exports `config`:
   - `backendUrl`: `QA_BACKEND_URL` env, default `http://localhost:8080`
   - `impersonator`, `impersonatorPassword`, `impersonationTarget`: `E2E_IMPERSONATOR_USERNAME`, `E2E_IMPERSONATOR_PASSWORD`, `E2E_TARGET_USERNAME`. Used only by `tests/api/impersonation.spec.ts`, which is skipped when they are unset. The impersonator must have role Admin or Service, and the target should be a QA/QC user. That spec, and `tests/dashboard/impersonation.spec.ts` (the picker, banner and Return flow in the UI), log in themselves. `E2E_SCREENSHOT_DIR` saves screenshots of each step. It keeps one `impersonation_audit` row per run, by design; this is an accepted exception to the clean-up rule.
+  - `tests/api/history.spec.ts` (RUN_HISTORY.md) checks that `/api/history/*` needs a session, then logs in as the impersonator and reads the builds, runs (and one run's detail) and syncs lists and their 400/404 answers. Read-only. `tests/dashboard/run-history.spec.ts` (needs `QA_USERNAME`/`QA_PASSWORD`) checks the `/qa` redirect, the nav entry, the three tabs and the URL state.
   - `tests/api/knowledge.spec.ts` (PRODUCT_KNOWLEDGE_SYNC.md) also logs in as the impersonator and reads the SUT knowledge base. Set `E2E_KB_SYNC_AS=<write-role username>` to impersonate that user and run one sync (adds one `kb_syncs` row, kept by design).
   - `dashboardUrl`: `QA_DASHBOARD_URL` env, default `http://localhost:3000`
   - `apiTimeout`: 10000
