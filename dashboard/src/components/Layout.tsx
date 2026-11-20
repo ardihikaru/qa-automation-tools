@@ -27,7 +27,7 @@ const navItems = [
   { path: '/agents', label: 'Agents', icon: Bot },
   { path: '/rules', label: 'Rules', icon: ScrollText },
   { path: '/navigation', label: 'Navigation Graph', icon: GitBranch },
-  { path: '/learning', label: 'Learning Progress', icon: Brain },
+  { path: '/learning', label: 'Learning', icon: Brain },
   { path: '/products', label: 'Products', icon: ProductsIcon },
   { path: '/history', label: 'Run history', icon: HistoryIcon },
   { path: '/archive', label: 'Archive', icon: ArchiveIcon },

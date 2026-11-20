@@ -105,6 +105,17 @@ cases and 1 MiB (more is `400`). Unknown JSON fields are tolerated; the automati
 `user_story`, `polarity`, `level`, `pri`). The product's GAOS card shows it as **GAOS decisions**; filtering to the
 differing ones is how the `exists-differs` cases are found.
 
+## Learned policies (Inbox approvals)
+
+The `/learning` page of the QA tools turns findings from case automation (a reviewer's *Needs changes*, a repair that
+fixed a failure, a failure repeated in three jobs, or a note typed by a QA engineer) into a proposed rule file for the
+product's automation repo (`.claude/rules/learned-<slug>.md`). For a GAOS-integrated product the approval is also
+asked in the GAOS Inbox, exactly like a generated spec: title "Approve learned policy for <product>", the whole policy
+text in the context, options **Approve**, **Reject**, **Needs changes** (reply with the change). The external id has the
+same `qa-<job id>-pr[N]` shape, so the existing answer webhook handles it; nothing changes on the GAOS side. After
+approval the QA tools open a pull request on the automation repo; a person merges it there. See
+[LEARNING_LOOP.md](designs/LEARNING_LOOP.md).
+
 ## Turning it on for a product
 
 1. **GAOS side first** (the operator): the product exists in GAOS and its id is in `GAOS_API_QA_PRODUCTS`; a QA token file

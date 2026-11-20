@@ -80,6 +80,9 @@ type RepoOps interface {
 	Open(ctx context.Context, job Job) (Workspace, error)
 	ReadFile(ws Workspace, rel string) ([]byte, error)
 	ListSpecs(ws Workspace) ([]string, error)
+	// ReadLearned returns the learned policy files (.claude/rules/learned-*.md) of the worktree,
+	// sorted by path (LEARNING_LOOP.md decision 8).
+	ReadLearned(ws Workspace) ([]LearnedFile, error)
 	WriteFile(ws Workspace, rel string, data []byte) error
 	DiffStat(ctx context.Context, ws Workspace, rel string) (string, error)
 	Commit(ctx context.Context, ws Workspace, message, rel string) error
@@ -395,7 +398,10 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	job := r.job
 	var guide string
 	if b, err := m.Repo.ReadFile(r.ws, "AGENTS.md"); err == nil {
-		guide = Clip(string(b), 12000)
+		if len(b) > GuideClip {
+			m.ev(ctx, job, "warn", StepGenerate, fmt.Sprintf("AGENTS.md is %d bytes; only the first %d reach the model", len(b), GuideClip))
+		}
+		guide = Clip(string(b), GuideClip)
 	} else {
 		m.ev(ctx, job, "warn", StepGenerate, "no AGENTS.md in the repo; continuing without it")
 	}
@@ -444,6 +450,7 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	if guide != "" {
 		sb.WriteString("\nREPO GUIDE (AGENTS.md):\n" + guide + "\n")
 	}
+	sb.WriteString(m.learnedBlock(ctx, r))
 	if len(r.opts.Fixtures) > 0 {
 		names := make([]string, 0, len(r.opts.Fixtures))
 		for n := range r.opts.Fixtures {
@@ -542,7 +549,11 @@ func (m *Machine) build(ctx context.Context, r *run, first string) error {
 			m.ev(ctx, job, "info", StepRun, "the spec passed")
 			return nil
 		}
-		m.ev(ctx, job, "warn", StepRun, "the spec did not pass: "+res.Message)
+		notPass := "the spec did not pass: " + res.Message
+		if x := FailureExcerpt(res.Tail); x != "" {
+			notPass += "\n" + x
+		}
+		m.ev(ctx, job, "warn", StepRun, notPass)
 		if why := envFailure(res.Tail); why != "" {
 			// A config/environment failure is not the spec's fault: another LLM round cannot fix it.
 			return m.fail(ctx, job, StepRun, "the run failed before any test was collected (%s); fix the automation repo's environment (env file on the executor host), then retry", why)
@@ -570,69 +581,34 @@ func (m *Machine) approve(ctx context.Context, r *run, ext string) (*Approval, e
 	if err != nil {
 		stat = "(diff stat unavailable)"
 	}
-	if err := m.Approvals.Open(ctx, job.ID, job.ProductID, job.Case.Code, ext); err != nil {
-		return nil, m.fail(ctx, job, StepApproval, "could not open the approval: %v", err)
-	}
-	m.ev(ctx, job, "info", StepApproval, "waiting for approval of "+r.file.Path+"\n"+Clip(stat, 600))
-	if existing, err := m.Approvals.Get(ctx, ext); err == nil && existing != nil && existing.Status != ApprovalOpen {
-		return existing, nil
-	}
+	var inbox Inbox
 	if job.GaosProductID != "" && m.Inbox != nil {
-		req := gaossync.InboxCreate{
-			ExternalID: ext,
-			Title:      Clip(m.Redact.Redact(fmt.Sprintf("Approve automation PR for %s", job.Case.Code)), 120),
-			Question:   Clip(m.Redact.Redact(fmt.Sprintf("QA tools generated and ran an automation spec for %s (%s). Open a pull request on the automation repo?", job.Case.Code, r.result.Message)), 500),
-			Context:    Clip(m.Redact.Redact(fmt.Sprintf("Product: %s\nSpec: %s\n%s\nJob: %s", job.ProductName, r.file.Path, stat, job.JobURL)), 1500),
+		inbox = m.Inbox
+	}
+	a, err := AwaitApproval(ctx, AwaitDeps{
+		Approvals: m.Approvals, Inbox: inbox, Poll: m.Poll, GaosPoll: m.GaosPoll, TTL: m.ApprovalTTL,
+		Now: m.now, Sleep: m.sleep,
+		Event: func(level, msg string) { m.ev(ctx, job, level, StepApproval, msg) },
+	}, AwaitRequest{
+		JobID: job.ID, ProductID: job.ProductID, CaseCode: job.Case.Code, ExternalID: ext,
+		GaosProductID: job.GaosProductID, LogPrefix: "caseauto",
+		WaitingMsg: "waiting for approval of " + r.file.Path + "\n" + Clip(stat, 600),
+		Item: gaossync.InboxCreate{
+			Title:    Clip(m.Redact.Redact(fmt.Sprintf("Approve automation PR for %s", job.Case.Code)), 120),
+			Question: Clip(m.Redact.Redact(fmt.Sprintf("QA tools generated and ran an automation spec for %s (%s). Open a pull request on the automation repo?", job.Case.Code, r.result.Message)), 500),
+			Context:  Clip(m.Redact.Redact(fmt.Sprintf("Product: %s\nSpec: %s\n%s\nJob: %s", job.ProductName, r.file.Path, stat, job.JobURL)), 1500),
 			Options: []gaossync.InboxOption{
 				{Label: "Approve", Description: "Commit, push the branch and open the pull request"},
 				{Label: "Reject", Description: "Discard the generated spec"},
 				{Label: "Needs changes", Description: "Reply with what to change; the spec is regenerated"},
 			},
-			ExpiresInHours: int(m.ApprovalTTL / time.Hour),
-		}
-		if _, err := m.Inbox.CreateInboxItem(ctx, job.GaosProductID, req); err != nil {
-			m.ev(ctx, job, "warn", StepApproval, "GAOS Inbox is unavailable ("+err.Error()+"); approve in the dashboard")
-		} else {
-			_ = m.Approvals.MarkGaosCreated(ctx, ext)
-			m.ev(ctx, job, "info", StepApproval, "also asked in the GAOS Inbox")
-		}
+		},
+	})
+	var af *ApprovalFailure
+	if errors.As(err, &af) {
+		return nil, m.fail(ctx, job, StepApproval, "%s", af.Msg)
 	}
-	deadline := m.now().Add(m.ApprovalTTL)
-	var lastGaos time.Time
-	for {
-		a, err := m.Approvals.Get(ctx, ext)
-		switch {
-		case err != nil:
-			log.Printf("caseauto: job %s: reading the approval: %v", job.ID, err)
-		case a == nil:
-			return nil, m.fail(ctx, job, StepApproval, "the approval record disappeared")
-		case a.Status != ApprovalOpen:
-			return a, nil
-		case m.Inbox != nil && job.GaosProductID != "" && a.GaosCreated && m.now().Sub(lastGaos) >= m.GaosPoll:
-			lastGaos = m.now()
-			if it, err := m.Inbox.GetInboxItem(ctx, job.GaosProductID, ext); err == nil {
-				switch it.Status {
-				case gaossync.InboxAnswered:
-					if st, ok := DecisionFromAnswer(it.OptionLabel, string(it.Choice)); ok {
-						_, _ = m.Approvals.Answer(ctx, ext, st, "gaos", Clip(it.Text, 1000))
-						continue
-					}
-				case gaossync.InboxExpired:
-					_, _ = m.Approvals.Answer(ctx, ext, ApprovalExpired, "gaos", "")
-					continue
-				}
-			}
-		}
-		if m.now().After(deadline) {
-			if _, err := m.Approvals.Answer(ctx, ext, ApprovalExpired, "system", ""); err != nil {
-				log.Printf("caseauto: job %s: expiring the approval: %v", job.ID, err)
-			}
-			return &Approval{ExternalID: ext, Status: ApprovalExpired}, nil
-		}
-		if err := m.sleep(ctx, m.Poll); err != nil {
-			return nil, fmt.Errorf("stopped while waiting for approval: %w", err)
-		}
-	}
+	return a, err
 }
 
 // DecisionFromAnswer maps a GAOS Inbox answer (the option label, else the choice) to an approval
