@@ -940,6 +940,61 @@ ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history
   INDEX idx_le_finding (finding_id, observed_at),
   CONSTRAINT fk_le_finding FOREIGN KEY (finding_id) REFERENCES learning_findings(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// NAVIGATION_MAP.md: the product's route and page inventory, replaced as a whole by each
+	// navigation build (after a knowledge sync). route_key = sha1(surface NUL app NUL path).
+	`CREATE TABLE IF NOT EXISTS nav_routes (
+  product_id INT NOT NULL,
+  route_key CHAR(40) NOT NULL,
+  surface VARCHAR(8) NOT NULL,
+  app VARCHAR(100) NOT NULL,
+  path VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  methods JSON NOT NULL,
+  sources JSON NOT NULL,
+  page_objects JSON NOT NULL,
+  PRIMARY KEY (product_id, route_key),
+  CONSTRAINT fk_nav_routes_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// NAVIGATION_MAP.md: feature, case and spec links to nav_routes (same lifecycle).
+	`CREATE TABLE IF NOT EXISTS nav_links (
+  product_id INT NOT NULL,
+  route_key CHAR(40) NOT NULL,
+  ref_type VARCHAR(8) NOT NULL,
+  ref VARCHAR(300) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  source VARCHAR(10) NOT NULL,
+  method VARCHAR(8) NOT NULL DEFAULT '',
+  PRIMARY KEY (product_id, route_key, ref_type, ref, source, method),
+  INDEX idx_nav_links_ref (product_id, ref_type, ref),
+  CONSTRAINT fk_nav_links_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// NAVIGATION_MAP.md: the last navigation build per product (its version triggers a rebuild).
+	`CREATE TABLE IF NOT EXISTS nav_builds (
+  product_id INT NOT NULL PRIMARY KEY,
+  sync_id INT NULL,
+  commit_sha CHAR(40) NULL,
+  nav_version INT NOT NULL,
+  status VARCHAR(10) NOT NULL,
+  error VARCHAR(500) NOT NULL DEFAULT '',
+  routes INT NOT NULL DEFAULT 0,
+  links INT NOT NULL DEFAULT 0,
+  problems JSON NULL,
+  built_at DATETIME NOT NULL,
+  CONSTRAINT fk_nav_builds_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// NAVIGATION_MAP.md: routes a real executor run visited, per job, executor run and case. Only
+	// matched route keys are stored (never a raw path); rows older than 180 days are pruned.
+	`CREATE TABLE IF NOT EXISTS nav_observations (
+  product_id INT NOT NULL,
+  route_key CHAR(40) NOT NULL,
+  job_id VARCHAR(64) NOT NULL,
+  run_id VARCHAR(64) NOT NULL DEFAULT '',
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  method VARCHAR(8) NOT NULL DEFAULT '',
+  hits INT NOT NULL DEFAULT 1,
+  observed_at DATETIME NOT NULL,
+  PRIMARY KEY (job_id, run_id, case_code, route_key, method),
+  INDEX idx_nav_obs_route (product_id, route_key, observed_at),
+  CONSTRAINT fk_nav_obs_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

@@ -521,6 +521,9 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 	case parts[1] == "knowledge":
 		r.handleKnowledge(w, req, id, parts[2:], canVerify)
 
+	case parts[1] == "navigation":
+		r.handleNavigation(w, req, id, parts[2:])
+
 	case len(parts) == 3 && parts[1] == "gaos" && parts[2] == "sync":
 		r.handleGAOSSync(w, req, id)
 

@@ -18,6 +18,7 @@ import { redact, redactLine, secretValues } from '../redact';
 import { CaseRunParams, RunEventLevel } from '../types';
 
 export const MAX_REPORT_BYTES = 2 * 1024 * 1024;
+export const MAX_NAV_BYTES = 256 * 1024;
 export const TAIL_BYTES = 4096;
 
 export type SpawnFn = (cmd: string, args: string[], opts: SpawnOptions) => ChildProcess;
@@ -160,24 +161,29 @@ export function runKey(runId: string): string {
   return ('qa' + alnum.slice(-18)).slice(0, 24);
 }
 
-function readReport(repo: string, runId: string): { report: unknown; error?: string } {
+/** Reads .runs/<key>/<name> of the repo as JSON, refusing a file outside the repo or over max bytes. */
+function readRunJson(repo: string, runId: string, name: string, max: number): { report: unknown; error?: string } {
   const runsDir = path.join(repo, '.runs');
-  const file = path.join(runsDir, runId, 'results.json');
+  const file = path.join(runsDir, runId, name);
   let real: string;
   try {
     real = fs.realpathSync(file);
   } catch {
-    return { report: null, error: 'results.json not found' };
+    return { report: null, error: `${name} not found` };
   }
-  if (!within(fs.realpathSync(repo), real)) return { report: null, error: 'results.json escapes the repo' };
+  if (!within(fs.realpathSync(repo), real)) return { report: null, error: `${name} escapes the repo` };
   const st = fs.statSync(real);
-  if (!st.isFile()) return { report: null, error: 'results.json is not a file' };
-  if (st.size > MAX_REPORT_BYTES) return { report: null, error: `results.json exceeds ${MAX_REPORT_BYTES} bytes` };
+  if (!st.isFile()) return { report: null, error: `${name} is not a file` };
+  if (st.size > max) return { report: null, error: `${name} exceeds ${max} bytes` };
   try {
     return { report: JSON.parse(fs.readFileSync(real, 'utf8')) };
   } catch {
-    return { report: null, error: 'results.json is not valid JSON' };
+    return { report: null, error: `${name} is not valid JSON` };
   }
+}
+
+function readReport(repo: string, runId: string): { report: unknown; error?: string } {
+  return readRunJson(repo, runId, 'results.json', MAX_REPORT_BYTES);
 }
 
 function counts(report: unknown, exit: number | null): { passed: number; failed: number; skipped: number } {
@@ -267,8 +273,10 @@ export async function caseRun(
     params.case_code,
     '--workers=1',
     '--retries=0',
-    '--reporter=json,list',
+    cfg.navReporter ? `--reporter=json,list,${cfg.navReporter}` : '--reporter=json,list',
   ];
+  const navFile = path.join(runDir, 'nav.json');
+  fs.rmSync(navFile, { force: true });
   const env = {
     ...minimalEnv(deps.baseEnv),
     ...envVars,
@@ -276,12 +284,21 @@ export async function caseRun(
     PLAYWRIGHT_JSON_OUTPUT_NAME: path.join(runDir, 'results.json'),
     VENDOR_E2E_RUN: key,
     TEST_ENV: 'staging',
+    ...(cfg.navReporter ? { QA_NAV_OUTPUT: navFile } : {}),
   };
   emit('info', 'run', `npx playwright test ${params.spec_paths.join(' ')} -g ${params.case_code}`);
   const r = await runProc(deps, ctx, 'run', 'npx', args, { cwd: repo, env, secrets });
 
   const { report, error: reportError } = readReport(repo, key);
   emit(reportError ? 'warn' : 'info', 'report', reportError ?? 'results.json read');
+  // NAVIGATION_MAP.md 3.5: what the run visited; absent or invalid means no `nav` field.
+  let nav: unknown;
+  if (cfg.navReporter) {
+    const n = readRunJson(repo, key, 'nav.json', MAX_NAV_BYTES);
+    const ok = n.report !== null && typeof n.report === 'object' && Array.isArray((n.report as { entries?: unknown }).entries);
+    if (ok) nav = n.report;
+    else emit('warn', 'report', `navigation not recorded: ${n.error ?? 'nav.json has no entries'}`);
+  }
   const tail = redact(r.tail, secrets).slice(-TAIL_BYTES);
   emit(r.code === 0 ? 'info' : 'warn', 'done', `exit ${r.code}`);
   return {
@@ -289,6 +306,7 @@ export async function caseRun(
     ...counts(report, r.code),
     report,
     ...(reportError ? { report_error: reportError } : {}),
+    ...(nav !== undefined ? { nav } : {}),
     tail,
   };
 }
