@@ -19,6 +19,7 @@ import {
   isTerminalJob,
 } from './knowledge/api';
 import { JOB_CHIP_CLASS, jobChipStatus } from './knowledge/CaseAutomation';
+import JobConversationCard from './conversations/JobConversationCard';
 
 const POLL_MS = 2000;
 const AFTER_TERMINAL_MS = 30_000;
@@ -282,6 +283,8 @@ export default function JobView() {
           </section>
         </div>
       </div>
+
+      {meta.job_type === 'case_create' && <JobConversationCard jobId={id} terminal={terminal} />}
     </div>
   );
 }
