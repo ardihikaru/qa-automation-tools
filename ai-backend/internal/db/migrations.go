@@ -817,6 +817,44 @@ WHERE f.origin = 'sync' AND f.removed_at IS NULL
                   WHERE h.product_id = f.product_id AND h.feature_code = f.code
                     AND h.release_status = f.release_status)
 ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history.id;`,
+	// RUN_HISTORY.md: every Playwright report the backend receives (CI, upload, case_run and each
+	// case_create executor run), append-only. kb_case_results (latest per case, sent to GAOS) is untouched.
+	`CREATE TABLE IF NOT EXISTS pw_runs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  source VARCHAR(16) NOT NULL,
+  run_ref VARCHAR(120) NOT NULL DEFAULT '',
+  job_id VARCHAR(64) NOT NULL DEFAULT '',
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',
+  run_index INT NULL,
+  started_at DATETIME(3) NOT NULL,
+  duration_ms BIGINT NULL,
+  tests INT NOT NULL DEFAULT 0,
+  expected INT NOT NULL DEFAULT 0,
+  unexpected INT NOT NULL DEFAULT 0,
+  flaky INT NOT NULL DEFAULT 0,
+  skipped INT NOT NULL DEFAULT 0,
+  cases INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_pw_runs_report (product_id, source, run_ref, started_at),
+  INDEX idx_pw_runs_started (started_at),
+  INDEX idx_pw_runs_product (product_id, started_at),
+  INDEX idx_pw_runs_job (job_id),
+  CONSTRAINT fk_pw_runs_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// RUN_HISTORY.md: one row per case code of a pw_runs report (result and time of its tests).
+	`CREATE TABLE IF NOT EXISTS pw_run_cases (
+  run_id BIGINT NOT NULL,
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  result ENUM('pass','fail','skipped') NOT NULL,
+  duration_ms BIGINT NOT NULL DEFAULT 0,
+  tests INT NOT NULL DEFAULT 0,
+  attempts INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (run_id, case_code),
+  INDEX idx_pw_run_cases_case (product_id, case_code, run_id),
+  CONSTRAINT fk_pw_run_cases_run FOREIGN KEY (run_id) REFERENCES pw_runs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

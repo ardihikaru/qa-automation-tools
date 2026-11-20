@@ -670,6 +670,12 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
+	// RUN_HISTORY.md: /api/history/{builds,runs,runs/{id},syncs} (read-only).
+	if strings.HasPrefix(req.URL.Path, "/api/history/") {
+		r.handleHistory(w, req)
+		return
+	}
+
 	// Job endpoints include path params (/api/jobs/:id).
 	if strings.HasPrefix(req.URL.Path, "/api/jobs/") {
 		r.handleJobs(w, req)
