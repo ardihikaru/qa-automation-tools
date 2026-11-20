@@ -81,7 +81,8 @@ A QA automation system with AI-powered features for testing and monitoring healt
   - [internal/services/ai](./ai-backend/internal/services/ai/README.md): `ChatProvider`. `aiManagerProvider` (claude-v3) is the only supported provider; `minimaxProvider` is dormant.
   - `internal/services/executor`: playwright-executor client (`Submit`, `Get`, `Wait`, `Health`).
   - [internal/services/skills](./ai-backend/internal/services/skills/README.md): skill registry (`skills`, `skill_logs`) and built-in skills.
-  - [internal/services/learning](./ai-backend/internal/services/learning/README.md): learning cache, navigation edges, action sequences, context records.
+  - [internal/services/learning](./ai-backend/internal/services/learning/README.md): legacy learning cache and navigation edges of the removed crawler (kept for `/navigation`).
+  - [internal/services/learnloop](./ai-backend/internal/services/learnloop/README.md): the learning loop: findings, policy proposals, learned policies in the automation repo.
 - `dashboard/`: [dashboard/README.md](./dashboard/README.md). React SPA. Calls same-origin `/api/*` with `credentials: 'include'`.
 - `playwright-executor/`: [playwright-executor/README.md](./playwright-executor/README.md). Playwright run service (`case_run`). It has an HTTP API with a bearer token, concurrency 1, and is staging only.
 - `deploy/playwright-executor/`: [deploy/playwright-executor/README.md](./deploy/playwright-executor/README.md). systemd user unit template, `install.sh`, and the resource budget.
@@ -386,7 +387,8 @@ Only `/health` and `/api/auth/login` are public. When the backend has a DB, ever
 | `/api/auth/impersonate`, `/api/auth/impersonate/stop`, `/api/users` | POST / GET | Admin/Service impersonation of another user, and the user list for its picker ([spec](docs/designs/IMPERSONATION_AND_SERVICE_ACCOUNT.md)) |
 | `/api/skills`, `/api/skills/logs`, `/api/skills/stats` | GET (+POST logs) | Skills |
 | `/api/cost/overview`, `/trend`, `/efficiency`, `/by-feature`, `/by-model`, `/recent`, `/filters`, `/gateway` | GET | Cost analytics (AI call ledger + ai-manager usage) |
-| `/api/learning` (+ `/navigation`) | GET, POST, DELETE | Learning records |
+| `/api/learning` (+ `/navigation`) | GET, POST, DELETE | Legacy crawler learning records (read by `/navigation` only) |
+| `/api/learning/findings`, `/proposals`, `/timeline` (+ `/{id}/dismiss\|reopen\|check`) | GET / POST | Learning loop: findings from automation work, policy proposals (`policy_propose` jobs) for the automation repo, PR tracking ([spec](docs/designs/LEARNING_LOOP.md)) |
 | `/api/jobs`, `/api/jobs/{id}` (+ `/events`, `/approval`) | GET / POST | Job records (case automation) |
 
 ### Example API Calls

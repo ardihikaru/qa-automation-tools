@@ -22,6 +22,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
+	"github.com/qa-automation/ai-backend/internal/services/learnloop"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
 
@@ -56,6 +57,8 @@ type Router struct {
 	caseAuto caseAuto
 	// epicDriver is the tick guard of the epic batch driver (EPIC_AUTOMATION.md). See epic_batches.go.
 	epicDriver epicDriverState
+	// learn is the learning loop's state (LEARNING_LOOP.md). See learning_loop.go.
+	learn learnState
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo
@@ -214,8 +217,17 @@ func (r *Router) enqueueJobTx(jobType string, payload map[string]interface{}) (*
 }
 
 func (r *Router) enqueueJobWith(jobType string, payload map[string]interface{}, strict bool) (*jobRecord, error) {
+	return r.enqueueJobID(newJobID(), jobType, payload, strict)
+}
+
+// newJobID is the id of a new job_runs row.
+func newJobID() string { return fmt.Sprintf("job-%d", time.Now().UnixNano()) }
+
+// enqueueJobID is enqueueJobWith with an id chosen by the caller (the learning loop reserves its
+// findings for the job before the job exists).
+func (r *Router) enqueueJobID(id, jobType string, payload map[string]interface{}, strict bool) (*jobRecord, error) {
 	job := &jobRecord{
-		ID:        fmt.Sprintf("job-%d", time.Now().UnixNano()),
+		ID:        id,
 		Type:      jobType,
 		Status:    jobStatusQueued,
 		Payload:   payload,
@@ -236,6 +248,10 @@ func (r *Router) enqueueJobWith(jobType string, payload map[string]interface{}, 
 
 	if jobType == "case_create" {
 		go r.runCaseCreate(job.ID, payload, false)
+		return job, nil
+	}
+	if jobType == learnloop.JobType {
+		go r.runPolicyPropose(job.ID, payload, nil)
 		return job, nil
 	}
 	if r.executor != nil {
@@ -679,6 +695,13 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 	// RUN_HISTORY.md: /api/history/{builds,runs,runs/{id},syncs} (read-only).
 	if strings.HasPrefix(req.URL.Path, "/api/history/") {
 		r.handleHistory(w, req)
+		return
+	}
+
+	// LEARNING_LOOP.md: /api/learning/{findings,proposals,timeline}[/...]. The legacy
+	// /api/learning and /api/learning/navigation stay in the switch below.
+	if strings.HasPrefix(req.URL.Path, "/api/learning/") && req.URL.Path != "/api/learning/navigation" {
+		r.handleLearningLoop(w, req)
 		return
 	}
 
