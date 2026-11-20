@@ -12,6 +12,8 @@ The "create automation" state machine of [CASE_AUTOMATION.md](../../../../docs/d
 - `DecisionFromAnswer`: maps a GAOS Inbox answer (option label, else choice) to `approved|rejected|changes`.
 - `EventStore` (`job_events`, seq allocated by `INSERT ... SELECT MAX(seq)+1`, retried on duplicate key) and `ApprovalStore` (`case_approvals`; `Answer` is `UPDATE ... WHERE status = 'open'`, so the first answer wins). `EventStore.Progress` reports a job's last step and whether a `push`/`pr` event exists; the api's orphan resume uses it to refuse re-running a job that may have a PR.
 
+Every `ChatMessages` call names the job's conversation (`ai.ConvRef{job, <job id>, product, case code}`) and labels its messages (`Message.Kind`: `prompt`, `reply`, `refusal`, `run_result`, `feedback`) for the stored conversation (AI_CONVERSATIONS.md); what is sent to the model is unchanged.
+
 ## Invariants
 - No push, commit-to-remote or PR happens before an `approved` answer; a reject or an expiry (72 h) ends the job `failed`. `changes` loops back to the LLM at most `MaxChangeRounds` (2) times, each round with a new approval `qa-<job>-prN`.
 - The first approval's external id is `qa-<job id>-pr`. The GAOS door is best effort: an outage is logged and the dashboard door always works. The machine polls the approval row every 2 s and GAOS (`GetInboxItem`) every 30 s as the fallback for a missed webhook. GAOS has no "close" call in the contract, so an item answered in the dashboard stays open in GAOS until it expires.

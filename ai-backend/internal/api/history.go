@@ -162,29 +162,31 @@ const (
 )
 
 type historyBuild struct {
-	ID          string               `json:"id"`
-	Type        string               `json:"type"`
-	Status      string               `json:"status"`
-	Error       string               `json:"error"`
-	ProductID   int                  `json:"product_id"`
-	ProductName string               `json:"product_name"`
-	CaseCode    string               `json:"case_code"`
-	EpicCode    string               `json:"epic_code"`
-	BatchID     string               `json:"batch_id"`
-	PRURL       string               `json:"pr_url"`
-	Outcome     string               `json:"outcome"`
-	CreatedAt   time.Time            `json:"created_at"`
-	StartedAt   *time.Time           `json:"started_at"`
-	CompletedAt *time.Time           `json:"completed_at"`
-	QueueMs     *int64               `json:"queue_ms"`
-	ActiveMs    *int64               `json:"active_ms"`
-	WaitingMs   int64                `json:"waiting_ms"`
-	MachineMs   *int64               `json:"machine_ms"`
-	Approvals   int                  `json:"approvals"`
-	Runs        int                  `json:"runs"`
-	Steps       []runhistory.StepMs  `json:"steps"`
-	sums        []runhistory.StepSum // from job_events
-	lastAt      *time.Time           // the job's last event
+	ID          string              `json:"id"`
+	Type        string              `json:"type"`
+	Status      string              `json:"status"`
+	Error       string              `json:"error"`
+	ProductID   int                 `json:"product_id"`
+	ProductName string              `json:"product_name"`
+	CaseCode    string              `json:"case_code"`
+	EpicCode    string              `json:"epic_code"`
+	BatchID     string              `json:"batch_id"`
+	PRURL       string              `json:"pr_url"`
+	Outcome     string              `json:"outcome"`
+	CreatedAt   time.Time           `json:"created_at"`
+	StartedAt   *time.Time          `json:"started_at"`
+	CompletedAt *time.Time          `json:"completed_at"`
+	QueueMs     *int64              `json:"queue_ms"`
+	ActiveMs    *int64              `json:"active_ms"`
+	WaitingMs   int64               `json:"waiting_ms"`
+	MachineMs   *int64              `json:"machine_ms"`
+	Approvals   int                 `json:"approvals"`
+	Runs        int                 `json:"runs"`
+	Steps       []runhistory.StepMs `json:"steps"`
+	// ConversationID is the job's non-archived AI conversation (AI_CONVERSATIONS.md), else null.
+	ConversationID *int64               `json:"conversation_id"`
+	sums           []runhistory.StepSum // from job_events
+	lastAt         *time.Time           // the job's last event
 }
 
 func (r *Router) historyBuilds(w http.ResponseWriter, req *http.Request, d *db.DB) {
@@ -267,7 +269,8 @@ func (r *Router) historyBuilds(w http.ResponseWriter, req *http.Request, d *db.D
 		COALESCE(`+jobPID+`, 0), COALESCE(`+jobCase+`, ''), COALESCE(`+jobBatch+`, ''),
 		COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(j.result, '$.pr_url')), ''), JSON_UNQUOTE(JSON_EXTRACT(j.payload, '$.pr_url')), ''),
 		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(j.result, '$.verdict.result')), ''),
-		COALESCE(p.name, ''), COALESCE(t.epic_code, '')
+		COALESCE(p.name, ''), COALESCE(t.epic_code, ''),
+		(SELECT c.id FROM ai_conversations c WHERE c.kind = 'job' AND c.ref = j.id COLLATE utf8mb4_general_ci AND c.archived_at IS NULL)
 		FROM job_runs j
 		LEFT JOIN products p ON p.id = `+jobPID+`
 		LEFT JOIN kb_test_cases t ON t.product_id = `+jobPID+` AND t.code = `+jobCase+
@@ -282,7 +285,7 @@ func (r *Router) historyBuilds(w http.ResponseWriter, req *http.Request, d *db.D
 		b := &historyBuild{Steps: []runhistory.StepMs{}}
 		var st, ct sql.NullTime
 		if err := rows.Scan(&b.ID, &b.Type, &b.Status, &b.Error, &b.CreatedAt, &st, &ct, &b.ProductID, &b.CaseCode, &b.BatchID,
-			&b.PRURL, &b.Outcome, &b.ProductName, &b.EpicCode); err != nil {
+			&b.PRURL, &b.Outcome, &b.ProductName, &b.EpicCode, &b.ConversationID); err != nil {
 			rows.Close()
 			historyInternal(w, "builds scan", err)
 			return
@@ -674,6 +677,8 @@ type historySync struct {
 	FinishedAt  *time.Time `json:"finished_at"`
 	DurationMs  *int64     `json:"duration_ms"`
 	Error       string     `json:"error"`
+	// ConversationID is the sync's non-archived AI summary conversation, else null.
+	ConversationID *int64 `json:"conversation_id"`
 }
 
 func (r *Router) historySyncs(w http.ResponseWriter, req *http.Request, d *db.DB) {
@@ -697,7 +702,8 @@ func (r *Router) historySyncs(w http.ResponseWriter, req *http.Request, d *db.DB
 		return
 	}
 	rows, err := d.Query(ctx, `SELECT s.id, s.product_id, COALESCE(p.name, ''), s.status, s.trigger_kind, s.repo_name, s.branch,
-		COALESCE(s.commit_sha, ''), s.started_at, s.finished_at, COALESCE(s.error, '')
+		COALESCE(s.commit_sha, ''), s.started_at, s.finished_at, COALESCE(s.error, ''),
+		(SELECT c.id FROM ai_conversations c WHERE c.kind = 'sync' AND c.ref = CAST(s.id AS CHAR) AND c.archived_at IS NULL)
 		FROM kb_syncs s LEFT JOIN products p ON p.id = s.product_id`+where+` ORDER BY s.started_at DESC, s.id DESC LIMIT ? OFFSET ?`,
 		append(append([]interface{}{}, q.args...), q.size, (q.page-1)*q.size)...)
 	if err != nil {
@@ -709,7 +715,7 @@ func (r *Router) historySyncs(w http.ResponseWriter, req *http.Request, d *db.DB
 	for rows.Next() {
 		var s historySync
 		var fin sql.NullTime
-		if err := rows.Scan(&s.ID, &s.ProductID, &s.ProductName, &s.Status, &s.Trigger, &s.RepoName, &s.Branch, &s.CommitSHA, &s.StartedAt, &fin, &s.Error); err != nil {
+		if err := rows.Scan(&s.ID, &s.ProductID, &s.ProductName, &s.Status, &s.Trigger, &s.RepoName, &s.Branch, &s.CommitSHA, &s.StartedAt, &fin, &s.Error, &s.ConversationID); err != nil {
 			historyInternal(w, "syncs scan", err)
 			return
 		}
