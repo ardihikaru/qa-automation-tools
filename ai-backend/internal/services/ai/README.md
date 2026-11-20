@@ -19,7 +19,8 @@ and `internal/api/router.go`, and is used by `internal/services/skills`.
 
 - `provider.go:ChatProvider` - interface with `Name()`, `Configured()`,
   `Chat(ctx, []models.Message, ChatOpts) (ChatResult, error)`, `Health(ctx) string`, `Upstream() string`.
-- `provider.go:ChatOpts` (`Temperature`, `MaxTokens`; zero = provider default)
+- `conversation.go` (AI_CONVERSATIONS.md): `ConvRef{Kind job|sync|call, Ref, ProductID, Title}`, `Exchange`, `ConversationStore`; `Service.SetConversationStore`. After the provider returns, `ChatMessages` hands every call (sent messages, reply or error, provider, model) to the store with its own 5 s deadline inside `recover()`; a call without `ChatOpts.Conversation` gets its own `call-<nanos>-<hex>` conversation. The store can never change the call's result. `models.Message.Kind` labels a message for the store and is `json:"-"`: providers never send it (`TestKindIsNotSentToProviders`).
+- `provider.go:ChatOpts` (`Temperature`, `MaxTokens`, `Feature`, `Caller`, `Conversation`; zero = provider default)
   and `provider.go:ChatResult` (`Text`, `Provider`, `Model`, `InputTokens`,
   `OutputTokens`, `CostUSD`).
 - `provider.go:ProviderAIManager` (`"ai-manager"`), `provider.go:ProviderMiniMax` (`"minimax"`).

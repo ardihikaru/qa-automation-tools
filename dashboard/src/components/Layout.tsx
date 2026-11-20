@@ -9,6 +9,7 @@ import {
   Bot,
   ScrollText,
   History as HistoryIcon,
+  Archive as ArchiveIcon,
 } from 'lucide-react';
 import TopBar from './TopBar';
 import { TopBarProvider } from './pageHeader';
@@ -29,6 +30,7 @@ const navItems = [
   { path: '/learning', label: 'Learning Progress', icon: Brain },
   { path: '/products', label: 'Products', icon: ProductsIcon },
   { path: '/history', label: 'Run history', icon: HistoryIcon },
+  { path: '/archive', label: 'Archive', icon: ArchiveIcon },
   { path: '/settings', label: 'Configuration', icon: ArchitectureIcon },
 ];
 

@@ -30,6 +30,8 @@ export interface Build {
   approvals: number;
   runs: number;
   steps: StepMs[];
+  /** The job's AI conversation (AI_CONVERSATIONS.md), null when none or archived. */
+  conversation_id: number | null;
 }
 
 export interface BuildSummary {
@@ -97,6 +99,7 @@ export interface SyncItem {
   finished_at: string | null;
   duration_ms: number | null;
   error: string;
+  conversation_id: number | null;
 }
 
 export interface HistoryPage<T> {

@@ -20,6 +20,9 @@ type ChatOpts struct {
 	// ai-manager for its own usage attribution. Both are optional.
 	Feature string
 	Caller  string
+	// Conversation names the work this call belongs to (AI_CONVERSATIONS.md); nil = a
+	// conversation of its own (kind "call").
+	Conversation *ConvRef
 }
 
 // ChatResult is the provider-neutral reply of a chat call.

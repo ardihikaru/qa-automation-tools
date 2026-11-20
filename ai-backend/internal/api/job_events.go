@@ -49,6 +49,8 @@ func (r *Router) handleJobSub(w http.ResponseWriter, req *http.Request, jobID, s
 		r.handleJobEvents(w, req, jobID)
 	case "approval":
 		r.handleJobApproval(w, req, jobID)
+	case "conversation":
+		r.handleJobConversation(w, req, jobID) // AI_CONVERSATIONS.md
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
 	}

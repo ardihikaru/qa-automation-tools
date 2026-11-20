@@ -11,12 +11,14 @@ import { FilterField } from './filters';
 import BuildsTab from './BuildsTab';
 import RunsTab from './RunsTab';
 import SyncsTab from './SyncsTab';
+import ConversationsTab from './ConversationsTab';
 
-type TabId = 'builds' | 'runs' | 'syncs';
+type TabId = 'builds' | 'runs' | 'syncs' | 'conversations';
 const TABS: { id: TabId; label: string; keys: string[] }[] = [
   { id: 'builds', label: 'Builds', keys: ['type', 'status', 'case', 'epic', 'batch'] },
   { id: 'runs', label: 'Playwright runs', keys: ['source', 'outcome', 'case', 'epic', 'job'] },
   { id: 'syncs', label: 'Knowledge syncs', keys: ['status'] },
+  { id: 'conversations', label: 'AI conversations', keys: ['kind', 'q'] },
 ];
 const COMMON = ['product', 'from', 'to', 'page', 'page_size'];
 
@@ -151,8 +153,10 @@ export default function HistoryView() {
           <BuildsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
         ) : tab === 'runs' ? (
           <RunsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
-        ) : (
+        ) : tab === 'syncs' ? (
           <SyncsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
+        ) : (
+          <ConversationsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
         )}
       </div>
     </div>

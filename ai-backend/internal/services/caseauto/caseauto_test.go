@@ -238,13 +238,15 @@ type fakeLLM struct {
 	mu      sync.Mutex
 	replies []string
 	calls   [][]models.Message
+	opts    []ai.ChatOpts
 	err     error
 }
 
-func (l *fakeLLM) ChatMessages(_ context.Context, msgs []models.Message, _ ai.ChatOpts) (string, error) {
+func (l *fakeLLM) ChatMessages(_ context.Context, msgs []models.Message, o ai.ChatOpts) (string, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.calls = append(l.calls, append([]models.Message(nil), msgs...))
+	l.opts = append(l.opts, o)
 	if l.err != nil {
 		return "", l.err
 	}
@@ -569,6 +571,37 @@ func TestChangesRoundThenApprove(t *testing.T) {
 	}
 	if !strings.Contains(r.repo.files[specPath], "// changed") {
 		t.Error("the revised file was not written")
+	}
+}
+
+// AI_CONVERSATIONS.md: every call names the job's conversation and labels its messages.
+func TestCallsCarryTheConversationAndKinds(t *testing.T) {
+	r := newRig([]string{reply(specPath, goodSpec("")), reply(specPath, goodSpec("  // fixed\n")), reply(specPath, goodSpec("  // changed\n"))}, []RunResult{fail, pass, pass})
+	r.ap.onGet = func(a *fakeApprovals, ext string, n int) {
+		switch {
+		case ext == "qa-job-1-pr" && n == 2:
+			a.Answer(context.Background(), ext, ApprovalChanges, "dashboard", "use the other locator")
+		case ext == "qa-job-1-pr2" && n == 2:
+			a.Answer(context.Background(), ext, ApprovalApproved, "dashboard", "")
+		}
+	}
+	if _, err := r.m.Run(context.Background(), testJob()); err != nil {
+		t.Fatalf("%v\n%s", err, r.ev.all())
+	}
+	if len(r.llm.opts) != 3 {
+		t.Fatalf("calls %d", len(r.llm.opts))
+	}
+	for i, o := range r.llm.opts {
+		if c := o.Conversation; c == nil || c.Kind != ai.ConvJob || c.Ref != "job-1" || c.ProductID != 3 || c.Title != code {
+			t.Errorf("call %d conversation %+v", i, o.Conversation)
+		}
+	}
+	var kinds []string
+	for _, m := range r.llm.calls[2] {
+		kinds = append(kinds, m.Kind)
+	}
+	if got := strings.Join(kinds, ","); got != "prompt,reply,run_result,reply,feedback" {
+		t.Errorf("kinds %s", got)
 	}
 }
 
