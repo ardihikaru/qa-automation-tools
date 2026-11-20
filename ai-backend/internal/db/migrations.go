@@ -855,6 +855,53 @@ ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history
   INDEX idx_pw_run_cases_case (product_id, case_code, run_id),
   CONSTRAINT fk_pw_run_cases_run FOREIGN KEY (run_id) REFERENCES pw_runs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// AI_CONVERSATIONS.md: one conversation per job, knowledge sync or single AI call. last_hashes is
+	// the previous call (sent + reply) for the append-only dedupe; archived rows are what prune deletes.
+	`CREATE TABLE IF NOT EXISTS ai_conversations (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  kind VARCHAR(8) NOT NULL,
+  ref VARCHAR(64) NOT NULL,
+  product_id INT NULL,
+  feature VARCHAR(64) NOT NULL DEFAULT '',
+  title VARCHAR(200) NOT NULL DEFAULT '',
+  provider VARCHAR(64) NOT NULL DEFAULT '',
+  model VARCHAR(128) NOT NULL DEFAULT '',
+  message_count INT NOT NULL DEFAULT 0,
+  bytes BIGINT NOT NULL DEFAULT 0,
+  last_hashes JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  archived_at DATETIME(3) NULL,
+  archived_by VARCHAR(64) NULL,
+  UNIQUE KEY uq_ai_conversations_ref (kind, ref),
+  INDEX idx_ai_conversations_list (archived_at, updated_at),
+  INDEX idx_ai_conversations_product (product_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// AI_CONVERSATIONS.md: the messages of a conversation, redacted, in order; deleted with it.
+	`CREATE TABLE IF NOT EXISTS ai_messages (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  conversation_id BIGINT NOT NULL,
+  seq INT NOT NULL,
+  role VARCHAR(12) NOT NULL,
+  kind VARCHAR(12) NOT NULL,
+  content MEDIUMTEXT NOT NULL,
+  content_hash CHAR(64) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_ai_messages_seq (conversation_id, seq),
+  CONSTRAINT fk_ai_messages_conversation FOREIGN KEY (conversation_id) REFERENCES ai_conversations(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// AI_CONVERSATIONS.md: append-only record of archive, unarchive and prune (the real actor).
+	`CREATE TABLE IF NOT EXISTS ai_conversation_audit (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  action ENUM('archive','unarchive','prune') NOT NULL,
+  actor_id VARCHAR(64) NOT NULL,
+  actor_name VARCHAR(100) NOT NULL DEFAULT '',
+  as_user_id VARCHAR(64) NULL,
+  conversation_id BIGINT NULL,
+  detail JSON NOT NULL,
+  INDEX idx_ai_conversation_audit_action (action, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

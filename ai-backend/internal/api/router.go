@@ -670,6 +670,12 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
+	// AI_CONVERSATIONS.md: /api/conversations[/{id}[/archive|unarchive]|/prune|/prunes].
+	if req.URL.Path == "/api/conversations" || strings.HasPrefix(req.URL.Path, "/api/conversations/") {
+		r.handleConversations(w, req)
+		return
+	}
+
 	// RUN_HISTORY.md: /api/history/{builds,runs,runs/{id},syncs} (read-only).
 	if strings.HasPrefix(req.URL.Path, "/api/history/") {
 		r.handleHistory(w, req)

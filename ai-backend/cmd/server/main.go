@@ -18,6 +18,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/seed"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
+	"github.com/qa-automation/ai-backend/internal/services/conversations"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
@@ -109,6 +110,15 @@ func main() {
 			cfg.Backend.Executor.Token, cfg.Backend.AI.ManagerSecretKey,
 			cfg.Backend.ObjectStore.AccessKey, cfg.Backend.ObjectStore.SecretKey},
 	})
+	// AI_CONVERSATIONS.md: every exchange through ai.Service is stored per job / sync / call, screened
+	// with the case-automation secrets plus the other server secrets.
+	if database != nil && aiService != nil {
+		aiService.SetConversationStore(&conversations.Store{DB: database, Screen: conversations.NewScreen(
+			os.Getenv("GH_TOKEN"), cfg.Backend.GAOS.APIToken, cfg.Backend.GAOS.InboundToken, cfg.Backend.GAOS.ResultsToken,
+			cfg.Backend.Executor.Token, cfg.Backend.AI.ManagerSecretKey, cfg.Backend.ObjectStore.AccessKey, cfg.Backend.ObjectStore.SecretKey,
+			os.Getenv("DB_PASSWORD"), os.Getenv("ADMIN_PASSWORD"), os.Getenv("AI_SERVICE_PASSWORD"),
+			os.Getenv("RESULTS_INGEST_TOKEN"), os.Getenv("PLAYWRIGHT_EXECUTOR_TOKEN"))})
+	}
 	router.FailOrphanedJobs(context.Background())
 	// Product knowledge base: sync of the automation repo's docs/ catalog (PRODUCT_KNOWLEDGE_SYNC.md).
 	if syncer := knowledge.NewSyncer(database, pool, aiService); syncer != nil {

@@ -310,9 +310,9 @@ func (m *Machine) finish(ctx context.Context, r *run) (*Outcome, error) {
 				if err := m.initialConvo(ctx, r); err != nil {
 					return nil, err
 				}
-				r.convo = append(r.convo, models.Message{Role: "assistant", Content: render(r.file)})
+				r.convo = append(r.convo, models.Message{Role: "assistant", Content: render(r.file), Kind: "reply"})
 			}
-			r.convo = append(r.convo, models.Message{Role: "user", Content: m.Redact.Redact("A reviewer asked for changes:\n" + Clip(ap.Text, 1000) +
+			r.convo = append(r.convo, models.Message{Role: "user", Kind: "feedback", Content: m.Redact.Redact("A reviewer asked for changes:\n" + Clip(ap.Text, 1000) +
 				"\n\nReturn the complete corrected file in the same format.")})
 			if err := m.build(ctx, r, StepRepair); err != nil {
 				return nil, err
@@ -464,7 +464,7 @@ func (m *Machine) initialConvo(ctx context.Context, r *run) error {
 	if len(job.AllowedHosts) > 0 {
 		sb.WriteString("\nThe only host a literal URL may name is: " + strings.Join(job.AllowedHosts, ", ") + "\n")
 	}
-	r.convo = []models.Message{{Role: "user", Content: m.Redact.Redact(sb.String())}}
+	r.convo = []models.Message{{Role: "user", Content: m.Redact.Redact(sb.String()), Kind: "prompt"}}
 	return nil
 }
 
@@ -501,18 +501,19 @@ func (m *Machine) build(ctx context.Context, r *run, first string) error {
 			step = StepRepair
 		}
 		m.ev(ctx, job, "info", step, fmt.Sprintf("asking claude-v3 (%s, round %d)", step, i+1))
-		reply, err := m.LLM.ChatMessages(ctx, r.convo, ai.ChatOpts{Temperature: 0.2, Feature: "case-automation", Caller: "qa-case-automation"})
+		reply, err := m.LLM.ChatMessages(ctx, r.convo, ai.ChatOpts{Temperature: 0.2, Feature: "case-automation", Caller: "qa-case-automation",
+			Conversation: &ai.ConvRef{Kind: ai.ConvJob, Ref: job.ID, ProductID: job.ProductID, Title: job.Case.Code}})
 		if err != nil {
 			return m.fail(ctx, job, step, "the LLM call failed: %v", err)
 		}
-		r.convo = append(r.convo, models.Message{Role: "assistant", Content: m.Redact.Redact(reply)})
+		r.convo = append(r.convo, models.Message{Role: "assistant", Content: m.Redact.Redact(reply), Kind: "reply"})
 		f, err := ParseReply(reply)
 		if err == nil {
 			err = Validate(f, r.opts)
 		}
 		if err != nil {
 			m.ev(ctx, job, "warn", step, "the reply was refused: "+err.Error())
-			r.convo = append(r.convo, models.Message{Role: "user", Content: "Your reply was refused: " + err.Error() + ". Return the complete corrected file in the required format."})
+			r.convo = append(r.convo, models.Message{Role: "user", Kind: "refusal", Content: "Your reply was refused: " + err.Error() + ". Return the complete corrected file in the required format."})
 			r.result = RunResult{Message: "invalid reply: " + err.Error()}
 			continue
 		}
@@ -546,7 +547,7 @@ func (m *Machine) build(ctx context.Context, r *run, first string) error {
 			// A config/environment failure is not the spec's fault: another LLM round cannot fix it.
 			return m.fail(ctx, job, StepRun, "the run failed before any test was collected (%s); fix the automation repo's environment (env file on the executor host), then retry", why)
 		}
-		r.convo = append(r.convo, models.Message{Role: "user", Content: m.Redact.Redact("The spec was run against staging and did not pass: " + res.Message +
+		r.convo = append(r.convo, models.Message{Role: "user", Kind: "run_result", Content: m.Redact.Redact("The spec was run against staging and did not pass: " + res.Message +
 			"\nOutput tail:\n" + Clip(res.Tail, 3500) + "\n\nFix the spec. Return the complete corrected file in the required format.")})
 	}
 }
