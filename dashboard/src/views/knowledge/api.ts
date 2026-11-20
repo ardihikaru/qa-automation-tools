@@ -494,7 +494,14 @@ export function duration(from: string | null | undefined, to: string | null | un
   const a = parseTime(from);
   const b = parseTime(to);
   if (!a || !b) return '';
-  const sec = Math.max(0, Math.round((b.getTime() - a.getTime()) / 1000));
+  return formatMs(b.getTime() - a.getTime());
+}
+
+/** A duration in milliseconds as "850ms", "42s", "3m 5s" or "2h 10m" ('' for null/undefined). */
+export function formatMs(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '';
+  if (ms > 0 && ms < 1000) return `${Math.round(ms)}ms`;
+  const sec = Math.max(0, Math.round(ms / 1000));
   if (sec < 60) return `${sec}s`;
   const m = Math.floor(sec / 60);
   return m < 60 ? `${m}m ${sec % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
