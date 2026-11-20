@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -28,6 +29,30 @@ type Report struct {
 	// SkipReasons: code -> skip annotation descriptions of its skipped tests (test.skip(cond, reason),
 	// testInfo.skip, test.fixme), in report order, without duplicates.
 	SkipReasons map[string][]string
+	// Stats is the run as a whole (RUN_HISTORY.md): the report's stats, else counted from the tests.
+	Stats Stats
+	// Cases: code -> how long its tests took, for the run history. Results above is unchanged by it.
+	Cases map[string]CaseStat
+}
+
+// Stats is a run's duration and counts. DurationMs is nil when the report has no usable
+// stats.duration. The counts are Playwright's: expected = passed, unexpected = failed,
+// flaky = passed on retry.
+type Stats struct {
+	DurationMs *int64
+	Expected   int
+	Unexpected int
+	Flaky      int
+	Skipped    int
+}
+
+// CaseStat is one case code's share of a run: DurationMs is the sum of results[].duration of
+// every test (and retry) titled with the code, Tests the number of tests, Attempts the number of
+// results (runs of those tests, retries included).
+type CaseStat struct {
+	DurationMs int64
+	Tests      int
+	Attempts   int
 }
 
 // pwSuite mirrors the part of Playwright's JSON reporter output we read.
@@ -35,7 +60,10 @@ type pwSuite struct {
 	Specs []struct {
 		Title string `json:"title"`
 		Tests []struct {
-			Status      string `json:"status"` // expected | unexpected | flaky | skipped
+			Status  string `json:"status"` // expected | unexpected | flaky | skipped
+			Results []struct {
+				Duration float64 `json:"duration"`
+			} `json:"results"`
 			Annotations []struct {
 				Type        string `json:"type"`
 				Description string `json:"description"`
@@ -48,7 +76,12 @@ type pwSuite struct {
 type pwReport struct {
 	Suites []pwSuite `json:"suites"`
 	Stats  struct {
-		StartTime string `json:"startTime"`
+		StartTime  string   `json:"startTime"`
+		Duration   *float64 `json:"duration"`
+		Expected   *int     `json:"expected"`
+		Unexpected *int     `json:"unexpected"`
+		Flaky      *int     `json:"flaky"`
+		Skipped    *int     `json:"skipped"`
 	} `json:"stats"`
 }
 
@@ -67,7 +100,8 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 	if len(pr.Suites) == 0 {
 		return nil, ErrNotReport
 	}
-	rep := &Report{StartedAt: now, Results: map[string]string{}, SkipReasons: map[string][]string{}}
+	rep := &Report{StartedAt: now, Results: map[string]string{}, SkipReasons: map[string][]string{}, Cases: map[string]CaseStat{}}
+	var counted Stats // from the tests, used when the report has no stats counts
 	if t, err := time.Parse(time.RFC3339, pr.Stats.StartTime); err == nil && !t.After(now) {
 		rep.StartedAt = t
 	}
@@ -81,7 +115,28 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 				if res == "" {
 					continue // unknown status: ignore the test
 				}
+				switch t.Status {
+				case "expected":
+					counted.Expected++
+				case "unexpected":
+					counted.Unexpected++
+				case "flaky":
+					counted.Flaky++
+				case "skipped":
+					counted.Skipped++
+				}
+				var ms float64
+				for _, r := range t.Results {
+					if r.Duration > 0 {
+						ms += r.Duration
+					}
+				}
 				for _, c := range codes {
+					cs := rep.Cases[c]
+					cs.Tests++
+					cs.Attempts += len(t.Results)
+					cs.DurationMs += int64(math.Round(ms))
+					rep.Cases[c] = cs
 					rep.Results[c] = merge(rep.Results[c], res)
 					if res != Skipped {
 						continue
@@ -101,7 +156,24 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 	for _, s := range pr.Suites {
 		walk(s)
 	}
+	st := pr.Stats
+	if st.Expected != nil || st.Unexpected != nil || st.Flaky != nil || st.Skipped != nil {
+		rep.Stats = Stats{Expected: deref(st.Expected), Unexpected: deref(st.Unexpected), Flaky: deref(st.Flaky), Skipped: deref(st.Skipped)}
+	} else {
+		rep.Stats = counted
+	}
+	if st.Duration != nil && *st.Duration >= 0 && !math.IsInf(*st.Duration, 0) && !math.IsNaN(*st.Duration) {
+		d := int64(math.Round(*st.Duration))
+		rep.Stats.DurationMs = &d
+	}
 	return rep, nil
+}
+
+func deref(p *int) int {
+	if p == nil || *p < 0 {
+		return 0
+	}
+	return *p
 }
 
 func merge(old, next string) string {
