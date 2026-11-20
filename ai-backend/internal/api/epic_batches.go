@@ -82,6 +82,13 @@ func jobExclusions(ctx context.Context, d *db.DB, pid int) (map[string]bool, err
 	return out, rows.Err()
 }
 
+// eligibleCaseWhere is the row predicate of an eligible case over kb_test_cases t (EPIC_AUTOMATION.md
+// decision 2); the job exclusions (jobExclusions) are applied on top. Shared with the navigation
+// map's "next to automate" list (NAVIGATION_MAP.md section 6).
+const eligibleCaseWhere = `t.removed_at IS NULL AND t.status = 'planned'
+		  AND t.reason_category = '' AND JSON_LENGTH(t.spec_paths) = 0
+		  AND NOT EXISTS (SELECT 1 FROM gaos_decisions g WHERE g.product_id = t.product_id AND g.case_code = t.code AND g.decision <> 'planned')`
+
 // eligibleCodes lists the epic's eligible case codes in work order: priority P0..P3 first,
 // then no priority, then by code.
 func eligibleCodes(ctx context.Context, d *db.DB, pid int, epic string) ([]string, error) {
@@ -91,9 +98,7 @@ func eligibleCodes(ctx context.Context, d *db.DB, pid int, epic string) ([]strin
 	}
 	rows, err := d.Query(ctx, `
 		SELECT t.code FROM kb_test_cases t
-		WHERE t.product_id = ? AND t.epic_code = ? AND t.removed_at IS NULL AND t.status = 'planned'
-		  AND t.reason_category = '' AND JSON_LENGTH(t.spec_paths) = 0
-		  AND NOT EXISTS (SELECT 1 FROM gaos_decisions g WHERE g.product_id = t.product_id AND g.case_code = t.code AND g.decision <> 'planned')
+		WHERE t.product_id = ? AND t.epic_code = ? AND `+eligibleCaseWhere+`
 		ORDER BY FIELD(t.priority, 'P0', 'P1', 'P2', 'P3') = 0, FIELD(t.priority, 'P0', 'P1', 'P2', 'P3'), t.code COLLATE utf8mb4_bin`, pid, epic)
 	if err != nil {
 		return nil, err

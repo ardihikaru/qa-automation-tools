@@ -402,6 +402,12 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 	} else if sp, ok := payload["spec_paths"].([]string); ok && len(sp) > 0 {
 		spec = sp[0]
 	}
+	// NAVIGATION_MAP.md 3.5: the routes the run visited, read and removed before any early return.
+	if nav, ok := result["nav"]; ok {
+		delete(result, "nav")
+		runID, _ := result["executor_run_id"].(string)
+		result["nav_count"] = storeNavObservations(ctx, r.getDB(), pid, jobID, runID, nav)
+	}
 	v := caseauto.VerdictFromResult(result, code, spec, time.Now().UTC())
 	raw, _ := json.Marshal(result["report"])
 	delete(result, "report") // up to 2 MiB: the verdict and counts are kept, the raw report is not
@@ -859,6 +865,9 @@ func (e *executorRunner) RunCase(ctx context.Context, req caseauto.RunRequest, e
 	}
 	if final.Status == executor.StatusFailed {
 		return caseauto.RunResult{}, fmt.Errorf("playwright-executor: %s", final.Error)
+	}
+	if nav, ok := final.Result["nav"]; ok {
+		storeNavObservations(ctx, e.r.getDB(), e.pid, e.jobID, final.ID, nav)
 	}
 	v := caseauto.VerdictFromResult(final.Result, req.CaseCode, req.SpecPath, time.Now().UTC())
 	if v.Report != nil {
