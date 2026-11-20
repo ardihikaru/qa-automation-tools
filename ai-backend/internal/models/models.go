@@ -86,6 +86,9 @@ type AIRequest struct {
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// Kind labels the message for the stored conversation (AI_CONVERSATIONS.md: prompt, reply,
+	// feedback, refusal, run_result, ...). Never serialised: what a provider receives is unchanged.
+	Kind string `json:"-"`
 }
 
 // AIResponse represents an AI API response

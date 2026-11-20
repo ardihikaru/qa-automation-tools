@@ -4,6 +4,7 @@ import { formatMs, knowledgeHref, shortSha } from '../knowledge/api';
 import { Empty, ErrorNote, Pagination, RelTime, SkeletonRows, SyncStatusChip } from '../knowledge/ui';
 import { TabProps, listSyncs, useHistoryList } from './api';
 import { FilterSelect } from './filters';
+import { conversationHref } from '../conversations/api';
 
 export default function SyncsTab({ filters, setFilter, refreshKey }: TabProps) {
   const { data, error, loading, retry } = useHistoryList(listSyncs, filters, refreshKey);
@@ -33,7 +34,7 @@ export default function SyncsTab({ filters, setFilter, refreshKey }: TabProps) {
                 <th className="px-3 py-2">Trigger</th>
                 <th className="px-3 py-2">Commit</th>
                 <th className="px-3 py-2 text-right">Duration</th>
-                <th className="px-3 py-2">Error</th>
+                <th className="px-3 py-2">Error / AI</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -55,7 +56,14 @@ export default function SyncsTab({ filters, setFilter, refreshKey }: TabProps) {
                   <td className="px-3 py-2 text-gray-700">{s.trigger}</td>
                   <td className="px-3 py-2 font-mono text-xs text-gray-700">{shortSha(s.commit_sha) || '–'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{s.duration_ms === null ? <span className="text-gray-500">running</span> : formatMs(s.duration_ms) || '0s'}</td>
-                  <td className="px-3 py-2 text-red-700 break-words max-w-md">{s.error}</td>
+                  <td className="px-3 py-2 break-words max-w-md">
+                    {s.error && <span className="text-red-700">{s.error}</span>}
+                    {s.conversation_id !== null && (
+                      <Link to={conversationHref(s.conversation_id)} className="block text-primary-700 hover:underline">
+                        AI summary conversation
+                      </Link>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

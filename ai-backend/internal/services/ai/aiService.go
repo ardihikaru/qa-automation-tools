@@ -29,6 +29,15 @@ type Service struct {
 	usageMu   sync.Mutex
 	lastUsage ChatResult
 	recorder  CallRecorder
+	convStore ConversationStore
+}
+
+// SetConversationStore installs the store that keeps every exchange (AI_CONVERSATIONS.md).
+// nil = nothing is stored.
+func (s *Service) SetConversationStore(cs ConversationStore) {
+	s.usageMu.Lock()
+	s.convStore = cs
+	s.usageMu.Unlock()
 }
 
 // SetRecorder installs the ledger that receives one record per AI call (success or failure).
@@ -126,6 +135,7 @@ func (s *Service) ChatMessages(ctx context.Context, messages []models.Message, o
 	latency := time.Since(start)
 	s.usageMu.Lock()
 	rec := s.recorder
+	cs := s.convStore
 	if err == nil {
 		s.lastUsage = res
 	}
@@ -146,6 +156,9 @@ func (s *Service) ChatMessages(ctx context.Context, messages []models.Message, o
 			cr.Status, cr.Error = "error", err.Error()
 		}
 		rec.RecordCall(cr)
+	}
+	if cs != nil {
+		saveExchange(ctx, cs, messages, opts, res, err)
 	}
 	if err != nil {
 		return "", err
