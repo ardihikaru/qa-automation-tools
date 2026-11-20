@@ -902,6 +902,44 @@ ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history
   detail JSON NOT NULL,
   INDEX idx_ai_conversation_audit_action (action, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// LEARNING_LOOP.md: findings observed in real automation work (reviewer answers, repairs,
+	// repeated failures, manual entries), deduplicated by fingerprint per product. A proposal is a
+	// policy_propose job (job_runs); proposal_job_id links the active or last one.
+	`CREATE TABLE IF NOT EXISTS learning_findings (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  kind VARCHAR(24) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'new',
+  title VARCHAR(200) NOT NULL,
+  detail TEXT NOT NULL,
+  fingerprint CHAR(64) NOT NULL,
+  occurrences INT NOT NULL DEFAULT 1,
+  proposal_job_id VARCHAR(191) NULL,
+  created_by VARCHAR(64) NOT NULL DEFAULT 'system',
+  status_note VARCHAR(300) NOT NULL DEFAULT '',
+  first_seen_at DATETIME NOT NULL,
+  last_seen_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_lf_product (product_id, status, last_seen_at),
+  INDEX idx_lf_fp (product_id, fingerprint),
+  INDEX idx_lf_job (proposal_job_id),
+  CONSTRAINT fk_lf_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// LEARNING_LOOP.md: one row per piece of evidence; source_key makes a re-harvest a no-op.
+	`CREATE TABLE IF NOT EXISTS learning_evidence (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  finding_id BIGINT NOT NULL,
+  source_key VARCHAR(160) NOT NULL,
+  job_id VARCHAR(191) NOT NULL DEFAULT '',
+  case_code VARCHAR(64) NOT NULL DEFAULT '',
+  run_ref VARCHAR(120) NOT NULL DEFAULT '',
+  excerpt VARCHAR(1000) NOT NULL DEFAULT '',
+  observed_at DATETIME NOT NULL,
+  UNIQUE KEY uq_le_source (source_key),
+  INDEX idx_le_finding (finding_id, observed_at),
+  CONSTRAINT fk_le_finding FOREIGN KEY (finding_id) REFERENCES learning_findings(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

@@ -2,6 +2,8 @@
 
 ## Overview
 
+> **Legacy.** The writers of these tables were the exploratory-QA crawler, which was removed; nothing in the backend calls the `Add*` methods any more and production returns `[]`. The `/learning` page no longer reads this package: it shows the learning loop ([LEARNING_LOOP.md](../../../../docs/designs/LEARNING_LOOP.md), package [learnloop](../learnloop/README.md)). `GET/POST/DELETE /api/learning` and `/api/learning/navigation` are kept unchanged because `/navigation` still reads them; removing them belongs to the `/navigation` redesign.
+
 Package `learning` stores and ranks what the QA explorer learns as it runs. It keeps four MySQL 8 stores, all accessed through the `*db.DB` wrapper (see [db](../../db/README.md)):
 
 - `learning_cache`: intent/action/page records with a score.

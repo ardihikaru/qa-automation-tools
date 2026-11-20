@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -201,6 +202,18 @@ func (f *fakeRepo) ListSpecs(Workspace) ([]string, error) {
 			out = append(out, k)
 		}
 	}
+	return out, nil
+}
+func (f *fakeRepo) ReadLearned(Workspace) ([]LearnedFile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []LearnedFile
+	for k, v := range f.files {
+		if strings.HasPrefix(k, ".claude/rules/learned-") {
+			out = append(out, LearnedFile{Path: k, Content: v})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
 }
 func (f *fakeRepo) WriteFile(_ Workspace, rel string, data []byte) error {
