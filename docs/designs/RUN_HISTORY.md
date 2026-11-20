@@ -1,7 +1,7 @@
 # RUN_HISTORY: how long automation building and Playwright runs took, every run logged
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Rev 2 (2026-11-21), after one EGM review round (implementation readiness, design, codebase details; findings resolved in section 11, which supersedes earlier wording). The product owner asked for it and delegated the choices; implementation follows in the same PR. Not deployed.
+*   **Status:** Rev 2, **implemented** (2026-11-21) after one EGM review round (implementation readiness, design, codebase details; findings resolved in section 11, which supersedes earlier wording). The product owner asked for it and delegated the choices. Not deployed; the migration has not been run anywhere but scratch databases.
 *   **Depends on:** [CASE_AUTOMATION.md](CASE_AUTOMATION.md) (`case_create`, `case_run`, `job_events`, `case_approvals`), [CASE_RESULTS.md](CASE_RESULTS.md) (the report parser and `kb_case_results`), [EPIC_AUTOMATION.md](EPIC_AUTOMATION.md) (`batch_id` in a job's payload), [PRODUCT_KNOWLEDGE_SYNC.md](PRODUCT_KNOWLEDGE_SYNC.md) (`kb_syncs`).
 
 ## 1. Problem
@@ -123,7 +123,7 @@ Read-only routes, no new writer outside the three existing doors, no new secret,
 
 ## 8. Target files
 
-`ai-backend/internal/db/migrations.go` (two tables); `internal/services/caseresults/{parse.go, parse_test.go, README.md}` (stats and per-case durations); `internal/services/runhistory/` (new: `record.go` `Record`, `breakdown.go` `Breakdown`, `README.md`, `breakdown_test.go`, `record_integration_test.go`); `internal/api/{history.go (new), history_test.go (new), case_results.go, case_automation.go, router.go, README.md}`; `dashboard/src/{App.tsx, components/Layout.tsx, views/history/ (new: HistoryView.tsx, BuildsTab.tsx, RunsTab.tsx, SyncsTab.tsx, api.ts, format.ts)}`, `dashboard/README.md`; `this-qa-automation-system-playwright/tests/{api/history.spec.ts (new), dashboard/run-history.spec.ts (new), dashboard/navigation.spec.ts, dashboard/layout-width.spec.ts}`; `docs/designs/{RUN_HISTORY.md, SITEMAP.md}`; root `README.md` (feature list).
+`ai-backend/internal/db/migrations.go` (two tables); `internal/services/caseresults/{parse.go, parse_test.go, README.md}` (stats and per-case durations); `internal/services/runhistory/` (new: `record.go` `Record`, `breakdown.go` `Breakdown`, `README.md`, `breakdown_test.go`, `record_integration_test.go`); `internal/api/{history.go (new), history_test.go (new), case_results.go, case_automation.go, router.go, README.md}`; `dashboard/src/{App.tsx, components/Layout.tsx, views/history/ (new: HistoryView.tsx, BuildsTab.tsx, RunsTab.tsx, SyncsTab.tsx, api.ts, filters.tsx), views/knowledge/api.ts (`formatMs`), views/products/api.ts (`run_id`)}`, `dashboard/README.md`; `this-qa-automation-system-playwright/{README.md, tests/api/history.spec.ts (new), tests/dashboard/run-history.spec.ts (new), tests/dashboard/layout-width.spec.ts}`; `docs/designs/{RUN_HISTORY.md, SITEMAP.md}`; `ai-backend/README.md`. As built: `format.ts` became `formatMs` in `knowledge/api.ts` (11.9) plus `filters.tsx`; `navigation.spec.ts` was left alone (the redirect and nav entry are checked in `run-history.spec.ts`, which signs in); the root `README.md` has no feature list to extend.
 
 ## 9. Verification
 
