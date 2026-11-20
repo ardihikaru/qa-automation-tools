@@ -205,11 +205,18 @@ func (p *Pool) HostPath(hostRoot, abs string) (string, error) {
 	return filepath.Join(hostRoot, rel), nil
 }
 
+// learnedPathRe is the one dot-path a commit may name: a learned policy file of the learning loop
+// (LEARNING_LOOP.md decision 9). Every other path must start with a letter or a digit.
+var learnedPathRe = regexp.MustCompile(`^\.claude/rules/learned-[a-z0-9-]{1,60}\.md$`)
+
 func validRepoRel(paths []string) error {
 	if len(paths) == 0 {
 		return inputErr("no paths")
 	}
 	for _, f := range paths {
+		if learnedPathRe.MatchString(f) {
+			continue
+		}
 		if len(f) > 300 || !repoPathRe.MatchString(f) || strings.Contains(f, "..") || strings.Contains(f, "//") {
 			return inputErr("invalid repo path")
 		}

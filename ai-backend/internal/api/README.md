@@ -65,8 +65,14 @@ Product and repo request bodies (create, update, repo add/update, branches) are 
 | `/api/cost/gateway` | GET (`month=YYYY-MM\|all`) | `handleCostGateway` (ai-manager usage + local totals) |
 
 All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`YYYY-MM-DD`, UTC, inclusive, default last 30 days, max 366) plus optional `feature`, `provider`, `model`, `status=ok|error`. Day buckets are UTC. `/trend` is zero-filled. `/gateway` answers 200 with `available:false` and an `error` when ai-manager is unreachable or not the active provider.
-| `/api/learning` | GET, POST, DELETE (`?id=`) | `handleLearning` |
-| `/api/learning/navigation` | GET, POST | `handleLearningNavigation` |
+| `/api/learning` | GET, POST, DELETE (`?id=`) | `handleLearning` (legacy crawler `learning_cache`; kept unchanged for `/navigation`) |
+| `/api/learning/navigation` | GET, POST | `handleLearningNavigation` (legacy, as above) |
+| `/api/learning/findings` | GET, POST | `handleLearningLoop` (`learning_loop.go`, LEARNING_LOOP.md). GET `?product_id=&status=&kind=&q=&limit≤200&offset=` → `{items, total, counts}`; POST `{product_id, title, detail, case_code?, job_id?, run_ref?}` (Admin, DevOps, Developer, QA, QC) → 201 `{finding, merged}`. Errors `{error, code}`: `bad_input`, `forbidden`, `not_found`, `bad_transition`, `finding_busy`, `unconfigured`, `draining` |
+| `/api/learning/findings/{id}` | GET | the finding + `evidence[≤50]` |
+| `/api/learning/findings/{id}/dismiss`, `…/reopen` | POST | dismiss `new`; reopen `dismissed` / `covered`; 409 `bad_transition` |
+| `/api/learning/proposals` | GET, POST | GET `?product_id=&state=&limit&offset` → `{items, total, counts}` (a proposal is a `policy_propose` job; `state` derived by `learnloop.ProposalState`; newest 500 jobs). POST `{product_id, finding_ids[1..10]}` → 202 `{job_id}`; 409 `finding_busy`; 503 `unconfigured` (no AI, no pool, no automation repo). Approve with `/api/jobs/{id}/approval` or the GAOS Inbox |
+| `/api/learning/proposals/{job id}/check` | POST | polls the PR now (`gh pr view`); 409 unless `pr_open`; 502 `pr_check_failed` |
+| `/api/learning/timeline` | GET | `?product_id=&limit≤200` → `{items}` derived from findings and proposals, newest first |
 | `/api/jobs` | GET | `handleListJobs` |
 | `/api/jobs/{id}` | GET | `handleJobs` -> `handleGetJob` |
 | `/api/jobs/{id}/events?since=<seq>` | GET | `handleJobEvents` (`job_events.go`): `{events:[{seq,at,level,step,message}], status, phase, job_type, error?, case_code?, branch?, product_id?, pr_url?, spec?:{path,content}, report?:{passed,failed,skipped}, approval?:{status,gaos_created,answer_text,answered_by,external_id}}`; at most 500 events per call |
