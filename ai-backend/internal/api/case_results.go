@@ -7,6 +7,7 @@ package api
 // kb_case_results; GET /api/v1/gaos/results then serves them to GAOS.
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/qa-automation/ai-backend/internal/services/caseresults"
+	"github.com/qa-automation/ai-backend/internal/services/runhistory"
 )
 
 const caseResultsMaxBody = 24 << 20 // below nginx client_max_body_size (25m)
@@ -119,8 +121,25 @@ func (r *Router) ingestReport(w http.ResponseWriter, req *http.Request, pid int,
 	if out.Stored > 0 {
 		r.notifyResultsStored(pid)
 	}
+	runID := r.recordRun(ctx, runhistory.RunIn{ProductID: pid, Source: source, RunRef: runRef}, rep)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tests": rep.Tests, "cases": len(rep.Results), "run_ref": runRef, "run_at": rep.StartedAt.Format(time.RFC3339),
 		"stored": out.Stored, "stale": out.Stale, "unmatched": out.Unmatched, "unmatched_count": out.UnmatchedN,
+		"run_id": runID,
 	})
+}
+
+// recordRun logs a Playwright report in the run history (RUN_HISTORY.md). A failure is only
+// logged: the caller's upload or job never depends on it. 0 = not recorded.
+func (r *Router) recordRun(ctx context.Context, in runhistory.RunIn, rep *caseresults.Report) int64 {
+	d := r.getDB()
+	if d == nil || rep == nil || in.ProductID <= 0 {
+		return 0
+	}
+	id, err := runhistory.Record(context.WithoutCancel(ctx), d, in, rep)
+	if err != nil {
+		log.Printf("run history: %s product %d: %v", in.Source, in.ProductID, err)
+		return 0
+	}
+	return id
 }
