@@ -1,389 +1,307 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Brain, Plus, RefreshCw } from 'lucide-react';
+import { usePageHeader } from '../components/pageHeader';
+import { useAuth } from '../auth/AuthContext';
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar,
-} from 'recharts';
-import { Search, Brain, TrendingUp, BarChart3, Target } from 'lucide-react';
+  BUSY_STATES,
+  canWriteLearning,
+  errorText,
+  FINDING_KINDS,
+  FINDING_STATUS_LABEL,
+  FINDING_STATUSES,
+  Finding,
+  FindingStatus,
+  isAbort,
+  KIND_LABEL,
+  listFindings,
+  listProducts,
+  listProposals,
+  getTimeline,
+  Page,
+  ProductOption,
+  Proposal,
+  PROPOSAL_STATES,
+  ProposalState,
+  STATE_LABEL,
+  TimelineItem,
+} from './learning/api';
+import { AddFindingDialog, FindingsTab, PoliciesTab, TimelineTab } from './learning/Tabs';
 
-interface LearningRecord {
-  id: number;
-  intent: string;
-  action: string;
-  page: string;
-  success_score: number;
-  usage_count: number;
-  last_success?: string | null;
-  created_at?: string;
-  updated_at?: string;
-}
+type Tab = 'timeline' | 'findings' | 'policies';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'findings', label: 'Findings' },
+  { id: 'policies', label: 'Policies' },
+];
 
-interface SuccessTrendPoint {
-  date: string;
-  success: number;
-}
-
-interface TopActionRow {
-  key: string;
-  intent: string;
-  action: string;
-  page: string;
-  usage_count: number;
-  avg_success: number;
-}
-
+/**
+ * /learning: what the QA tools learned from real automation work (LEARNING_LOOP.md). Findings
+ * come from reviewer answers, repairs and repeated failures of case_create jobs, or are entered by
+ * hand; a proposal turns findings into one policy file for the product's automation repo, a person
+ * approves it, the tool opens the PR, and a merged PR makes the policy learned. The product filter
+ * scopes everything; the URL keeps the filters.
+ */
 export default function LearningProgressView() {
-  const [records, setRecords] = useState<LearningRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [pageFilter, setPageFilter] = useState('all');
+  const { user } = useAuth();
+  const canWrite = canWriteLearning(user?.role);
+  const [params, setParams] = useSearchParams();
+  const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'timeline') as Tab;
+  const productParam = params.get('product') ?? '';
+  const fstatus = FINDING_STATUSES.includes(params.get('status') as FindingStatus) ? (params.get('status') as FindingStatus) : '';
+  const kind = FINDING_KINDS.find((k) => k === params.get('kind')) ?? '';
+  const pstate = PROPOSAL_STATES.includes(params.get('state') as ProposalState) ? (params.get('state') as ProposalState) : '';
+  const q = params.get('q') ?? '';
 
-  useEffect(() => {
-    fetchLearningRecords();
-  }, []);
+  const [products, setProducts] = useState<ProductOption[] | null>(null);
+  const [findings, setFindings] = useState<Page<Finding, FindingStatus> | null>(null);
+  const [proposals, setProposals] = useState<Page<Proposal, ProposalState> | null>(null);
+  const [allProposals, setAllProposals] = useState<Page<Proposal, ProposalState> | null>(null);
+  const [timeline, setTimeline] = useState<TimelineItem[] | null>(null);
+  const [error, setError] = useState('');
+  const [reload, setReload] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [qDraft, setQDraft] = useState(q);
 
-  const fetchLearningRecords = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  usePageHeader({ title: 'Learning' });
 
-      const res = await fetch('/api/learning?limit=500');
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+  const update = useCallback(
+    (patch: Record<string, string>) => {
+      const next = new URLSearchParams(params);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v) next.set(k, v);
+        else next.delete(k);
       }
-
-      const data = await res.json();
-      setRecords(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Failed to fetch learning records:', err);
-      setError('Failed to load learning data');
-      setRecords([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredRecords = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return records.filter((record) => {
-      const matchesSearch =
-        q.length === 0 ||
-        record.intent?.toLowerCase().includes(q) ||
-        record.action?.toLowerCase().includes(q) ||
-        record.page?.toLowerCase().includes(q);
-      const matchesPage = pageFilter === 'all' || record.page === pageFilter;
-      return matchesSearch && matchesPage;
-    });
-  }, [records, search, pageFilter]);
-
-  const pages = useMemo(() => {
-    const uniquePages = new Set<string>();
-    records.forEach((record) => {
-      if (record.page) uniquePages.add(record.page);
-    });
-    return Array.from(uniquePages).sort((a, b) => a.localeCompare(b));
-  }, [records]);
-
-  const usageStats = useMemo(() => {
-    const totalRecords = filteredRecords.length;
-    const totalUsage = filteredRecords.reduce((sum, r) => sum + (r.usage_count || 0), 0);
-    const weightedSuccess =
-      totalUsage > 0
-        ? filteredRecords.reduce((sum, r) => sum + (r.success_score || 0) * (r.usage_count || 0), 0) /
-          totalUsage
-        : 0;
-    const highSuccessActions = filteredRecords.filter((r) => (r.success_score || 0) >= 0.8).length;
-
-    return {
-      totalRecords,
-      totalUsage,
-      weightedSuccess,
-      highSuccessActions,
-    };
-  }, [filteredRecords]);
-
-  const successTrend = useMemo<SuccessTrendPoint[]>(() => {
-    const buckets = new Map<string, { weightedSuccessSum: number; usageSum: number }>();
-
-    filteredRecords.forEach((record) => {
-      const refDate = record.last_success || record.updated_at || record.created_at;
-      if (!refDate) return;
-
-      const date = new Date(refDate);
-      if (Number.isNaN(date.getTime())) return;
-      const dateKey = date.toISOString().slice(0, 10);
-
-      const usage = Math.max(1, record.usage_count || 0);
-      const current = buckets.get(dateKey) || { weightedSuccessSum: 0, usageSum: 0 };
-      current.weightedSuccessSum += (record.success_score || 0) * usage;
-      current.usageSum += usage;
-      buckets.set(dateKey, current);
-    });
-
-    return Array.from(buckets.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({
-        date,
-        success: value.usageSum > 0 ? value.weightedSuccessSum / value.usageSum : 0,
-      }));
-  }, [filteredRecords]);
-
-  const topActions = useMemo<TopActionRow[]>(() => {
-    const grouped = new Map<string, TopActionRow>();
-
-    filteredRecords.forEach((record) => {
-      const key = `${record.intent}::${record.action}::${record.page}`;
-      const current =
-        grouped.get(key) || {
-          key,
-          intent: record.intent || '-',
-          action: record.action || '-',
-          page: record.page || '-',
-          usage_count: 0,
-          avg_success: 0,
-        };
-
-      const usage = record.usage_count || 0;
-      const prevUsage = current.usage_count;
-      const totalUsage = prevUsage + usage;
-
-      current.avg_success =
-        totalUsage > 0
-          ? (current.avg_success * prevUsage + (record.success_score || 0) * usage) / totalUsage
-          : 0;
-      current.usage_count = totalUsage;
-      grouped.set(key, current);
-    });
-
-    return Array.from(grouped.values())
-      .sort((a, b) => b.usage_count - a.usage_count)
-      .slice(0, 10);
-  }, [filteredRecords]);
-
-  const topActionsChart = useMemo(
-    () =>
-      topActions.slice(0, 8).map((row) => ({
-        name: row.action.length > 28 ? `${row.action.slice(0, 28)}...` : row.action,
-        usage: row.usage_count,
-      })),
-    [topActions],
+      setParams(next, { replace: true });
+    },
+    [params, setParams],
   );
 
-  if (error) {
-    return (
-      <div>
-        <div className="card p-6">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={fetchLearningRecords} className="btn btn-primary">
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Products, and the default product: the first one with an automation repo.
+  useEffect(() => {
+    const ac = new AbortController();
+    listProducts(ac.signal)
+      .then((ps) => {
+        setProducts(ps);
+        if (!productParam) {
+          const first = ps.find((p) => p.hasAutomation) ?? ps[0];
+          update({ product: first ? String(first.id) : 'all' });
+        }
+      })
+      .catch((e) => !isAbort(e) && setError(errorText(e)));
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pid = productParam === 'all' ? 0 : Number(productParam) || 0;
+  const scoped = productParam !== '';
+
+  useEffect(() => {
+    if (!scoped) return;
+    const ac = new AbortController();
+    setError('');
+    Promise.all([
+      listFindings({ product_id: pid, status: fstatus, kind, q, limit: 200 }, ac.signal),
+      listProposals({ product_id: pid, state: pstate, limit: 200 }, ac.signal),
+      pstate ? listProposals({ product_id: pid, limit: 1 }, ac.signal) : Promise.resolve(null),
+      getTimeline({ product_id: pid, limit: 200 }, ac.signal),
+    ])
+      .then(([f, p, all, t]) => {
+        setFindings(f);
+        setProposals(p);
+        setAllProposals(all ?? p);
+        setTimeline(t.items);
+      })
+      .catch((e) => !isAbort(e) && setError(errorText(e)));
+    return () => ac.abort();
+  }, [scoped, pid, fstatus, kind, pstate, q, reload]);
+
+  // Poll while the server is drafting or publishing a visible proposal.
+  const busy = (proposals?.items ?? []).some((p) => BUSY_STATES.includes(p.state));
+  useEffect(() => {
+    if (!busy) return;
+    const h = window.setInterval(() => setReload((n) => n + 1), 10000);
+    return () => window.clearInterval(h);
+  }, [busy]);
+
+  // The search box commits after a pause.
+  useEffect(() => setQDraft(q), [q]);
+  useEffect(() => {
+    if (qDraft === q) return;
+    const h = window.setTimeout(() => update({ q: qDraft.trim() }), 400);
+    return () => window.clearTimeout(h);
+  }, [qDraft, q, update]);
+
+  const productName = useMemo(() => (pid ? products?.find((p) => p.id === pid)?.name ?? `product ${pid}` : 'all products'), [pid, products]);
+  const refresh = () => setReload((n) => n + 1);
+  const counts = allProposals?.counts;
+  const tiles = [
+    { label: 'New findings', value: findings?.counts.new, onClick: () => update({ tab: 'findings', status: 'new' }) },
+    { label: 'Awaiting approval', value: counts?.awaiting_approval, onClick: () => update({ tab: 'policies', state: 'awaiting_approval' }) },
+    { label: 'PRs open', value: counts?.pr_open, onClick: () => update({ tab: 'policies', state: 'pr_open' }) },
+    { label: 'Learned policies', value: counts?.learned, onClick: () => update({ tab: 'policies', state: 'learned' }) },
+  ];
+  const loading = scoped && !error && (!findings || !proposals || !timeline);
 
   return (
-    <div>
-      <div className="mb-6">
-        <p className="text-gray-600">Track learning cache quality, usage, and top actions</p>
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by intent, action, or page..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          />
-        </div>
-        <select
-          value={pageFilter}
-          onChange={(e) => setPageFilter(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-lg"
-        >
-          <option value="all">All Pages</option>
-          {pages.map((page) => (
-            <option key={page} value={page}>
-              {page}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {Array.from({ length: 4 }).map((_, idx) => (
-            <div key={idx} className="card p-4 animate-pulse">
-              <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
-              <div className="h-8 w-20 bg-gray-100 rounded" />
+    <div className="space-y-4 min-w-0">
+      <header className="card">
+        <div className="card-body space-y-3">
+          <div className="flex flex-wrap items-start gap-3">
+            <Brain className="w-5 h-5 text-primary-600 mt-0.5 shrink-0" aria-hidden="true" />
+            <div className="min-w-[14rem] flex-1">
+              <h1 className="text-lg font-semibold text-gray-900">Learning</h1>
+              <p className="text-sm text-gray-600">
+                What the QA tools learned from real automation work, and the policies merged into the product's automation repo. A merged policy is read by every
+                later "Create automation" run.
+              </p>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-500">Learning Records</div>
-              <div className="text-2xl font-bold">{usageStats.totalRecords}</div>
-            </div>
-            <Brain className="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-500">Total Usage</div>
-              <div className="text-2xl font-bold">{usageStats.totalUsage.toLocaleString()}</div>
-            </div>
-            <BarChart3 className="w-6 h-6 text-green-600" />
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-500">Weighted Success</div>
-              <div className="text-2xl font-bold">{Math.round(usageStats.weightedSuccess * 100)}%</div>
-            </div>
-            <TrendingUp className="w-6 h-6 text-primary-600" />
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-500">High-Success Actions</div>
-              <div className="text-2xl font-bold">{usageStats.highSuccessActions}</div>
-            </div>
-            <Target className="w-6 h-6 text-yellow-600" />
-          </div>
-        </div>
-      </div>
-      )}
-
-      {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <div className="card h-72 animate-pulse bg-gray-50" />
-          <div className="card h-72 animate-pulse bg-gray-50" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="card">
-          <div className="card-header">
-            <h3 className="font-semibold">Success Score Over Time</h3>
-          </div>
-          <div className="card-body h-72">
-            {successTrend.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={successTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tickFormatter={(value) => value.slice(5)} tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 1]} tickFormatter={(value) => `${Math.round(value * 100)}%`} />
-                  <Tooltip
-                    formatter={(value: number) => `${Math.round(value * 100)}%`}
-                    labelFormatter={(label) => `Date: ${label}`}
-                  />
-                  <Line type="monotone" dataKey="success" stroke="#2563eb" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">
-                No trend data available for selected filters
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-header">
-            <h3 className="font-semibold">Top Actions by Usage</h3>
-          </div>
-          <div className="card-body h-72">
-            {topActionsChart.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topActionsChart} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value: number) => [value, 'Usage']} />
-                  <Bar dataKey="usage" fill="#10b981" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">
-                No action data available for selected filters
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      )}
-
-      <div className="card">
-        <div className="card-header">
-          <h3 className="font-semibold">Top Learned Actions</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Intent</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Page</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Avg Success</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    Loading learned actions...
-                  </td>
-                </tr>
-              ) : topActions.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    No learned actions found
-                  </td>
-                </tr>
-              ) : (
-                topActions.map((row) => (
-                  <tr key={row.key} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-gray-900">{row.intent}</td>
-                    <td className="px-6 py-4 text-gray-900">{row.action}</td>
-                    <td className="px-6 py-4 text-gray-600">{row.page}</td>
-                    <td className="px-6 py-4 font-medium">{row.usage_count}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`badge ${
-                          row.avg_success >= 0.8
-                            ? 'badge-success'
-                            : row.avg_success >= 0.5
-                              ? 'badge-warning'
-                              : 'badge-error'
-                        }`}
-                      >
-                        {Math.round(row.avg_success * 100)}%
-                      </span>
-                    </td>
-                  </tr>
-                ))
+            <div className="flex flex-wrap items-center gap-2">
+              {canWrite && (
+                <button type="button" className="btn btn-secondary h-9 px-3 text-sm inline-flex items-center gap-1.5" onClick={() => setAdding(true)}>
+                  <Plus className="w-4 h-4" aria-hidden="true" /> Add finding
+                </button>
               )}
-            </tbody>
-          </table>
+              <button type="button" className="btn btn-secondary h-9 px-3 text-sm inline-flex items-center gap-1.5" onClick={refresh} aria-label="Refresh">
+                <RefreshCw className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3" role="group" aria-label="Filters">
+            <label className="text-sm text-gray-700 flex flex-col gap-1 min-w-0">
+              Product
+              <select
+                className="h-9 rounded border border-gray-300 px-2 text-sm bg-white max-w-[16rem]"
+                value={productParam || ''}
+                onChange={(e) => update({ product: e.target.value })}
+                disabled={!products}
+              >
+                {!productParam && <option value="">Loading…</option>}
+                <option value="all">All products</option>
+                {(products ?? []).map((p) => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {tab !== 'policies' && (
+              <>
+                <label className="text-sm text-gray-700 flex flex-col gap-1">
+                  Finding status
+                  <select className="h-9 rounded border border-gray-300 px-2 text-sm bg-white" value={fstatus} onChange={(e) => update({ status: e.target.value })}>
+                    <option value="">Any</option>
+                    {FINDING_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {FINDING_STATUS_LABEL[s]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-gray-700 flex flex-col gap-1">
+                  Kind
+                  <select className="h-9 rounded border border-gray-300 px-2 text-sm bg-white" value={kind} onChange={(e) => update({ kind: e.target.value })}>
+                    <option value="">Any</option>
+                    {FINDING_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {KIND_LABEL[k]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
+            {tab !== 'findings' && (
+              <label className="text-sm text-gray-700 flex flex-col gap-1">
+                Policy state
+                <select className="h-9 rounded border border-gray-300 px-2 text-sm bg-white" value={pstate} onChange={(e) => update({ state: e.target.value })}>
+                  <option value="">Any</option>
+                  {PROPOSAL_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {STATE_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {tab === 'findings' && (
+              <label className="text-sm text-gray-700 flex flex-col gap-1 flex-1 min-w-[12rem]">
+                Search
+                <input
+                  type="search"
+                  className="h-9 rounded border border-gray-300 px-2 text-sm w-full"
+                  placeholder="Title or lesson text"
+                  value={qDraft}
+                  maxLength={200}
+                  onChange={(e) => setQDraft(e.target.value)}
+                />
+              </label>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {tiles.map((t) => (
+          <button key={t.label} type="button" onClick={t.onClick} className="card text-left px-4 py-3 hover:border-primary-300 focus-visible:ring-2 focus-visible:ring-primary-500">
+            <span className="block text-xs text-gray-500">{t.label}</span>
+            <span className="block text-2xl font-semibold tabular-nums text-gray-900">{t.value ?? '–'}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="card min-w-0">
+        <div role="tablist" aria-label="Learning views" className="flex gap-1 border-b border-gray-200 px-2 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              type="button"
+              aria-selected={tab === t.id}
+              className={`px-3 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${tab === t.id ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+              onClick={() => update({ tab: t.id === 'timeline' ? '' : t.id })}
+            >
+              {t.label}
+              {t.id === 'findings' && findings ? ` (${findings.total})` : ''}
+              {t.id === 'policies' && proposals ? ` (${proposals.total})` : ''}
+            </button>
+          ))}
+        </div>
+        <div className="card-body min-w-0" role="tabpanel">
+          {error ? (
+            <p role="alert" className="text-sm text-red-700">
+              {error}{' '}
+              <button type="button" className="underline" onClick={refresh}>
+                Retry
+              </button>
+            </p>
+          ) : loading ? (
+            <p className="text-sm text-gray-500" aria-busy="true">
+              Loading…
+            </p>
+          ) : tab === 'timeline' ? (
+            <TimelineTab items={timeline ?? []} productName={productName} />
+          ) : tab === 'findings' ? (
+            <FindingsTab page={findings!} canWrite={canWrite} allProducts={!pid} onChanged={refresh} productName={productName} />
+          ) : (
+            <PoliciesTab page={proposals!} canWrite={canWrite} onChanged={refresh} productName={productName} />
+          )}
         </div>
       </div>
+
+      {adding && products && (
+        <AddFindingDialog
+          products={products}
+          defaultProduct={pid || products.find((p) => p.hasAutomation)?.id || products[0]?.id || 0}
+          onClose={() => setAdding(false)}
+          onAdded={() => {
+            setAdding(false);
+            update({ tab: 'findings' });
+            refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
