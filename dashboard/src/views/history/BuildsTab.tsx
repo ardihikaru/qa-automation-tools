@@ -7,6 +7,7 @@ import { JOB_CHIP_CLASS, jobChipStatus, jobHref } from '../knowledge/CaseAutomat
 import { Empty, ErrorNote, Pagination, RelTime, SkeletonRows } from '../knowledge/ui';
 import { Build, StepMs, STEP_COLOR, TabProps, WAITING_STEPS, listBuilds, plural, useHistoryList } from './api';
 import { FilterSelect, FilterText } from './filters';
+import { conversationHref } from '../conversations/api';
 
 const TYPE_LABEL: Record<string, string> = { case_create: 'Build', case_run: 'Run case' };
 
@@ -50,6 +51,11 @@ function StepList({ b }: { b: Build }) {
         {b.batch_id && <> · epic batch {b.batch_id}</>}. Step times run from one event to the next and include any backend restart.
       </p>
       {b.error && <p className="text-sm text-red-700 break-words">{b.error}</p>}
+      {b.conversation_id !== null && (
+        <Link to={conversationHref(b.conversation_id)} className="mr-4 text-sm text-primary-700 hover:underline">
+          AI conversation
+        </Link>
+      )}
       {b.pr_url && /^https?:\/\//i.test(b.pr_url) && (
         <a href={b.pr_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary-700 hover:underline">
           Pull request<span className="sr-only"> (opens in a new tab)</span>

@@ -567,6 +567,8 @@ export interface JobEvents {
   case_code?: string;
   branch?: string;
   type?: string;
+  /** The job type (case_run, case_create), sent by GET /api/jobs/{id}/events. */
+  job_type?: string;
   product_id?: number;
   spec?: { path?: string; content?: string } | null;
   report?: JobReport | null;

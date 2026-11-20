@@ -221,11 +221,11 @@ function parseBlocks(lines: string[], ids: Map<string, number>): Block[] {
 // ---------------------------------------------------------------- inline
 
 /** Returns a safe href, or null when the target must be shown as text. */
-function safeHref(raw: string, base?: string | null): string | null {
+function safeHref(raw: string, base?: string | null, idPrefix = ''): string | null {
   const url = raw.trim().replace(/^<|>$/g, '');
   if (!url) return null;
   if (/^(https?:|mailto:)/i.test(url)) return url;
-  if (url.startsWith('#')) return `#md-${slugify(decodeURIComponent(url.slice(1)))}`;
+  if (url.startsWith('#')) return `#md-${idPrefix}${slugify(decodeURIComponent(url.slice(1)))}`;
   // Any other scheme (javascript:, data:, vbscript:, file:) and protocol-relative URLs are refused.
   if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) return null;
   if (!base) return null;
@@ -239,6 +239,19 @@ function safeHref(raw: string, base?: string | null): string | null {
 
 interface InlineCtx {
   base?: string | null;
+  /** Prefix of heading ids, so several documents on one page cannot collide. */
+  idPrefix?: string;
+  /** Show each external link's host after it (text from a model: the reader sees where a link goes). */
+  showLinkHost?: boolean;
+}
+
+function hostOf(href: string): string | null {
+  try {
+    const u = new URL(href);
+    return /^https?:$/.test(u.protocol) ? u.host : null;
+  } catch {
+    return null;
+  }
 }
 
 function findClosing(s: string, from: number, open: string, close: string): number {
@@ -260,9 +273,18 @@ function findClosing(s: string, from: number, open: string, close: string): numb
 const PUNCT = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
 const BARE_URL_RE = /^https?:\/\/[^\s<>"]*[^\s<>".,:;'")\]!?]/;
 
-function renderLink(label: ReactNode, href: string | null, key: string, title?: string): ReactNode {
+function renderLink(label: ReactNode, href: string | null, key: string, title?: string, showHost = false): ReactNode {
   if (!href) return <Fragment key={key}>{label}</Fragment>;
   const external = !href.startsWith('#');
+  const host = showHost && external ? hostOf(href) : null;
+  if (host) {
+    return (
+      <Fragment key={key}>
+        {renderLink(label, href, `${key}a`, title)}
+        <span className="ml-1 text-xs text-gray-500">({host})</span>
+      </Fragment>
+    );
+  }
   return (
     <a
       key={key}
@@ -336,9 +358,9 @@ function inline(s: string, ctx: InlineCtx, kp = 'i'): ReactNode[] {
           const tm = /^(\S+)(?:\s+["'(](.*)["')])?$/.exec(target);
           const label = s.slice(open + 1, close);
           flush();
-          const href = tm ? safeHref(tm[1], ctx.base) : null;
+          const href = tm ? safeHref(tm[1], ctx.base, ctx.idPrefix) : null;
           const content = img ? [`Image: ${label || tm?.[1] || ''}`] : inline(label, ctx, `${kp}${k}l`);
-          out.push(renderLink(content, href, key(), tm?.[2]));
+          out.push(renderLink(content, href, key(), tm?.[2], ctx.showLinkHost && !img));
           i = end + 1;
           continue;
         }
@@ -349,7 +371,7 @@ function inline(s: string, ctx: InlineCtx, kp = 'i'): ReactNode[] {
       const m = /^<((?:https?:\/\/|mailto:)[^>\s]+)>/i.exec(s.slice(i));
       if (m) {
         flush();
-        out.push(renderLink(m[1], safeHref(m[1]), key()));
+        out.push(renderLink(m[1], safeHref(m[1]), key(), undefined, ctx.showLinkHost));
         i += m[0].length;
         continue;
       }
@@ -359,7 +381,7 @@ function inline(s: string, ctx: InlineCtx, kp = 'i'): ReactNode[] {
       const m = BARE_URL_RE.exec(s.slice(i));
       if (m) {
         flush();
-        out.push(renderLink(m[0], safeHref(m[0]), key()));
+        out.push(renderLink(m[0], safeHref(m[0]), key(), undefined, ctx.showLinkHost));
         i += m[0].length;
         continue;
       }
@@ -439,7 +461,7 @@ function renderBlocks(blocks: Block[], ctx: InlineCtx, kp: string, tight = false
         // The page title is the h1, so markdown headings start at h2.
         const Tag = `h${Math.min(6, b.level + 1)}` as 'h2';
         return (
-          <Tag key={key} id={`md-${b.id}`} className={`${H_CLASS[b.level - 1]} ${MEASURE} scroll-mt-4 break-words`}>
+          <Tag key={key} id={`md-${ctx.idPrefix ?? ''}${b.id}`} className={`${H_CLASS[b.level - 1]} ${MEASURE} scroll-mt-4 break-words`}>
             {inline(b.text, ctx, key)}
           </Tag>
         );
@@ -538,9 +560,25 @@ function parseMarkdown(src: string): Block[] {
   return parseBlocks(src.replace(/\r\n?/g, '\n').split('\n'), new Map());
 }
 
-/** Renders `source` as markdown. `base` resolves repo-relative links (the file's GitHub URL). */
-export default function Markdown({ source, base }: { source: string; base?: string | null }) {
+/**
+ * Renders `source` as markdown. `base` resolves repo-relative links (the file's GitHub URL);
+ * `idPrefix` scopes heading ids; `showLinkHost` prints each external link's host after it;
+ * `empty` is shown when there is nothing to render.
+ */
+export default function Markdown({
+  source,
+  base,
+  idPrefix,
+  showLinkHost,
+  empty = 'This file has no content after its frontmatter.',
+}: {
+  source: string;
+  base?: string | null;
+  idPrefix?: string;
+  showLinkHost?: boolean;
+  empty?: string;
+}) {
   const blocks = useMemo(() => parseMarkdown(source), [source]);
-  if (!blocks.length) return <p className="text-sm text-gray-500">This file has no content after its frontmatter.</p>;
-  return <div className="space-y-4 text-sm leading-relaxed text-gray-800 min-w-0">{renderBlocks(blocks, { base }, 'b')}</div>;
+  if (!blocks.length) return <p className="text-sm text-gray-500">{empty}</p>;
+  return <div className="space-y-4 text-sm leading-relaxed text-gray-800 min-w-0">{renderBlocks(blocks, { base, idPrefix, showLinkHost }, 'b')}</div>;
 }

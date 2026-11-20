@@ -12,6 +12,8 @@ import KnowledgeView from './views/knowledge/KnowledgeView';
 import KnowledgeEntityPage from './views/knowledge/pages/KnowledgeEntityPage';
 import JobView from './views/JobView';
 import HistoryView from './views/history/HistoryView';
+import ConversationView from './views/conversations/ConversationView';
+import ArchiveView from './views/conversations/ArchiveView';
 import SettingsView from './views/SettingsView';
 import LoginView from './views/LoginView';
 import ChangePasswordView from './views/ChangePasswordView';
@@ -49,6 +51,8 @@ function App() {
                 <Route path="/jobs/:id" element={<JobView />} />
                 <Route path="/history" element={<HistoryView />} />
                 <Route path="/qa" element={<Navigate to="/history" replace />} />
+                <Route path="/conversations/:id" element={<ConversationView />} />
+                <Route path="/archive" element={<ArchiveView />} />
                 <Route path="/settings" element={<SettingsView />} />
               </Routes>
             </Layout>
