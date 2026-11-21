@@ -468,6 +468,40 @@ func lastCaseJobs(ctx context.Context, d *db.DB, pid int, codes []string) (map[s
 	return out, rows.Err()
 }
 
+// lastPlaywrightRuns returns each case's newest run-history row (RUN_HISTORY.md: pw_run_cases);
+// a case without one is absent.
+func lastPlaywrightRuns(ctx context.Context, d *db.DB, pid int, codes []string) (map[string]map[string]any, error) {
+	out := map[string]map[string]any{}
+	if len(codes) == 0 {
+		return out, nil
+	}
+	args := []any{pid}
+	for _, c := range codes {
+		args = append(args, c)
+	}
+	rows, err := d.Query(ctx, `SELECT c.case_code, c.run_id, c.result, c.duration_ms, r.started_at, r.source FROM pw_run_cases c
+		JOIN pw_runs r ON r.id = c.run_id
+		WHERE c.product_id = ? AND c.case_code IN (?`+strings.Repeat(",?", len(codes)-1)+`)
+		ORDER BY c.run_id DESC`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code, result, source string
+		var runID, dur int64
+		var at time.Time
+		if err := rows.Scan(&code, &runID, &result, &dur, &at, &source); err != nil {
+			return nil, err
+		}
+		if out[code] != nil {
+			continue
+		}
+		out[code] = map[string]any{"run_id": runID, "result": result, "duration_ms": dur, "started_at": at.UTC().Format(time.RFC3339), "source": source}
+	}
+	return out, rows.Err()
+}
+
 func navigationRoute(ctx context.Context, d *db.DB, pid int, key string) (map[string]any, error) {
 	nd, err := loadNavData(ctx, d, pid)
 	if err != nil {
@@ -561,6 +595,10 @@ func navigationRoute(ctx context.Context, d *db.DB, pid int, key string) (map[st
 		}
 		rows.Close()
 	}
+	lastRuns, err := lastPlaywrightRuns(ctx, d, pid, st.CaseCodes)
+	if err != nil {
+		return nil, err
+	}
 	cases := []map[string]any{}
 	for _, c := range st.CaseCodes {
 		f := nd.facts[c]
@@ -575,6 +613,7 @@ func navigationRoute(ctx context.Context, d *db.DB, pid int, key string) (map[st
 		cases = append(cases, map[string]any{
 			"code": c, "scenario": scen[c], "status": f.Status, "automated": f.Automated, "priority": f.Priority, "epic": f.Epic,
 			"link_sources": sortedSet(sources[c]), "result": f.Result, "run_at": runAt, "run_ref": nd.runRef[c], "last_job": lj,
+			"last_run": lastRuns[c],
 		})
 	}
 	rel := []map[string]any{}

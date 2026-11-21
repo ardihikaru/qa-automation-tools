@@ -110,6 +110,8 @@ export interface NavCase {
   run_at: string | null;
   run_ref: string;
   last_job: NavLastJob | null;
+  /** The case's newest Playwright run in the run history (RUN_HISTORY.md), when there is one. */
+  last_run?: { run_id: number; result: string; duration_ms: number; started_at: string; source: string } | null;
 }
 
 export interface NavRouteDetail extends Omit<NavRoute, 'cases' | 'features' | 'specs'> {
