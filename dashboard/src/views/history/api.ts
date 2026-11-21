@@ -32,6 +32,18 @@ export interface Build {
   steps: StepMs[];
   /** The job's AI conversation (AI_CONVERSATIONS.md), null when none or archived. */
   conversation_id: number | null;
+  /** The latest approval round (HISTORY_ANSWER.md), null when the job never asked. */
+  approval: BuildApproval | null;
+}
+
+export interface BuildApproval {
+  external_id: string;
+  status: string;
+  source: string;
+  actor: string;
+  answered_by: string;
+  answered_at: string | null;
+  gaos_created: boolean;
 }
 
 export interface BuildSummary {
@@ -160,6 +172,63 @@ export const SOURCE_LABEL: Record<string, string> = {
 };
 
 export const DEFAULT_PAGE_SIZE = 10;
+
+// ---- answering a waiting approval (docs/designs/HISTORY_ANSWER.md) ----
+
+/** One open approval of GET /api/history/approvals. */
+export interface WaitingApproval {
+  external_id: string;
+  round: number;
+  job_id: string;
+  job_type: string;
+  job_status: string;
+  product_id: number;
+  product_name: string;
+  case_code: string;
+  title: string;
+  spec_path: string;
+  report: { passed: number; failed: number; skipped: number } | null;
+  gaos_created: boolean;
+  /** The answer will also be sent to GAOS. */
+  relay: boolean;
+  created_at: string;
+  waiting_ms: number;
+}
+
+export const listWaitingApprovals = (product: string | undefined, signal?: AbortSignal) =>
+  api<{ items: WaitingApproval[]; can_answer: boolean }>(`/api/history/approvals${product ? `?product=${encodeURIComponent(product)}` : ''}`, { signal });
+
+export type Decision = 'approve' | 'reject' | 'changes';
+
+export interface AnswerResult {
+  status: string;
+  delivered: 'gaos' | 'local';
+  note?: string;
+}
+
+/** Answers from the run history: relayed to GAOS when the item exists there. */
+export const answerFromHistory = (jobId: string, externalId: string, decision: Decision, text: string) =>
+  api<AnswerResult>(`/api/jobs/${encodeURIComponent(jobId)}/approval`, {
+    method: 'POST',
+    body: JSON.stringify({ decision, via: 'history', external_id: externalId, ...(text ? { text } : {}) }),
+  });
+
+/** Where an answer came from (case_approvals.answer_source); old rows fall back to answered_by. */
+export const ANSWER_SOURCE_LABEL: Record<string, string> = {
+  gaos: 'GAOS',
+  'qa-tool:history': 'the QA tools (run history)',
+  'qa-tool:job-page': 'the QA tools (job page)',
+  'qa-tool:learning': 'the QA tools (learning page)',
+  system: 'expiry',
+};
+
+export function answerSourceLabel(source: string | undefined, answeredBy?: string) {
+  if (source && ANSWER_SOURCE_LABEL[source]) return ANSWER_SOURCE_LABEL[source];
+  if (answeredBy === 'dashboard') return 'the QA tools';
+  if (answeredBy === 'gaos') return 'GAOS';
+  if (answeredBy === 'system') return 'expiry';
+  return '';
+}
 
 /** A row's product for the Product column: its name, else "Product 7", else a dash. */
 export const productLabel = (name: string, id: number | null | undefined) => name || (id ? `Product ${id}` : '–');

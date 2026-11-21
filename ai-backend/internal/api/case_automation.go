@@ -568,17 +568,12 @@ func (r *Router) caseJobFor(ctx context.Context, d *db.DB, jobID string, payload
 			rows.Close()
 		}
 	}
-	var gaosOn bool
-	var gaosPID sql.NullString
-	_ = d.QueryRow(ctx, `SELECT gaos_integrated, gaos_product_id FROM product_settings WHERE product_id = ?`, pid).Scan(&gaosOn, &gaosPID)
 	job = caseauto.Job{
 		ID: jobID, ProductID: pid, ProductName: name, DefaultBranch: repo.DefaultBranch, AllowedHosts: hosts,
 		Branch: repopool.AutoBranch(code),
 		Case:   caseauto.Case{Code: code, Scenario: c.Scenario, StoryCode: c.StoryCode, StoryText: storyText.String, Features: features},
 	}
-	if gaosOn && gaosPID.Valid && r.gaos.Configured() {
-		job.GaosProductID = gaosPID.String
-	}
+	job.GaosProductID = r.gaosProductFor(ctx, d, pid)
 	if o := r.dashboardOrigin; o != "" && o != "*" {
 		job.JobURL = strings.TrimRight(o, "/") + "/jobs/" + jobID
 	}

@@ -12,7 +12,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strings"
 
 	"github.com/qa-automation/ai-backend/internal/services/caseauto"
 	"github.com/qa-automation/ai-backend/internal/services/gaossync"
@@ -30,6 +29,9 @@ type inboxAnswerBody struct {
 	OptionLabel string          `json:"optionLabel"`
 	Text        string          `json:"text"`
 	AnsweredAt  json.RawMessage `json:"answeredAt"`
+	// Source is GAOS's report of who answered and through which client (HISTORY_ANSWER.md);
+	// stored verbatim when GAOS sends it.
+	Source json.RawMessage `json:"source"`
 }
 
 func (r *Router) gaosInboxAnswer(w http.ResponseWriter, req *http.Request) {
@@ -75,20 +77,11 @@ func (r *Router) gaosInboxAnswer(w http.ResponseWriter, req *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changed": false, "ignored": "not answered"})
 		return
 	}
-	text := caseauto.Clip(r.caseAuto.redact.Redact(strings.TrimSpace(body.Text)), 1000)
-	changed, err := store.Answer(ctx, body.ExternalID, status, "gaos", text)
+	changed, current, err := r.applyGaosAnswer(ctx, r.getDB(), body.ExternalID, jobID, status, body.Text, body.Source, "answered in the GAOS Inbox")
 	if err != nil {
 		log.Printf("gaos inbox-answer: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-	current := status
-	if !changed {
-		if a, err := store.Get(ctx, body.ExternalID); err == nil && a != nil {
-			current = a.Status
-		}
-	} else {
-		r.addJobEvent(jobID, "info", caseauto.StepApproval, "answered in the GAOS Inbox: "+status)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changed": changed, "status": current})
 }

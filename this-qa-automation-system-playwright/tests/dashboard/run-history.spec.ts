@@ -92,6 +92,45 @@ test.describe('Run history page', () => {
     await expect(page).not.toHaveURL(/page=2/);
   });
 
+  // HISTORY_ANSWER.md: approvals waiting now are listed above the tabs with an Answer button. This
+  // check writes nothing: the dialog refuses "Needs changes" without a comment before any request.
+  test('waiting approvals: the Answer dialog validates without sending', async ({ page }) => {
+    const res = page.waitForResponse((r) => r.url().includes('/api/history/approvals') && r.status() === 200);
+    await page.goto(`${config.dashboardUrl}/history`);
+    const body = (await (await res).json()) as { items: { job_id: string }[]; can_answer: boolean };
+    const panel = page.getByTestId('waiting-approvals');
+    if (body.items.length === 0) {
+      await expect(panel).toHaveCount(0);
+      return;
+    }
+    await expect(panel).toContainText(`Waiting for approval (${body.items.length})`);
+    const answer = panel.getByRole('button', { name: /^Answer the approval of/ }).first();
+    if (!body.can_answer) {
+      await expect(answer).toHaveCount(0);
+      return;
+    }
+    let posted = false;
+    page.on('request', (r) => r.method() === 'POST' && r.url().includes('/approval') && (posted = true));
+    await answer.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('link', { name: 'Open the job' })).toBeVisible();
+    await dialog.getByRole('radio', { name: /Needs changes/ }).check();
+    await dialog.getByRole('button', { name: 'Send answer' }).click();
+    await expect(dialog.getByRole('alert')).toHaveText('Say what to change.');
+    expect(posted).toBe(false);
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+    // The Builds filter "Approval: waiting" asks the API for approval=open.
+    const filtered = page.waitForResponse((r) => r.url().includes('/api/history/builds') && r.url().includes('approval=open'));
+    await page.getByRole('combobox', { name: 'Approval', exact: true }).selectOption('open');
+    expect((await filtered).status()).toBe(200);
+    // Phone width: the panel fits without a sideways scroll.
+    await page.setViewportSize({ width: 375, height: 800 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test('no console errors after sign-in', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));

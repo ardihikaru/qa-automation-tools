@@ -125,6 +125,10 @@ type Approval struct {
 	AnsweredBy  string
 	Text        string
 	GaosCreated bool
+	// HISTORY_ANSWER.md: where the answer came from (Source*), who gave it, and when.
+	Source     string
+	Actor      string
+	AnsweredAt *time.Time
 }
 
 // Approvals is the approval record shared by the two doors.
@@ -328,8 +332,8 @@ func (m *Machine) finish(ctx context.Context, r *run) (*Outcome, error) {
 
 func byText(a *Approval) string {
 	s := ""
-	if a.AnsweredBy != "" {
-		s = " by " + a.AnsweredBy
+	if w := a.Who(); w != "" {
+		s = " by " + w
 	}
 	if a.Text != "" {
 		s += ": " + Clip(a.Text, 300)
