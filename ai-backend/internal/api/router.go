@@ -59,6 +59,8 @@ type Router struct {
 	epicDriver epicDriverState
 	// learn is the learning loop's state (LEARNING_LOOP.md). See learning_loop.go.
 	learn learnState
+	// approvalRelay is the /history answer relay's state (HISTORY_ANSWER.md). See approval_relay.go.
+	approvalRelay approvalRelayState
 
 	// Non-secret config snapshot for GET /api/settings. See settings.go.
 	settings SettingsInfo

@@ -353,7 +353,7 @@ func PRBody(in PRInput) string {
 		b.WriteString("- " + oneLine(f) + "\n")
 	}
 	if in.ApprovedBy != "" {
-		fmt.Fprintf(&b, "\nDisetujui di QA tools oleh: %s.\n", in.ApprovedBy)
+		fmt.Fprintf(&b, "\nDisetujui oleh: %s.\n", in.ApprovedBy)
 	}
 	b.WriteString("\n## Apa saja yang sudah dites oleh developer?\n\n- Tidak ada: PR ini hanya menambah instruksi agen (file aturan Markdown). Not verified by a test run.\n")
 	b.WriteString("\n## Apa saja yang perlu dites oleh QA?\n\n- Baca aturan baru; pastikan tidak bertentangan dengan AGENTS.md.\n")

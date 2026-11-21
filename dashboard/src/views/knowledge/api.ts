@@ -550,6 +550,11 @@ export interface JobApproval {
   status?: string;
   gaos_created?: boolean;
   answer_text?: string;
+  answered_by?: string;
+  /** HISTORY_ANSWER.md: where the answer came from and who gave it. */
+  source?: string;
+  actor?: string;
+  answered_at?: string | null;
 }
 export interface JobReport {
   passed?: number;

@@ -68,5 +68,23 @@ test.describe('Run history API', () => {
       expect((await api.get('/api/history/builds?from=2026-11-20&to=2026-11-01')).status()).toBe(400);
       expect((await api.get('/api/history/runs/999999999')).status()).toBe(404);
     });
+
+    // HISTORY_ANSWER.md: approvals waiting now, read-only here.
+    test('waiting approvals carry the context to decide', async () => {
+      const res = await api.get('/api/history/approvals');
+      expect(res.status()).toBe(200);
+      const body = await res.json();
+      expect(Array.isArray(body.items)).toBe(true);
+      expect(typeof body.can_answer).toBe('boolean');
+      for (const it of body.items) {
+        for (const k of ['external_id', 'round', 'job_id', 'job_type', 'product_id', 'case_code', 'title', 'spec_path', 'report', 'gaos_created', 'relay', 'created_at', 'waiting_ms'])
+          expect(it).toHaveProperty(k);
+        expect(it.external_id).toMatch(/^qa-.+-pr[0-9]*$/);
+      }
+      expect((await api.get('/api/history/approvals?product=x')).status()).toBe(400);
+      expect((await api.get('/api/history/builds?approval=closed')).status()).toBe(400);
+      const open = await (await api.get('/api/history/builds?approval=open&page_size=5')).json();
+      for (const b of open.items) expect(b.approval?.status).toBe('open');
+    });
   });
 });

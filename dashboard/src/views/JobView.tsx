@@ -20,6 +20,7 @@ import {
 } from './knowledge/api';
 import { JOB_CHIP_CLASS, jobChipStatus } from './knowledge/CaseAutomation';
 import JobConversationCard from './conversations/JobConversationCard';
+import { answerSourceLabel } from './history/api';
 
 const POLL_MS = 2000;
 const AFTER_TERMINAL_MS = 30_000;
@@ -407,6 +408,18 @@ function ApprovalCard({
       </div>
       <div className="card-body space-y-3">
         {approval.gaos_created && <p className="text-sm text-gray-600">Also asked in GAOS Inbox. Whichever answer arrives first is used.</p>}
+        {!open && !sent && approval.status && !OPEN_APPROVAL.includes(approval.status.toLowerCase()) && (approval.source || approval.answered_by) && (
+          <p className="text-sm text-gray-700" data-testid="answered-via">
+            Answered via {answerSourceLabel(approval.source, approval.answered_by) || approval.source}
+            {approval.actor && (
+              <>
+                {' '}
+                by <span className="break-words">{approval.actor}</span>
+              </>
+            )}
+            .
+          </p>
+        )}
         {approval.answer_text && <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">Answer: {approval.answer_text}</p>}
         {open ? (
           <>
@@ -422,7 +435,7 @@ function ApprovalCard({
                   setErr(null);
                 }}
                 rows={3}
-                maxLength={2000}
+                maxLength={1000}
                 aria-invalid={!!err && needsText}
                 aria-describedby={err ? 'approval-err' : undefined}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"

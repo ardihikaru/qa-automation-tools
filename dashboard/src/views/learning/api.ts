@@ -188,7 +188,7 @@ export const checkProposal = (id: string) => api<Proposal>(`/api/learning/propos
 
 /** The existing approval door of a job (CASE_AUTOMATION.md): approve, reject or ask for changes. */
 export const answerProposal = (id: string, decision: 'approve' | 'reject' | 'changes', text?: string) =>
-  api<{ status: string }>(`/api/jobs/${encodeURIComponent(id)}/approval`, { method: 'POST', body: JSON.stringify(text ? { decision, text } : { decision }) });
+  api<{ status: string }>(`/api/jobs/${encodeURIComponent(id)}/approval`, { method: 'POST', body: JSON.stringify(text ? { decision, text, via: 'learning' } : { decision, via: 'learning' }) });
 
 export const getTimeline = (p: { product_id?: number; limit?: number; offset?: number }, signal?: AbortSignal) =>
   api<{ items: TimelineItem[]; total: number }>(`/api/learning/timeline${qs(p)}`, { signal });

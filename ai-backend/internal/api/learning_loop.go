@@ -759,12 +759,7 @@ func (r *Router) proposalJobFor(ctx context.Context, d *db.DB, id string, payloa
 	if job.Guide, job.Rules, err = repoFiles(ctx, d, pid); err != nil {
 		return job, nil, err
 	}
-	var gaosOn bool
-	var gaosPID sql.NullString
-	_ = d.QueryRow(ctx, `SELECT gaos_integrated, gaos_product_id FROM product_settings WHERE product_id = ?`, pid).Scan(&gaosOn, &gaosPID)
-	if gaosOn && gaosPID.Valid && r.gaos.Configured() {
-		job.GaosProductID = gaosPID.String
-	}
+	job.GaosProductID = r.gaosProductFor(ctx, d, pid)
 	if o := r.dashboardOrigin; o != "" && o != "*" {
 		o = strings.TrimRight(o, "/")
 		job.JobURL = o + "/jobs/" + id
@@ -869,7 +864,7 @@ func (r *Router) ResumeProposals(ctx context.Context) {
 			msg := orphanBaseMsg + "; " + why
 			r.addJobEvent(rec.ID, "error", caseauto.StepApproval, msg)
 			r.finishJob(rec.ID, jobStatusFailed, msg, nil)
-			_, _ = d.Exec(ctx, `UPDATE case_approvals SET status = 'expired', answered_by = 'system', answered_at = UTC_TIMESTAMP() WHERE job_id = ? AND status = 'open'`, rec.ID)
+			_, _ = d.Exec(ctx, `UPDATE case_approvals SET status = 'expired', answered_by = 'system', answer_source = 'system', answered_at = UTC_TIMESTAMP() WHERE job_id = ? AND status = 'open'`, rec.ID)
 			failed++
 		default:
 			log.Printf("resuming proposal %s", rec.ID)
@@ -913,7 +908,7 @@ func (r *Router) resumeDecision(ctx context.Context, d *db.DB, rec *jobRecord) (
 	case caseauto.ApprovalOpen:
 		return &learnloop.Resume{Draft: dr, ExternalID: a.ExternalID, Round: round}, ""
 	case caseauto.ApprovalApproved:
-		return &learnloop.Resume{Draft: dr, ExternalID: a.ExternalID, Round: round, Approved: true, ApprovedBy: a.AnsweredBy}, ""
+		return &learnloop.Resume{Draft: dr, ExternalID: a.ExternalID, Round: round, Approved: true, ApprovedBy: a.Who()}, ""
 	}
 	return nil, "it had already passed the approval step (" + a.Status + "); start a new proposal"
 }
