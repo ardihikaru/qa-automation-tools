@@ -419,6 +419,26 @@ func TestProposalLoopEndToEnd(t *testing.T) {
 			t.Errorf("timeline lacks %s: %s", k, w.Body)
 		}
 	}
+	// The timeline pages with limit and offset; total counts every entry.
+	var full, pg struct {
+		Items []TimelineItem `json:"items"`
+		Total int            `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &full); err != nil || full.Total != len(full.Items) || full.Total < 4 {
+		t.Fatalf("timeline total %d items %d err %v", full.Total, len(full.Items), err)
+	}
+	w = dispatchAs(r, asUser("Viewer"), http.MethodGet, "/api/learning/timeline?product_id=1&limit=2&offset=1", "")
+	if err := json.Unmarshal(w.Body.Bytes(), &pg); err != nil || pg.Total != full.Total || len(pg.Items) != 2 ||
+		pg.Items[0].Kind != full.Items[1].Kind || pg.Items[1].Kind != full.Items[2].Kind {
+		t.Fatalf("timeline page: %s", w.Body)
+	}
+	w = dispatchAs(r, asUser("Viewer"), http.MethodGet, fmt.Sprintf("/api/learning/timeline?product_id=1&offset=%d", full.Total+5), "")
+	if err := json.Unmarshal(w.Body.Bytes(), &pg); err != nil || pg.Total != full.Total || len(pg.Items) != 0 {
+		t.Fatalf("timeline past the end: %s", w.Body)
+	}
+	if w := dispatchAs(r, asUser("Viewer"), http.MethodGet, "/api/learning/timeline?offset=-1", ""); w.Code != http.StatusBadRequest {
+		t.Errorf("negative offset: %d", w.Code)
+	}
 	if llm.calls != 1 {
 		t.Errorf("LLM calls %d", llm.calls)
 	}

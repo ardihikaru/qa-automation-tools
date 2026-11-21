@@ -633,7 +633,8 @@ type TimelineItem struct {
 func (r *Router) learnTimeline(w http.ResponseWriter, req *http.Request, d *db.DB) {
 	pid, ok1 := queryInt(req, "product_id", 0, 0)
 	limit, ok2 := queryInt(req, "limit", 100, 200)
-	if !ok1 || !ok2 {
+	offset, ok3 := queryInt(req, "offset", 0, 0)
+	if !ok1 || !ok2 || !ok3 {
 		writeCodedError(w, http.StatusBadRequest, "bad_input", "invalid filter")
 		return
 	}
@@ -689,10 +690,17 @@ func (r *Router) learnTimeline(w http.ResponseWriter, req *http.Request, d *db.D
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
+	// total counts the derived entries (from the newest 200 findings and every proposal) so the
+	// dashboard can page through them with offset.
+	total := len(items)
+	if offset > len(items) {
+		offset = len(items)
+	}
+	items = items[offset:]
 	if len(items) > limit {
 		items = items[:limit]
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
 func firstJob(s []learnloop.Source) string {
