@@ -42,6 +42,8 @@ Every route except `/health` requires `Authorization: Bearer $EXECUTOR_TOKEN`, c
 
 `case_run` (`src/runs/caseRun.ts`): runs one test case of an automation repo clone. `npm ci` runs only when `sha256(package-lock.json)` differs from `node_modules/.qa-lock`. Then it runs `npx playwright test <specs> --project=<web-*|api-rest> -g <case_code> --workers=1 --retries=0 --reporter=json,list` with `VENDOR_E2E_RUN=<run key>` (`qa` + the last 18 alphanumerics of the run id: the automation repo requires 3-24 letters/digits), `TEST_ENV=staging` and the env file loaded. No executor browser is launched. Result: `{exit_code, passed, failed, skipped, report, tail, report_error?}`. `report` is the parsed `<repo>/.runs/<run key>/results.json` (at most 2 MiB, else `null` plus `report_error`). Counts come from `report.stats` (`passed` = expected + flaky). `tail` is the last 4 KiB of redacted stdout. A non-zero exit is still a `completed` run; a refused host, bad env file or failed `npm ci` makes the run `failed`. Event steps: `validate`, `install`, `run`, `report`, `done`.
 
+Navigation (NAVIGATION_MAP.md 3.5): when `reporters/nav-reporter.cjs` exists, loads with `require()` at start and `EXECUTOR_NAV_REPORTER` is not `0`, the run uses `--reporter=json,list,<abs path>` and `QA_NAV_OUTPUT=<repo>/.runs/<run key>/nav.json` (a stale file is removed first). The reporter records each `page.goto` and each API request step per test (URL resolved against the project's `baseURL`, origin and pathname only, never the query; at most 500 aggregated entries) for Playwright 1.5x (`GET "<url>"`) and 1.6x (`step.params`). The result then has `nav: {version: 1, truncated, entries: [{title, file, project, kind: web|api, method, host, path, hits}]}` (read with the `results.json` guards, at most 256 KiB; absent or invalid: no `nav` and a `warn` event). The reporter never throws.
+
 ### Configuration (env only, `src/config.ts`)
 
 `.env.example` lists every key:
@@ -55,6 +57,7 @@ Every route except `/health` requires `Authorization: Bearer $EXECUTOR_TOKEN`, c
 | `MAX_QUEUE` | Maximum waiting runs (10). |
 | `EXECUTOR_REPO_POOL` | `case_run`: directory of automation repo clones (default `/home/sismedika/devel/projects/qa-automation-tools/repos`). |
 | `EXECUTOR_ENV_DIR` | `case_run`: directory of `automation-<productId>.env` files, mode 600 (default `~/.config/qa-automation`). |
+| `EXECUTOR_NAV_REPORTER` | `0` turns the navigation reporter off (default on when the file loads). |
 | `EXECUTOR_ALLOWED_HOSTS` | `case_run`: comma-separated hostnames (`*.suffix` allowed) that the env file's http(s) URL values may point at. Default: the `HISV3_STAGING_URL` host, else none. |
 
 ## Invariants

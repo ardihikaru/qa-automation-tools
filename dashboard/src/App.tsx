@@ -5,7 +5,7 @@ import SkillsView from './views/SkillsView';
 import AgentsView from './views/assistants/AgentsView';
 import RulesView from './views/assistants/RulesView';
 import AssistantDetailView from './views/assistants/AssistantDetailView';
-import NavigationGraphView from './views/NavigationGraphView';
+import NavigationMapView from './views/navigation/NavigationMapView';
 import LearningProgressView from './views/LearningProgressView';
 import ProductsView from './views/ProductsView';
 import KnowledgeView from './views/knowledge/KnowledgeView';
@@ -43,7 +43,7 @@ function App() {
                 <Route path="/agents" element={<AgentsView />} />
                 <Route path="/rules" element={<RulesView />} />
                 <Route path="/assistants/:productId/:code" element={<AssistantDetailView />} />
-                <Route path="/navigation" element={<NavigationGraphView />} />
+                <Route path="/navigation" element={<NavigationMapView />} />
                 <Route path="/learning" element={<LearningProgressView />} />
                 <Route path="/products" element={<ProductsView />} />
                 <Route path="/products/:id/knowledge" element={<KnowledgeView />} />

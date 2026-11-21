@@ -21,6 +21,20 @@ const (
 
 var caseIDRe = regexp.MustCompile(`TC-[A-Z]+-[0-9]{3}`)
 
+// CaseCodes returns the case codes in a test title (TC-XXX-NNN), in order, without duplicates.
+// It is the rule Parse applies to spec titles (CASE_RESULTS.md decision 2).
+func CaseCodes(title string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range caseIDRe.FindAllString(title, -1) {
+		if !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // Report is what a Playwright JSON report says, reduced to what the QA tools need.
 type Report struct {
 	StartedAt time.Time
