@@ -15,7 +15,7 @@ export default function ArchiveView() {
   const { user } = useAuth();
   const admin = canPrune(user);
   const [page, setPage] = useState(1);
-  const [size, setSize] = useState(25);
+  const [size, setSize] = useState(10);
   const [data, setData] = useState<ConversationPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

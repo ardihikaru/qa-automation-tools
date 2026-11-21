@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom';
 import { formatMs, knowledgeHref, shortSha } from '../knowledge/api';
 import { Empty, ErrorNote, Pagination, RelTime, SkeletonRows, SyncStatusChip } from '../knowledge/ui';
-import { TabProps, listSyncs, useHistoryList } from './api';
+import { TabProps, listSyncs, productLabel, useHistoryList } from './api';
 import { FilterSelect } from './filters';
 import { conversationHref } from '../conversations/api';
 
@@ -29,7 +29,7 @@ export default function SyncsTab({ filters, setFilter, refreshKey }: TabProps) {
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-2">Started</th>
-                <th className="px-3 py-2">Product</th>
+                <th className="px-3 py-2 hidden md:table-cell">Product</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Trigger</th>
                 <th className="px-3 py-2">Commit</th>
@@ -42,9 +42,13 @@ export default function SyncsTab({ filters, setFilter, refreshKey }: TabProps) {
                 <tr key={s.id}>
                   <td className="px-3 py-2 text-gray-700">
                     <RelTime at={s.started_at} />
-                    <div className="text-xs text-gray-500">#{s.id}</div>
+                    <div className="text-xs text-gray-500">
+                      #{s.id}
+                      {/* On a phone the Product column is hidden, so the product folds in here. */}
+                      <span className="md:hidden"> · {productLabel(s.product_name, s.product_id)}</span>
+                    </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 hidden md:table-cell">
                     <Link to={knowledgeHref(s.product_id, 'syncs')} className="text-primary-700 hover:underline">
                       {s.product_name || `Product ${s.product_id}`}
                     </Link>

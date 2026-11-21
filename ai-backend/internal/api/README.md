@@ -73,7 +73,7 @@ All `/api/cost/*` (except `/gateway`) read `ai_call_log` and take `from`/`to` (`
 | `/api/learning/findings/{id}/dismiss`, `…/reopen` | POST | dismiss `new`; reopen `dismissed` / `covered`; 409 `bad_transition` |
 | `/api/learning/proposals` | GET, POST | GET `?product_id=&state=&limit&offset` → `{items, total, counts}` (a proposal is a `policy_propose` job; `state` derived by `learnloop.ProposalState`; newest 500 jobs). POST `{product_id, finding_ids[1..10]}` → 202 `{job_id}`; 409 `finding_busy`; 503 `unconfigured` (no AI, no pool, no automation repo). Approve with `/api/jobs/{id}/approval` or the GAOS Inbox |
 | `/api/learning/proposals/{job id}/check` | POST | polls the PR now (`gh pr view`); 409 unless `pr_open`; 502 `pr_check_failed` |
-| `/api/learning/timeline` | GET | `?product_id=&limit≤200` → `{items}` derived from findings and proposals, newest first |
+| `/api/learning/timeline` | GET | `?product_id=&limit≤200&offset=` → `{items, total}` derived from findings and proposals, newest first |
 | `/api/jobs` | GET | `handleListJobs` |
 | `/api/jobs/{id}` | GET | `handleJobs` -> `handleGetJob` |
 | `/api/jobs/{id}/events?since=<seq>` | GET | `handleJobEvents` (`job_events.go`): `{events:[{seq,at,level,step,message}], status, phase, job_type, error?, case_code?, branch?, product_id?, pr_url?, spec?:{path,content}, report?:{passed,failed,skipped}, approval?:{status,gaos_created,answer_text,answered_by,external_id}}`; at most 500 events per call |

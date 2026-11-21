@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pagination } from '../knowledge/ui';
 import { ApiError, GaosDecisionFields, GaosDecisionItem, GaosDecisionsPage, api } from './api';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 10;
 
 const DECISION_STYLE: Record<string, string> = {
   planned: 'bg-green-100 text-green-800',

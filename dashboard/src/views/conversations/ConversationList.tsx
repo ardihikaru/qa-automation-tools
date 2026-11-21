@@ -32,7 +32,8 @@ export default function ConversationList({
   return (
     <div className="space-y-3">
       {error && <ErrorNote onRetry={retry}>{error}</ErrorNote>}
-      <div className="card overflow-x-auto">
+      {/* relative: the sr-only header text is absolute and must stay inside the scroller, or it widens the page on a phone. */}
+      <div className="card overflow-x-auto relative">
         {loading && !data ? (
           <SkeletonRows rows={5} label="Loading conversations" />
         ) : !data || data.items.length === 0 ? (
@@ -42,6 +43,7 @@ export default function ConversationList({
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-2">Conversation</th>
+                <th className="px-3 py-2 hidden md:table-cell">Product</th>
                 <th className="px-3 py-2">Kind</th>
                 <th className="px-3 py-2">Work</th>
                 <th className="px-3 py-2 text-right">Messages</th>
@@ -55,6 +57,7 @@ export default function ConversationList({
             <tbody className="divide-y divide-gray-100">
               {data.items.map((c) => {
                 const owner = ownerHref(c);
+                const product = c.product_name || (c.product_id ? `Product ${c.product_id}` : '');
                 return (
                   <tr key={c.id}>
                     <td className="px-3 py-2 min-w-0">
@@ -65,11 +68,16 @@ export default function ConversationList({
                       ) : (
                         <span className="font-medium break-all">{c.title || c.ref}</span>
                       )}
-                      <div className="text-xs text-gray-500">
-                        {c.product_name || (c.product_id ? `Product ${c.product_id}` : '')}
-                        {c.feature && <> · {c.feature}</>}
-                      </div>
+                      {(product || c.feature) && (
+                        <div className="text-xs text-gray-500">
+                          {/* On a phone the Product column is hidden, so the product folds in here. */}
+                          {product && <span className="md:hidden">{product}</span>}
+                          {product && c.feature && <span className="md:hidden"> · </span>}
+                          {c.feature}
+                        </div>
+                      )}
                     </td>
+                    <td className="px-3 py-2 hidden md:table-cell text-gray-700">{product || <span className="text-gray-400">–</span>}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{KIND_LABEL[c.kind] ?? c.kind}</td>
                     <td className="px-3 py-2 max-w-[16rem]">
                       {owner ? (
