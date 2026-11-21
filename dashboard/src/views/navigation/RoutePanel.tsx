@@ -64,6 +64,11 @@ function CaseRow({ pid, c }: { pid: number; c: NavCase }) {
             {c.last_job.duration_ms !== null && ` · ${duration(c.last_job.duration_ms)}`}
           </Link>
         )}
+        {c.last_run && (
+          <Link to={`/history?tab=runs&product=${pid}&case=${encodeURIComponent(c.code)}`} className="text-primary-700 hover:underline" title="Run history of this case">
+            last Playwright run: {c.last_run.result}, {duration(c.last_run.duration_ms)}
+          </Link>
+        )}
       </div>
     </li>
   );

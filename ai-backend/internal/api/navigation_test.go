@@ -128,6 +128,9 @@ func navFixture(t *testing.T) (*Router, *db.DB) {
 	must(t, d, `INSERT INTO gaos_decisions (product_id, case_code, features, decision) VALUES (1,'TC-VSYS-011','[]','wont')`)
 	addJob(t, d, "job-active", "case_create", "running", "", "TC-VSYS-010", "", "", time.Now().UTC())
 	addJob(t, d, "job-old", "case_run", "completed", "", "TC-VSYS-001", "", `{"verdict":{"pass":true}}`, time.Now().UTC().Add(-time.Hour))
+	// Run history (RUN_HISTORY.md): an older and a newer run of TC-VSYS-001; the newer one counts.
+	must(t, d, `INSERT INTO pw_runs (id, product_id, source, run_ref, started_at) VALUES (1, 1, 'upload', 'a', UTC_TIMESTAMP(3) - INTERVAL 1 DAY), (2, 1, 'case_run', 'b', UTC_TIMESTAMP(3))`)
+	must(t, d, `INSERT INTO pw_run_cases (run_id, product_id, case_code, result, duration_ms) VALUES (1, 1, 'TC-VSYS-001', 'fail', 900), (2, 1, 'TC-VSYS-001', 'pass', 1800)`)
 	return r, d
 }
 
@@ -219,11 +222,11 @@ func TestNavigationMapAndRoute(t *testing.T) {
 	if f := rt["features"].([]any); len(f) != 1 || f[0].(map[string]any)["code"] != "B06.01" {
 		t.Errorf("features: %v", f)
 	}
-	var lastJob any
+	var lastJob, lastRun any
 	for _, x := range rt["cases"].([]any) {
 		m := x.(map[string]any)
 		if m["code"] == "TC-VSYS-001" {
-			lastJob = m["last_job"]
+			lastJob, lastRun = m["last_job"], m["last_run"]
 			if m["result"] != "pass" || m["run_at"] == nil {
 				t.Errorf("TC-VSYS-001: %v", m)
 			}
@@ -231,6 +234,9 @@ func TestNavigationMapAndRoute(t *testing.T) {
 	}
 	if lj, ok := lastJob.(map[string]any); !ok || lj["id"] != "job-old" {
 		t.Errorf("last job: %v", lastJob)
+	}
+	if lr, ok := lastRun.(map[string]any); !ok || lr["duration_ms"].(float64) != 1800 || lr["result"] != "pass" {
+		t.Errorf("last run: %v", lastRun)
 	}
 	if code, _ := getNav(t, r, "/api/products/1/navigation/routes/"+strings.Repeat("0", 40)); code != 404 {
 		t.Errorf("unknown route answered %d", code)
