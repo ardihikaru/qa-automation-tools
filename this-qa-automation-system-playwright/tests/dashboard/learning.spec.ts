@@ -11,6 +11,7 @@ import { test, expect, Page } from '@playwright/test';
 import { config } from '../../config';
 
 const shots = process.env.E2E_SCREENSHOT_DIR;
+const last = <T,>(xs: T[]): T | undefined => xs[xs.length - 1];
 
 const finding = {
   id: 41,
@@ -100,6 +101,48 @@ test.describe('Learning page', () => {
     await inputs.nth(1).fill(process.env.QA_PASSWORD!);
     await page.click('button[type=submit]');
     await page.waitForURL((u) => !u.pathname.startsWith('/login'));
+  });
+
+  test('findings and the timeline page 10 at a time; a filter goes back to page 1', async ({ page }) => {
+    await mockLearning(page);
+    // 23 findings: three pages. The mock answers the requested slice so the pager can be followed.
+    const seen: URLSearchParams[] = [];
+    const all = Array.from({ length: 23 }, (_, i) => ({ ...finding, id: 100 + i, title: `Finding number ${i + 1}` }));
+    await page.route('**/api/learning/findings**', (r) => {
+      const u = new URL(r.request().url()).searchParams;
+      seen.push(u);
+      const off = Number(u.get('offset') ?? 0);
+      const lim = Number(u.get('limit') ?? 50);
+      return r.fulfill({ json: { items: all.slice(off, off + lim), total: all.length, counts: { new: 23, proposed: 0, learned: 0, covered: 0, dismissed: 0 } } });
+    });
+    await page.route('**/api/learning/timeline**', (r) => {
+      const u = new URL(r.request().url()).searchParams;
+      const items = Array.from({ length: 12 }, (_, i) => ({ at: '2026-11-20T08:00:00Z', kind: 'finding_new', product_id: 3, product_name: 'SUT', finding_id: i, title: `Event ${i + 1}` }));
+      const off = Number(u.get('offset') ?? 0);
+      return r.fulfill({ json: { items: items.slice(off, off + Number(u.get('limit'))), total: items.length } });
+    });
+
+    await page.goto(`${config.dashboardUrl}/learning`);
+    const pager = page.getByRole('navigation', { name: 'Pagination' });
+    await expect(pager).toContainText('1–10 of 12');
+
+    await page.getByRole('tab', { name: /Findings/ }).click();
+    await expect(page.getByText('Finding number 10', { exact: true })).toBeVisible();
+    await expect(page.getByText('Finding number 11', { exact: true })).toHaveCount(0);
+    await expect(pager).toContainText('1–10 of 23');
+    expect(last(seen)?.get('limit')).toBe('10');
+
+    await pager.getByRole('button', { name: 'Next page' }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(page.getByText('Finding number 11', { exact: true })).toBeVisible();
+    await expect(pager).toContainText('11–20 of 23');
+    expect(last(seen)?.get('offset')).toBe('10');
+
+    // A filter change resets to page 1.
+    await page.getByLabel('Finding status').selectOption('new');
+    await expect(page).not.toHaveURL(/page=2/);
+    await expect.poll(() => last(seen)?.get('offset') ?? '0').toBe('0');
+    await expect(pager).toContainText('1–10 of 23');
   });
 
   for (const [name, viewport] of [['desktop', { width: 1440, height: 900 }], ['phone', { width: 375, height: 800 }]] as const) {

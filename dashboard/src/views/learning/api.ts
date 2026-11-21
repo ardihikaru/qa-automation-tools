@@ -166,7 +166,7 @@ const qs = (params: Record<string, string | number | undefined>) => {
   return s ? `?${s}` : '';
 };
 
-export const listFindings = (p: { product_id?: number; status?: string; kind?: string; q?: string; limit?: number }, signal?: AbortSignal) =>
+export const listFindings = (p: { product_id?: number; status?: string; kind?: string; q?: string; limit?: number; offset?: number }, signal?: AbortSignal) =>
   api<Page<Finding, FindingStatus>>(`/api/learning/findings${qs(p)}`, { signal });
 
 export const getFinding = (id: number, signal?: AbortSignal) =>
@@ -178,7 +178,7 @@ export const addFinding = (body: { product_id: number; title: string; detail: st
 export const setFindingStatus = (id: number, action: 'dismiss' | 'reopen', reason?: string) =>
   api<Finding>(`/api/learning/findings/${id}/${action}`, { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) });
 
-export const listProposals = (p: { product_id?: number; state?: string; limit?: number }, signal?: AbortSignal) =>
+export const listProposals = (p: { product_id?: number; state?: string; limit?: number; offset?: number }, signal?: AbortSignal) =>
   api<Page<Proposal, ProposalState>>(`/api/learning/proposals${qs(p)}`, { signal });
 
 export const createProposal = (product_id: number, finding_ids: number[]) =>
@@ -190,8 +190,8 @@ export const checkProposal = (id: string) => api<Proposal>(`/api/learning/propos
 export const answerProposal = (id: string, decision: 'approve' | 'reject' | 'changes', text?: string) =>
   api<{ status: string }>(`/api/jobs/${encodeURIComponent(id)}/approval`, { method: 'POST', body: JSON.stringify(text ? { decision, text } : { decision }) });
 
-export const getTimeline = (p: { product_id?: number; limit?: number }, signal?: AbortSignal) =>
-  api<{ items: TimelineItem[] }>(`/api/learning/timeline${qs(p)}`, { signal });
+export const getTimeline = (p: { product_id?: number; limit?: number; offset?: number }, signal?: AbortSignal) =>
+  api<{ items: TimelineItem[]; total: number }>(`/api/learning/timeline${qs(p)}`, { signal });
 
 export async function listProducts(signal?: AbortSignal): Promise<ProductOption[]> {
   const r = await api<{ products?: { id: number; name: string; repos?: { is_automation: boolean }[] }[] }>('/api/products', { signal });
@@ -202,6 +202,9 @@ export function errorText(e: unknown, fallback = 'Request failed'): string {
   if (e instanceof ApiError) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
+
+/** Rows per page on every /learning tab. */
+export const LEARNING_PAGE_SIZE = 10;
 
 export const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 
