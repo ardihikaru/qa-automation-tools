@@ -159,7 +159,10 @@ export const SOURCE_LABEL: Record<string, string> = {
   'case-create': 'Build run',
 };
 
-export const DEFAULT_PAGE_SIZE = 25;
+export const DEFAULT_PAGE_SIZE = 10;
+
+/** A row's product for the Product column: its name, else "Product 7", else a dash. */
+export const productLabel = (name: string, id: number | null | undefined) => name || (id ? `Product ${id}` : '–');
 
 /** "1 run", "3 runs". */
 export const plural = (n: number, noun: string) => `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;

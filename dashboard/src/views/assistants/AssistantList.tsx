@@ -10,7 +10,7 @@ import { ErrorNote, Pagination } from '../knowledge/ui';
 import { AssistantKind, KIND_META, listAssistants } from './api';
 import { AssistantRow, EmptyState, RowsSkeleton, Segmented } from './ui';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 interface Props {
   /** Kinds this list may show. */

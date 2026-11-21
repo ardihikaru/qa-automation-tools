@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import { absoluteTime, entityHref, formatMs } from '../knowledge/api';
 import { JOB_CHIP_CLASS, jobChipStatus, jobHref } from '../knowledge/CaseAutomation';
 import { Empty, ErrorNote, Pagination, RelTime, SkeletonRows } from '../knowledge/ui';
-import { Build, StepMs, STEP_COLOR, TabProps, WAITING_STEPS, listBuilds, plural, useHistoryList } from './api';
+import { Build, StepMs, STEP_COLOR, TabProps, WAITING_STEPS, listBuilds, plural, productLabel, useHistoryList } from './api';
 import { FilterSelect, FilterText } from './filters';
 import { conversationHref } from '../conversations/api';
 
@@ -111,6 +111,7 @@ export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) 
               <tr>
                 <th className="px-3 py-2 w-8"><span className="sr-only">Details</span></th>
                 <th className="px-3 py-2">Job</th>
+                <th className="px-3 py-2 hidden md:table-cell">Product</th>
                 <th className="px-3 py-2">Case</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Created</th>
@@ -146,9 +147,10 @@ export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) 
                         </Link>
                         <div className="text-xs text-gray-500">
                           {TYPE_LABEL[b.type] ?? b.type}
-                          {b.product_name && <> · {b.product_name}</>}
+                          {b.product_name && <span className="md:hidden"> · {b.product_name}</span>}
                         </div>
                       </td>
+                      <td className="px-3 py-2 hidden md:table-cell text-gray-700">{productLabel(b.product_name, b.product_id)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {b.case_code && b.product_id > 0 ? (
                           <Link to={entityHref(b.product_id, 'test_case', b.case_code)} className="font-mono text-primary-700 hover:underline">
@@ -176,7 +178,7 @@ export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) 
                     {isOpen && (
                       <tr className="bg-gray-50/60">
                         <td />
-                        <td colSpan={9} className="px-3 py-3">
+                        <td colSpan={10} className="px-3 py-3">
                           <StepList b={b} />
                         </td>
                       </tr>

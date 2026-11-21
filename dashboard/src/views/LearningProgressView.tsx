@@ -14,6 +14,7 @@ import {
   FindingStatus,
   isAbort,
   KIND_LABEL,
+  LEARNING_PAGE_SIZE,
   listFindings,
   listProducts,
   listProposals,
@@ -27,6 +28,8 @@ import {
   TimelineItem,
 } from './learning/api';
 import { AddFindingDialog, FindingsTab, PoliciesTab, TimelineTab } from './learning/Tabs';
+import { Pagination } from './knowledge/ui';
+import { parsePage } from './knowledge/paging';
 
 type Tab = 'timeline' | 'findings' | 'policies';
 const TABS: { id: Tab; label: string }[] = [
@@ -52,12 +55,18 @@ export default function LearningProgressView() {
   const kind = FINDING_KINDS.find((k) => k === params.get('kind')) ?? '';
   const pstate = PROPOSAL_STATES.includes(params.get('state') as ProposalState) ? (params.get('state') as ProposalState) : '';
   const q = params.get('q') ?? '';
+  // `?page=` belongs to the open tab; every other tab reads its first page.
+  const page = parsePage(params.get('page'));
+  const offsetOf = (t: Tab) => (t === tab ? (page - 1) * LEARNING_PAGE_SIZE : 0);
+  const fOffset = offsetOf('findings');
+  const pOffset = offsetOf('policies');
+  const tOffset = offsetOf('timeline');
 
   const [products, setProducts] = useState<ProductOption[] | null>(null);
   const [findings, setFindings] = useState<Page<Finding, FindingStatus> | null>(null);
   const [proposals, setProposals] = useState<Page<Proposal, ProposalState> | null>(null);
   const [allProposals, setAllProposals] = useState<Page<Proposal, ProposalState> | null>(null);
-  const [timeline, setTimeline] = useState<TimelineItem[] | null>(null);
+  const [timeline, setTimeline] = useState<{ items: TimelineItem[]; total: number } | null>(null);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
   const [adding, setAdding] = useState(false);
@@ -65,14 +74,16 @@ export default function LearningProgressView() {
 
   usePageHeader({ title: 'Learning' });
 
+  // Any filter or tab change goes back to page 1; only a page change keeps (and sets) `?page=`.
   const update = useCallback(
     (patch: Record<string, string>) => {
       const next = new URLSearchParams(params);
+      if (!('page' in patch)) next.delete('page');
       for (const [k, v] of Object.entries(patch)) {
         if (v) next.set(k, v);
         else next.delete(k);
       }
-      setParams(next, { replace: true });
+      setParams(next, { replace: !('page' in patch) });
     },
     [params, setParams],
   );
@@ -101,20 +112,29 @@ export default function LearningProgressView() {
     const ac = new AbortController();
     setError('');
     Promise.all([
-      listFindings({ product_id: pid, status: fstatus, kind, q, limit: 200 }, ac.signal),
-      listProposals({ product_id: pid, state: pstate, limit: 200 }, ac.signal),
+      listFindings({ product_id: pid, status: fstatus, kind, q, limit: LEARNING_PAGE_SIZE, offset: fOffset }, ac.signal),
+      listProposals({ product_id: pid, state: pstate, limit: LEARNING_PAGE_SIZE, offset: pOffset }, ac.signal),
       pstate ? listProposals({ product_id: pid, limit: 1 }, ac.signal) : Promise.resolve(null),
-      getTimeline({ product_id: pid, limit: 200 }, ac.signal),
+      getTimeline({ product_id: pid, limit: LEARNING_PAGE_SIZE, offset: tOffset }, ac.signal),
     ])
       .then(([f, p, all, t]) => {
         setFindings(f);
         setProposals(p);
         setAllProposals(all ?? p);
-        setTimeline(t.items);
+        setTimeline({ items: t.items ?? [], total: t.total ?? (t.items ?? []).length });
       })
       .catch((e) => !isAbort(e) && setError(errorText(e)));
     return () => ac.abort();
-  }, [scoped, pid, fstatus, kind, pstate, q, reload]);
+  }, [scoped, pid, fstatus, kind, pstate, q, fOffset, pOffset, tOffset, reload]);
+
+  // The open tab's total, for its pager; a page past the end (rows went away) goes to the last one.
+  const tabTotal = tab === 'findings' ? findings?.total : tab === 'policies' ? proposals?.total : timeline?.total;
+  useEffect(() => {
+    if (tabTotal === undefined || page <= 1) return;
+    const last = Math.max(1, Math.ceil(tabTotal / LEARNING_PAGE_SIZE));
+    if (page > last) update({ page: last > 1 ? String(last) : '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabTotal, page]);
 
   // Poll while the server is drafting or publishing a visible proposal.
   const busy = (proposals?.items ?? []).some((p) => BUSY_STATES.includes(p.state));
@@ -281,11 +301,22 @@ export default function LearningProgressView() {
               Loading…
             </p>
           ) : tab === 'timeline' ? (
-            <TimelineTab items={timeline ?? []} productName={productName} />
+            <TimelineTab items={timeline?.items ?? []} productName={productName} />
           ) : tab === 'findings' ? (
             <FindingsTab page={findings!} canWrite={canWrite} allProducts={!pid} onChanged={refresh} productName={productName} />
           ) : (
             <PoliciesTab page={proposals!} canWrite={canWrite} onChanged={refresh} productName={productName} />
+          )}
+          {!error && !loading && tabTotal !== undefined && tabTotal > 0 && (
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <Pagination
+                page={page}
+                pageSize={LEARNING_PAGE_SIZE}
+                total={tabTotal}
+                noun={tab === 'timeline' ? 'events' : tab === 'findings' ? 'findings' : 'policies'}
+                onPage={(p) => update({ page: p > 1 ? String(p) : '' })}
+              />
+            </div>
           )}
         </div>
       </div>
