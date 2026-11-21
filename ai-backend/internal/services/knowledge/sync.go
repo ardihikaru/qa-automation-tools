@@ -186,6 +186,7 @@ func (s *Syncer) finish(id int64, status, errText, sha string) {
 }
 
 type lastSuccess struct {
+	id      int64
 	repoID  sql.NullInt64
 	branch  string
 	format  string
@@ -225,8 +226,8 @@ func (s *Syncer) run(id int64, t *target, trigger string) {
 	}
 
 	var prev lastSuccess
-	err = s.DB.QueryRow(ctx, `SELECT repo_id, branch, format, parser_version, commit_sha, counts FROM kb_syncs
-WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.productID).Scan(&prev.repoID, &prev.branch, &prev.format, &prev.version, &prev.sha, &prev.counts)
+	err = s.DB.QueryRow(ctx, `SELECT id, repo_id, branch, format, parser_version, commit_sha, counts FROM kb_syncs
+WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.productID).Scan(&prev.id, &prev.repoID, &prev.branch, &prev.format, &prev.version, &prev.sha, &prev.counts)
 	hasPrev := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		fail("read previous sync: " + err.Error())
@@ -235,6 +236,13 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 	sameCommit := hasPrev && prev.sha.String == sha && prev.version == parserVersion(t.format) &&
 		prev.repoID.Int64 == int64(t.repoID) && prev.branch == t.branch && prev.format == t.format.Name()
 	if trigger == TriggerSchedule && sameCommit {
+		// NAVIGATION_MAP.md section 5: a missing or outdated route inventory is built from the
+		// unchanged commit; the catalog is not written and the sync still ends skipped.
+		if s.navStale(ctx, t.productID) {
+			if snap, _, perr := t.format.Parse(files); perr == nil {
+				s.buildNav(prev.id, t.productID, sha, snap, files)
+			}
+		}
 		terminal = true
 		s.finish(id, "skipped", "", sha)
 		s.notify(s.OnUnchanged, t.productID)
@@ -305,6 +313,7 @@ WHERE product_id = ? AND status = 'succeeded' ORDER BY id DESC LIMIT 1`, t.produ
 		diff.Total["added"], diff.Total["updated"], diff.Total["removed"], diff.Total["restored"])
 	_ = counts
 	s.notify(s.OnSucceeded, t.productID)
+	s.buildNav(id, t.productID, sha, snap, files)
 	if aiPending {
 		prevSHA := ""
 		if hasPrev {

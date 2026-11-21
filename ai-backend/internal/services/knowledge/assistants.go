@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/qa-automation/ai-backend/internal/services/navmap"
 )
 
 // Kinds of AI-assistant files synced from a product's automation repo (PRODUCT_KNOWLEDGE_SYNC.md,
@@ -68,9 +70,10 @@ func assistantKind(p string) string {
 	return ""
 }
 
-// KeepForSync is the ReadTree filter of a knowledge sync: the docs/ catalog plus assistant files.
+// KeepForSync is the ReadTree filter of a knowledge sync: the docs/ catalog, assistant files and the
+// repo files of the navigation map (NAVIGATION_MAP.md 3.3).
 func KeepForSync(p string) bool {
-	return strings.HasPrefix(p, "docs/") || assistantKind(p) != ""
+	return strings.HasPrefix(p, "docs/") || assistantKind(p) != "" || navmap.KeepRepoFile(p)
 }
 
 // assistantCode is "<kind>~<slug(33) of the path without .md>-<6 hex of sha1(path)>" (at most 54 chars).

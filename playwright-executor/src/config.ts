@@ -14,7 +14,11 @@ export interface ExecutorConfig {
   envDir: string;
   /** case_run: hostnames a case env file's base URLs may point at (`*.suffix` allowed). */
   allowedHosts: string[];
+  /** case_run: absolute path of the navigation reporter, or '' (off, missing or not loadable). */
+  navReporter?: string;
 }
+
+import { resolveNavReporter } from './navReporter';
 
 type Env = Record<string, string | undefined>;
 
@@ -53,5 +57,6 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     repoPool: env.EXECUTOR_REPO_POOL || '/home/qa/devel/projects/qa-automation-tools/repos',
     envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/qa'}/.config/qa-automation`,
     allowedHosts,
+    navReporter: resolveNavReporter(env),
   };
 }
