@@ -134,10 +134,16 @@ when impersonating, else the full name. GAOS works out the client and its domain
 
 | GAOS answers | The QA tools do |
 |---|---|
-| 200 | apply the submitted answer here at once (source `qa-tool:history`, GAOS's `source` object stored); the job continues without waiting for the webhook or the poll. GAOS's webhook that follows is a no-op (first answer wins); if it lands *before* the 200 is applied, the row is claimed back as `qa-tool:history`. |
-| 409 `already_answered` | someone answered first in GAOS: apply **that** answer here (source `gaos`) and tell the user. A 409 that carries our own actor and decision (a second tab) counts as ours. An own-words answer the gate cannot use falls back to the local answer. |
-| timeout / transport error | read the item once (`GET …/inbox/{externalId}`); if it shows an answer, use it as above, else fall back. |
-| 410, 404 (also an older GAOS without the endpoint), 401/403, 422, 429, 5xx | **fall back**: the answer is applied in the QA tools only, with a note in the dialog and a warning in the job log; the GAOS item stays open until it expires or is answered there (ignored). No durable retry. 401/403/422 are logged as configuration errors. |
+| 200 | the only answer recorded as ours: apply the submitted answer here at once (source `qa-tool:history`, GAOS's `source` object from the 200 stored); the job continues without waiting for the webhook or the poll. GAOS's webhook (it carries no `source`) is a no-op when it comes later; if it lands *before* the 200 is applied, the row is claimed back as `qa-tool:history` with the 200's `source`. |
+| 409 `already_answered` | someone answered first in GAOS (`reason` names it): adopt **that** answer here (source `gaos`; a GAOS back-office answer shows as "operator (GAOS)") and tell the user. An own-words answer the gate cannot use falls back to the local answer. |
+| 410 `expired` | adopt the expiry: the approval closes as `expired` (source `system`), the user is told. |
+| 429 | wait `Retry-After` (at most 5 s) and try once more; then as 5xx. |
+| timeout / transport error | read the item once (`GET …/inbox/{externalId}`); `answered` or `expired` is adopted as above, else fall back. |
+| 404 (also an older GAOS without the endpoint), 400 `bad-actor`/`bad-json`/`secret-in-body`, 401/403, 422 `bad-choice`/`bad-text`, 5xx | **fall back**: the answer is applied in the QA tools only, with a note in the dialog and a warning in the job log; the GAOS item stays open until it expires or is answered there (ignored). No durable retry. 401/403/422 are logged as configuration errors. |
+
+A username GAOS would refuse (outside `A-Z a-z 0-9 . _ @ + -`, longer than 64, or `operator`) is never sent: the answer is
+local, with a note. GAOS validates `actor.display` but does not store it, so the real actor behind an impersonation
+("ai-service as ardi") is kept only on the QA side (`answer_actor`).
 
 The QA tools deploy can go **before or after** the GAOS release that adds the endpoint: until then every relay gets 404
 and falls back to the local answer. Nothing else sent to GAOS changes.

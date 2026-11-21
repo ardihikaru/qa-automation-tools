@@ -29,6 +29,8 @@ function conflictText(body: Record<string, unknown>): string {
       return `Someone answered first in GAOS${who}: ${status}. Their answer was applied.`;
     case 'answered_here':
       return `It was answered in the QA tools first${via ? ` (${via})` : ''}${who}: ${status}. GAOS shows your answer, which was not used.`;
+    case 'expired_in_gaos':
+      return 'The question had already expired in GAOS, so it is closed here too. Start a new job to ask again.';
     case 'newer_round':
       return 'The job has asked again since you opened this. Refresh to see the new round.';
     case 'in_flight':

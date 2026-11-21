@@ -114,10 +114,14 @@ func actorOf(d json.RawMessage) (str, username, display string) {
 }
 
 // ActorFromDetail reads who answered from GAOS's source object: actor as a string, else
-// actor.display, else actor.username. "" when there is none.
+// actor.display, else actor.username; GAOS's back-office "operator" reads "operator (GAOS)".
+// "" when there is none.
 func ActorFromDetail(d json.RawMessage) string {
 	str, user, display := actorOf(d)
 	switch {
+	case str == "operator" || user == "operator":
+		// GAOS v0.43.0 reports its back-office actor as "operator".
+		return "operator (GAOS)"
 	case str != "":
 		return CleanText(str, 120)
 	case display != "":
