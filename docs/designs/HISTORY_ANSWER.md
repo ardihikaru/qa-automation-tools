@@ -1,7 +1,7 @@
 # HISTORY_ANSWER: answer a waiting approval from `/history`, relayed to GAOS, with its source recorded
 
 *   **Author:** ardihikaru (drafted by Claude)
-*   **Status:** Rev 2, approved for implementation after one EGM review round (implementation readiness, design, codebase details); section 13 resolves the findings and supersedes earlier wording. The product owner asked for it; operator approval is delegated to the orchestrating agent under the product owner's standing instruction (recorded here, section 12).
+*   **Status:** Rev 2, **implemented** (2026-11-21) after one EGM review round (implementation readiness, design, codebase details); section 13 resolves the findings and supersedes earlier wording. The product owner asked for it; operator approval is delegated to the orchestrating agent under the product owner's standing instruction (recorded here, section 12).
 *   **Depends on:** [CASE_AUTOMATION.md](CASE_AUTOMATION.md) (the approval gate, `case_approvals`, `POST /api/jobs/{id}/approval`, the GAOS Inbox item), [LEARNING_LOOP.md](LEARNING_LOOP.md) (`policy_propose` reuses the gate), [RUN_HISTORY.md](RUN_HISTORY.md) (the `/history` page and `GET /api/history/builds`), [GAOS_INTEGRATION.md](GAOS_INTEGRATION.md) (the GAOS client, `GAOS_API_URL`, `GAOS_API_TOKEN`).
 
 ## 1. Problem
