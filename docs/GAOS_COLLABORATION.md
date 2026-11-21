@@ -116,6 +116,37 @@ same `qa-<job id>-pr[N]` shape, so the existing answer webhook handles it; nothi
 approval the QA tools open a pull request on the automation repo; a person merges it there. See
 [LEARNING_LOOP.md](designs/LEARNING_LOOP.md).
 
+## Answering an approval from the QA tools' run history (QA tools to GAOS)
+
+Spec: [HISTORY_ANSWER.md](designs/HISTORY_ANSWER.md). Every approval waiting now (a generated spec of `case_create`, a
+learned policy of `policy_propose`) is listed on `/history` under **Waiting for approval**, with an **Answer** button
+(roles Admin, DevOps, Developer, QA, QC). The dialog offers the GAOS item's options in the same order: **1 Approve**,
+**2 Reject**, **3 Needs changes** (a comment is required). When the item exists in GAOS (`gaos_created`) and the product
+is integrated, the answer is **relayed to GAOS first**:
+
+```
+POST {GAOS_API_URL}/products/{pid}/inbox/{externalId}/answer      Authorization: Bearer <GAOS_API_TOKEN>
+{"choice": 1, "text": "lgtm", "actor": {"username": "ardi", "display": "ai-service as ardi"}}
+```
+
+`actor.username` is the signed-in user (the impersonated one when impersonating); `display` is "<real user> as <target>"
+when impersonating, else the full name. GAOS works out the client and its domain from the token and logs the source.
+
+| GAOS answers | The QA tools do |
+|---|---|
+| 200 | apply the submitted answer here at once (source `qa-tool:history`, GAOS's `source` object stored); the job continues without waiting for the webhook or the poll. GAOS's webhook that follows is a no-op (first answer wins); if it lands *before* the 200 is applied, the row is claimed back as `qa-tool:history`. |
+| 409 `already_answered` | someone answered first in GAOS: apply **that** answer here (source `gaos`) and tell the user. A 409 that carries our own actor and decision (a second tab) counts as ours. An own-words answer the gate cannot use falls back to the local answer. |
+| timeout / transport error | read the item once (`GET …/inbox/{externalId}`); if it shows an answer, use it as above, else fall back. |
+| 410, 404 (also an older GAOS without the endpoint), 401/403, 422, 429, 5xx | **fall back**: the answer is applied in the QA tools only, with a note in the dialog and a warning in the job log; the GAOS item stays open until it expires or is answered there (ignored). No durable retry. 401/403/422 are logged as configuration errors. |
+
+The QA tools deploy can go **before or after** the GAOS release that adds the endpoint: until then every relay gets 404
+and falls back to the local answer. Nothing else sent to GAOS changes.
+
+**Where every answer came from** (`case_approvals.answer_source`, shown as "answered via … by …" on the job page and in
+the Builds row of `/history`): `gaos` (webhook, poll, or a 409), `qa-tool:history`, `qa-tool:job-page`,
+`qa-tool:learning`, `system` (any expiry). `answer_actor` is who answered; `answer_source_detail` holds GAOS's `source`
+object (from the 200/409, the webhook when GAOS sends `source`, or the poll). `answered_by` keeps its old door value.
+
 ## Turning it on for a product
 
 1. **GAOS side first** (the operator): the product exists in GAOS and its id is in `GAOS_API_QA_PRODUCTS`; a QA token file
@@ -156,7 +187,8 @@ approval the QA tools open a pull request on the automation repo; a person merge
 
 ## Security in short
 
-Bearer tokens only on the two routes; constant-time comparison; a missing token closes them. No token appears in a log, a
+The answer relay sends the signed-in username (and, when impersonating, the real user's name) to GAOS; the comment is
+redacted first, as before. Bearer tokens only on the two routes; constant-time comparison; a missing token closes them. No token appears in a log, a
 note or a response. Everything received is bounded (200 items, 1 MiB) and checked; text from GAOS is never written into
 `kb_*`. The URL to GAOS is configuration, never request input, and redirects are refused. Pushes for two products never
 overlap (GAOS allows one write at a time per token).

@@ -71,6 +71,14 @@ func (d AwaitDeps) event(level, msg string) {
 	}
 }
 
+// answer records the answer with its source when the store can (SourcedAnswerer), else as before.
+func (d AwaitDeps) answer(ctx context.Context, ext, status string, m AnswerMeta) (bool, error) {
+	if sa, ok := d.Approvals.(SourcedAnswerer); ok {
+		return sa.AnswerSourced(ctx, ext, status, m)
+	}
+	return d.Approvals.Answer(ctx, ext, status, m.By, m.Text)
+}
+
 // AwaitApproval opens the approval (idempotent on the external id), asks GAOS too when the
 // product is integrated, and waits for the first answer or the deadline.
 func AwaitApproval(ctx context.Context, d AwaitDeps, req AwaitRequest) (*Approval, error) {
@@ -119,11 +127,12 @@ func AwaitApproval(ctx context.Context, d AwaitDeps, req AwaitRequest) (*Approva
 				switch it.Status {
 				case gaossync.InboxAnswered:
 					if st, ok := DecisionFromAnswer(it.OptionLabel, string(it.Choice)); ok {
-						_, _ = d.Approvals.Answer(ctx, ext, st, "gaos", Clip(it.Text, 1000))
+						_, _ = d.answer(ctx, ext, st, AnswerMeta{By: "gaos", Text: Clip(it.Text, 1000), Source: SourceGAOS,
+							Actor: ActorFromDetail(it.Source), Detail: it.Source})
 						continue
 					}
 				case gaossync.InboxExpired:
-					_, _ = d.Approvals.Answer(ctx, ext, ApprovalExpired, "gaos", "")
+					_, _ = d.answer(ctx, ext, ApprovalExpired, AnswerMeta{By: "gaos", Detail: it.Source})
 					continue
 				}
 			}

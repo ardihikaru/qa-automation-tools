@@ -3,7 +3,10 @@ package api
 // CASE_AUTOMATION.md section 5: the live log of a case job and its approval gate.
 //
 //	GET  /api/jobs/{id}/events?since=<seq>  events newer than seq, plus the job's state
-//	POST /api/jobs/{id}/approval            {decision: approve|reject|changes, text?}
+//	POST /api/jobs/{id}/approval            {decision: approve|reject|changes, text?, via?, external_id?}
+//
+// via (HISTORY_ANSWER.md) is the door the answer was given at: job-page (default), history
+// (relayed to GAOS when the item exists there, approval_relay.go) or learning.
 
 import (
 	"context"
@@ -130,14 +133,17 @@ func (r *Router) handleJobEvents(w http.ResponseWriter, req *http.Request, jobID
 		}
 	}
 	if a, err := (&caseauto.ApprovalStore{DB: d}).Latest(ctx, jobID); err == nil && a != nil {
-		out["approval"] = map[string]any{"status": a.Status, "gaos_created": a.GaosCreated, "answer_text": a.Text, "answered_by": a.AnsweredBy, "external_id": a.ExternalID}
+		out["approval"] = map[string]any{"status": a.Status, "gaos_created": a.GaosCreated, "answer_text": a.Text, "answered_by": a.AnsweredBy, "external_id": a.ExternalID,
+			"source": a.Source, "actor": a.Actor, "answered_at": a.AnsweredAt}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 type approvalBody struct {
-	Decision string `json:"decision"`
-	Text     string `json:"text"`
+	Decision   string `json:"decision"`
+	Text       string `json:"text"`
+	Via        string `json:"via"`         // job-page (default) | history | learning
+	ExternalID string `json:"external_id"` // the round the human saw; required for via = history
 }
 
 var decisionStatus = map[string]string{
@@ -146,7 +152,14 @@ var decisionStatus = map[string]string{
 	"changes": caseauto.ApprovalChanges,
 }
 
-// handleJobApproval is the dashboard door of the approval gate.
+// viaEvent is how a local answer's job event names its door.
+var viaEvent = map[string]string{
+	caseauto.SourceJobPage:  "answered in the dashboard",
+	caseauto.SourceHistory:  "answered from the run history",
+	caseauto.SourceLearning: "answered on the learning page",
+}
+
+// handleJobApproval is the dashboard door of the approval gate (job page, run history, learning page).
 func (r *Router) handleJobApproval(w http.ResponseWriter, req *http.Request, jobID string) {
 	if req.Method != http.MethodPost {
 		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -170,6 +183,15 @@ func (r *Router) handleJobApproval(w http.ResponseWriter, req *http.Request, job
 		writeJSONError(w, http.StatusBadRequest, "decision must be approve, reject or changes")
 		return
 	}
+	source, ok := sourceOfVia[body.Via]
+	if !ok {
+		writeJSONError(w, http.StatusBadRequest, "via must be job-page, history or learning")
+		return
+	}
+	if body.Via == "history" && body.ExternalID == "" {
+		writeJSONError(w, http.StatusBadRequest, "external_id is required from the run history")
+		return
+	}
 	text := strings.TrimSpace(body.Text)
 	if len(text) > 1000 {
 		writeJSONError(w, http.StatusBadRequest, "text is limited to 1000 characters")
@@ -191,16 +213,67 @@ func (r *Router) handleJobApproval(w http.ResponseWriter, req *http.Request, job
 		writeJSONError(w, http.StatusNotFound, "this job has no approval")
 		return
 	}
-	changed, err := store.Answer(ctx, a.ExternalID, status, "dashboard", r.caseAuto.redact.Redact(text))
+	if body.ExternalID != "" && body.ExternalID != a.ExternalID {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "a newer approval round exists", "code": "newer_round", "status": a.Status})
+		return
+	}
+	already := func(cur *caseauto.Approval) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "the approval was already answered", "code": "already_answered",
+			"status": cur.Status, "source": cur.Source, "actor": cur.Actor})
+	}
+	if a.Status != caseauto.ApprovalOpen {
+		already(a)
+		return
+	}
+	text = r.caseAuto.redact.Redact(text)
+	actor, ga := answerActor(req)
+	meta := caseauto.AnswerMeta{By: "dashboard", Text: text, Source: source, Actor: actor}
+
+	note := ""
+	if source == caseauto.SourceHistory {
+		unlock, ok := r.approvalRelay.tryLock(a.ExternalID)
+		if !ok {
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "an answer to this approval is being sent", "code": "in_flight", "status": a.Status})
+			return
+		}
+		defer unlock()
+		if a.GaosCreated {
+			if _, pid, _, err := store.ByExternal(ctx, a.ExternalID); err == nil {
+				if gp := r.gaosProductFor(ctx, d, pid); gp != "" && ga.Username != "" {
+					out := r.relayAnswer(req, d, a, jobID, gp, body.Decision, status, text, meta, ga)
+					if !out.fallback {
+						writeJSON(w, out.httpStatus, out.body)
+						return
+					}
+					note = out.note
+				}
+			}
+		}
+	}
+	changed, err := store.AnswerSourced(ctx, a.ExternalID, status, meta)
 	if err != nil {
 		log.Printf("job approval: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if !changed {
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "the approval was already answered", "status": a.Status})
+		if cur, err := store.Get(ctx, a.ExternalID); err == nil && cur != nil {
+			already(cur)
+			return
+		}
+		already(a)
 		return
 	}
-	r.addJobEvent(jobID, "info", caseauto.StepApproval, "answered in the dashboard by "+answerBy(req)+": "+body.Decision)
-	writeJSON(w, http.StatusOK, map[string]any{"status": status})
+	msg := viaEvent[source] + " by " + actor + ": " + body.Decision
+	level := "info"
+	if note != "" {
+		msg += "\n" + note
+		level = "warn"
+	}
+	r.addJobEvent(jobID, level, caseauto.StepApproval, msg)
+	out := map[string]any{"status": status, "delivered": "local"}
+	if note != "" {
+		out["note"] = note
+	}
+	writeJSON(w, http.StatusOK, out)
 }

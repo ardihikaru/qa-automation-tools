@@ -107,12 +107,18 @@ func (s *ApprovalStore) Open(ctx context.Context, jobID string, productID int, c
 	return err
 }
 
-const approvalCols = `external_id, status, COALESCE(answered_by, ''), COALESCE(answer_text, ''), gaos_created`
+const approvalCols = `external_id, status, COALESCE(answered_by, ''), COALESCE(answer_text, ''), gaos_created,
+	COALESCE(answer_source, ''), COALESCE(answer_actor, ''), answered_at`
 
 func scanApproval(row interface{ Scan(...any) error }) (*Approval, error) {
 	var a Approval
-	if err := row.Scan(&a.ExternalID, &a.Status, &a.AnsweredBy, &a.Text, &a.GaosCreated); err != nil {
+	var at sql.NullTime
+	if err := row.Scan(&a.ExternalID, &a.Status, &a.AnsweredBy, &a.Text, &a.GaosCreated, &a.Source, &a.Actor, &at); err != nil {
 		return nil, err
+	}
+	if at.Valid {
+		t := at.Time
+		a.AnsweredAt = &t
 	}
 	return &a, nil
 }
@@ -148,18 +154,55 @@ func (s *ApprovalStore) MarkGaosCreated(ctx context.Context, externalID string) 
 }
 
 // Answer closes an open approval; it reports whether this call changed it (first answer wins).
+// The source is derived from the door (SourceForDoor); AnswerSourced records more.
 func (s *ApprovalStore) Answer(ctx context.Context, externalID, status, by, text string) (bool, error) {
+	return s.AnswerSourced(ctx, externalID, status, AnswerMeta{By: by, Text: text})
+}
+
+// AnswerSourced closes an open approval with its source, actor and GAOS's source object
+// (HISTORY_ANSWER.md). An invalid detail is dropped before the write, never failing it.
+func (s *ApprovalStore) AnswerSourced(ctx context.Context, externalID, status string, m AnswerMeta) (bool, error) {
 	switch status {
 	case ApprovalApproved, ApprovalRejected, ApprovalChanges, ApprovalExpired:
 	default:
 		return false, errors.New("invalid approval status")
 	}
-	res, err := s.DB.Exec(ctx, `UPDATE case_approvals SET status = ?, answered_by = ?, answer_text = ?, answered_at = UTC_TIMESTAMP()
-		WHERE external_id = ? AND status = 'open'`, status, by, Clip(strings.TrimSpace(text), 1000), externalID)
+	m = m.normalised(status)
+	res, err := s.DB.Exec(ctx, `UPDATE case_approvals SET status = ?, answered_by = ?, answer_text = ?, answered_at = UTC_TIMESTAMP(),
+		answer_source = ?, answer_actor = ?, answer_source_detail = ?
+		WHERE external_id = ? AND status = 'open'`, status, m.By, Clip(strings.TrimSpace(m.Text), 1000),
+		nullStr(m.Source), nullStr(m.Actor), detailArg(m.Detail), externalID)
 	if err != nil {
 		return false, err
 	}
 	return res.RowsAffected() > 0, nil
+}
+
+// Claim rewrites the source of an answer GAOS delivered first, once GAOS confirmed that the
+// answer was the QA tools' own relay (HISTORY_ANSWER.md 13.2). It reports whether it did.
+func (s *ApprovalStore) Claim(ctx context.Context, externalID, status string, m AnswerMeta) (bool, error) {
+	m = m.normalised(status)
+	res, err := s.DB.Exec(ctx, `UPDATE case_approvals SET answer_source = ?, answer_actor = ?, answer_source_detail = ?
+		WHERE external_id = ? AND status = ? AND answer_source = ?`,
+		nullStr(m.Source), nullStr(m.Actor), detailArg(m.Detail), externalID, status, SourceGAOS)
+	if err != nil {
+		return false, err
+	}
+	return res.RowsAffected() > 0, nil
+}
+
+func nullStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func detailArg(d []byte) any {
+	if len(d) == 0 {
+		return nil
+	}
+	return string(d)
 }
 
 // OpenForJobs lists the job ids that have an open approval (resumed after a restart).

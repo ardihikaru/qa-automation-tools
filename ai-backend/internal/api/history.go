@@ -6,6 +6,7 @@ package api
 //	GET /api/history/runs       every Playwright report received (pw_runs)
 //	GET /api/history/runs/{id}  one run with its per-case rows
 //	GET /api/history/syncs      knowledge syncs with their duration
+//	GET /api/history/approvals  every open approval, to answer from the page (HISTORY_ANSWER.md)
 //
 // Builds are derived from job_runs, job_events and case_approvals (nothing is stored for them).
 // job_events and case_approvals use the server's default collation, job_runs utf8mb4_general_ci:
@@ -136,6 +137,8 @@ func (r *Router) handleHistory(w http.ResponseWriter, req *http.Request) {
 		r.historyRun(w, req, d, id)
 	case rest == "syncs":
 		r.historySyncs(w, req, d)
+	case rest == "approvals":
+		r.historyApprovals(w, req, d) // HISTORY_ANSWER.md, approval_relay.go
 	default:
 		writeJSONError(w, http.StatusNotFound, "not found")
 	}
@@ -185,8 +188,21 @@ type historyBuild struct {
 	Steps       []runhistory.StepMs `json:"steps"`
 	// ConversationID is the job's non-archived AI conversation (AI_CONVERSATIONS.md), else null.
 	ConversationID *int64               `json:"conversation_id"`
+	// Approval is the job's latest approval round (HISTORY_ANSWER.md), else null.
+	Approval *buildApproval `json:"approval"`
 	sums           []runhistory.StepSum // from job_events
 	lastAt         *time.Time           // the job's last event
+}
+
+// buildApproval is a build's latest approval round and where its answer came from.
+type buildApproval struct {
+	ExternalID  string     `json:"external_id"`
+	Status      string     `json:"status"`
+	Source      string     `json:"source"`
+	Actor       string     `json:"actor"`
+	AnsweredBy  string     `json:"answered_by"`
+	AnsweredAt  *time.Time `json:"answered_at"`
+	GaosCreated bool       `json:"gaos_created"`
 }
 
 func (r *Router) historyBuilds(w http.ResponseWriter, req *http.Request, d *db.DB) {
@@ -226,6 +242,14 @@ func (r *Router) historyBuilds(w http.ResponseWriter, req *http.Request, d *db.D
 	}
 	if epic != "" {
 		q.add(`EXISTS (SELECT 1 FROM kb_test_cases t WHERE t.product_id = `+jobPID+` AND t.code = `+jobCase+` AND t.epic_code = ?)`, epic)
+	}
+	switch v.Get("approval") {
+	case "":
+	case "open":
+		q.add(`EXISTS (SELECT 1 FROM case_approvals a WHERE a.job_id COLLATE utf8mb4_general_ci = j.id COLLATE utf8mb4_general_ci AND a.status = 'open')`)
+	default:
+		writeJSONError(w, http.StatusBadRequest, "approval must be open")
+		return
 	}
 	if b := strings.TrimSpace(v.Get("batch")); b != "" {
 		if !historyBatchRe.MatchString(b) {
@@ -365,7 +389,9 @@ func enrichBuilds(ctx context.Context, d *db.DB, items []*historyBuild, byID map
 		answered *time.Time
 	}
 	approvals := map[string][]window{}
-	rows, err = d.Query(ctx, `SELECT job_id, created_at, answered_at FROM case_approvals WHERE job_id IN (`+in+`)`, ids...)
+	rows, err = d.Query(ctx, `SELECT job_id, created_at, answered_at, external_id, status, COALESCE(answer_source, ''),
+		COALESCE(answer_actor, ''), COALESCE(answered_by, ''), gaos_created
+		FROM case_approvals WHERE job_id IN (`+in+`) ORDER BY id`, ids...)
 	if err != nil {
 		return err
 	}
@@ -373,7 +399,8 @@ func enrichBuilds(ctx context.Context, d *db.DB, items []*historyBuild, byID map
 		var id string
 		var c time.Time
 		var a sql.NullTime
-		if err := rows.Scan(&id, &c, &a); err != nil {
+		ba := &buildApproval{}
+		if err := rows.Scan(&id, &c, &a, &ba.ExternalID, &ba.Status, &ba.Source, &ba.Actor, &ba.AnsweredBy, &ba.GaosCreated); err != nil {
 			rows.Close()
 			return err
 		}
@@ -381,8 +408,12 @@ func enrichBuilds(ctx context.Context, d *db.DB, items []*historyBuild, byID map
 		if a.Valid {
 			t := a.Time
 			wd.answered = &t
+			ba.AnsweredAt = &t
 		}
 		approvals[id] = append(approvals[id], wd)
+		if b := byID[id]; b != nil {
+			b.Approval = ba // ordered by id: the last one is the latest round
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
