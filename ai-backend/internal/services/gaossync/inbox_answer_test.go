@@ -91,7 +91,12 @@ func TestAnswerInboxItemFailures(t *testing.T) {
 		}
 	}
 	// Timeout: a transport-class failure (status 0) within the caller's budget.
-	s := inboxSyncer(t, func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	s := inboxSyncer(t, func(w http.ResponseWriter, r *http.Request) {
+		select { // the body is unread, so a closed client is not noticed: bound the wait
+		case <-r.Context().Done():
+		case <-time.After(time.Second):
+		}
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	_, err := s.AnswerInboxItem(ctx, "p-6", "qa-job-1-pr", ans)
