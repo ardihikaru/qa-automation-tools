@@ -212,7 +212,7 @@ export function FindingsTab({
       {canWrite && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 px-3 py-2">
           <span className="text-sm text-gray-700">
-            {selected.length ? `${selected.length} selected` : 'Select up to 10 new findings of one product'}
+            {selected.length ? `${selected.length} selected` : 'Select up to 10 new findings of one product on this page'}
           </span>
           <span className="flex-1" />
           {draftProblem && selected.length > 0 && <span className="text-xs text-red-700">{draftProblem}</span>}
@@ -286,7 +286,6 @@ export function FindingsTab({
           );
         })}
       </ul>
-      {page.total > page.items.length && <p className="text-xs text-gray-500">Showing the newest {page.items.length} of {page.total}. Narrow the filters to see others.</p>}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import { absoluteTime, entityHref, errorText, formatMs, isAbort } from '../knowledge/api';
 import { jobHref } from '../knowledge/CaseAutomation';
 import { Empty, ErrorNote, Loading, Pagination, RelTime, SkeletonRows } from '../knowledge/ui';
-import { OUTCOME_CLASS, RunDetail, SOURCE_LABEL, TabProps, getRun, listRuns, plural, useHistoryList } from './api';
+import { OUTCOME_CLASS, RunDetail, SOURCE_LABEL, TabProps, getRun, listRuns, plural, productLabel, useHistoryList } from './api';
 import { FilterSelect, FilterText } from './filters';
 
 function Outcome({ value }: { value: string }) {
@@ -126,6 +126,7 @@ export default function RunsTab({ filters, setFilter, refreshKey }: TabProps) {
               <tr>
                 <th className="px-3 py-2 w-8"><span className="sr-only">Cases</span></th>
                 <th className="px-3 py-2">Started</th>
+                <th className="px-3 py-2 hidden md:table-cell">Product</th>
                 <th className="px-3 py-2">Source</th>
                 <th className="px-3 py-2">Ref / job</th>
                 <th className="px-3 py-2">Case</th>
@@ -157,8 +158,9 @@ export default function RunsTab({ filters, setFilter, refreshKey }: TabProps) {
                       </td>
                       <td className="px-3 py-2 text-gray-700">
                         <RelTime at={r.started_at} />
-                        <div className="text-xs text-gray-500">{r.product_name}</div>
+                        <div className="text-xs text-gray-500 md:hidden">{r.product_name}</div>
                       </td>
+                      <td className="px-3 py-2 hidden md:table-cell text-gray-700">{productLabel(r.product_name, r.product_id)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {SOURCE_LABEL[r.source] ?? r.source}
                         {r.run_index !== null && <div className="text-xs text-gray-500">executor run #{r.run_index + 1}</div>}
@@ -200,7 +202,7 @@ export default function RunsTab({ filters, setFilter, refreshKey }: TabProps) {
                     {isOpen && (
                       <tr className="bg-gray-50/60">
                         <td />
-                        <td colSpan={11} className="px-3 py-3">
+                        <td colSpan={12} className="px-3 py-3">
                           <RunCases id={r.id} />
                         </td>
                       </tr>

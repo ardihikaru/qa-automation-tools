@@ -24,7 +24,7 @@ import type {
   CostTrendPoint,
 } from '../utils/costTypes';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 const PRESETS = [7, 30, 90] as const;
 
 // ---------- helpers ----------
