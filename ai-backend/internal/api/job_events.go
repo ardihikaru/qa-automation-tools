@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/qa-automation/ai-backend/internal/services/caseauto"
+	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 )
 
 // lookupJob finds a job in memory, then in the database.
@@ -239,7 +240,9 @@ func (r *Router) handleJobApproval(w http.ResponseWriter, req *http.Request, job
 		defer unlock()
 		if a.GaosCreated {
 			if _, pid, _, err := store.ByExternal(ctx, a.ExternalID); err == nil {
-				if gp := r.gaosProductFor(ctx, d, pid); gp != "" && ga.Username != "" {
+				if gp := r.gaosProductFor(ctx, d, pid); gp != "" && !gaossync.ValidActorUsername(ga.Username) {
+					note = "your username cannot be sent to GAOS (GAOS accepts A-Z a-z 0-9 . _ @ + - only); the answer was applied in the QA tools only"
+				} else if gp != "" {
 					out := r.relayAnswer(req, d, a, jobID, gp, body.Decision, status, text, meta, ga)
 					if !out.fallback {
 						writeJSON(w, out.httpStatus, out.body)

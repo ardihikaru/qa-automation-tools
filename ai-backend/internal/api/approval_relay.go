@@ -158,10 +158,9 @@ func (r *Router) relayAnswer(req *http.Request, d *db.DB, a *caseauto.Approval, 
 		gctx, gcancel := context.WithTimeout(base, rb)
 		it, gerr := r.gaos.GetInboxItem(gctx, gaosPID, ext)
 		gcancel()
-		if gerr == nil && it.Status == gaossync.InboxAnswered {
-			if st, ok := caseauto.DecisionFromAnswer(it.OptionLabel, string(it.Choice)); ok {
-				res, err = &gaossync.InboxAnswerResult{Item: *it, Already: st != status}, nil
-			}
+		// Only a 200 is ours (GAOS v0.43.0): an answered or expired item read here is adopted.
+		if gerr == nil && (it.Status == gaossync.InboxAnswered || it.Status == gaossync.InboxExpired) {
+			res, err = &gaossync.InboxAnswerResult{Item: *it, Already: it.Status == gaossync.InboxAnswered, Expired: it.Status == gaossync.InboxExpired}, nil
 		}
 		if err != nil {
 			return relayOutcome{fallback: true, note: "GAOS did not answer in time; the outcome there is unknown, so the answer was applied in the QA tools"}
@@ -181,24 +180,35 @@ func (r *Router) relayAnswer(req *http.Request, d *db.DB, a *caseauto.Approval, 
 
 	it := res.Item
 	got, mapped := caseauto.DecisionFromAnswer(it.OptionLabel, string(it.Choice))
+	if res.Expired {
+		// 410: the item expired in GAOS; its state is adopted (the gate ends as expired).
+		_, current, aerr := r.applyGaosAnswer(base, d, ext, jobID, caseauto.ApprovalExpired, "", it.Source, "the GAOS Inbox item had expired")
+		if aerr != nil {
+			log.Printf("approval relay: job %s: applying the GAOS expiry: %v", jobID, aerr)
+		}
+		if current == "" {
+			current = caseauto.ApprovalExpired
+		}
+		return relayOutcome{httpStatus: http.StatusConflict, body: map[string]any{
+			"error": "the approval expired in GAOS", "code": "expired_in_gaos", "status": current, "source": caseauto.SourceSystem,
+		}}
+	}
 	if res.Already {
+		// 409 (or a reconciled read): someone answered first; only a 200 is ours.
 		if !mapped {
 			return relayOutcome{fallback: true, note: "GAOS was answered in own words, which the gate cannot use; your answer was applied in the QA tools"}
 		}
-		if !(got == status && caseauto.ActorUsername(it.Source) == ga.Username) {
-			_, current, aerr := r.applyGaosAnswer(base, d, ext, jobID, got, it.Text, it.Source, "answered first in the GAOS Inbox")
-			if aerr != nil {
-				log.Printf("approval relay: job %s: applying the GAOS answer: %v", jobID, aerr)
-			}
-			if current == "" {
-				current = got
-			}
-			return relayOutcome{httpStatus: http.StatusConflict, body: map[string]any{
-				"error": "already answered in GAOS", "code": "answered_in_gaos", "status": current,
-				"source": caseauto.SourceGAOS, "actor": caseauto.ActorFromDetail(it.Source),
-			}}
+		_, current, aerr := r.applyGaosAnswer(base, d, ext, jobID, got, it.Text, it.Source, "answered first in the GAOS Inbox")
+		if aerr != nil {
+			log.Printf("approval relay: job %s: applying the GAOS answer: %v", jobID, aerr)
 		}
-		// Our own earlier relay (a second tab): treated as ours.
+		if current == "" {
+			current = got
+		}
+		return relayOutcome{httpStatus: http.StatusConflict, body: map[string]any{
+			"error": "already answered in GAOS", "code": "answered_in_gaos", "status": current,
+			"source": caseauto.SourceGAOS, "actor": caseauto.ActorFromDetail(it.Source),
+		}}
 	}
 	if mapped && got != status {
 		log.Printf("approval relay: job %s: GAOS reported %q for a %q answer; the submitted decision is applied", jobID, got, status)

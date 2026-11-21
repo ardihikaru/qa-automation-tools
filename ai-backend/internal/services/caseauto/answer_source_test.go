@@ -26,6 +26,7 @@ func TestAnswerSourceHelpers(t *testing.T) {
 		`{"actor":{"username":"budi","display":"B"}}`: "B",
 		`{"actor":{"username":"budi"}}`:               "budi",
 		`{"kind":"gaos"}`:                             "",
+		`{"actor":"operator"}`:                        "operator (GAOS)",
 	} {
 		if got := ActorFromDetail([]byte(d)); got != want {
 			t.Errorf("%s: %q", d, got)

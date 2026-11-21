@@ -181,18 +181,75 @@ func TestRelay409AppliesTheFirstAnswer(t *testing.T) {
 	}
 }
 
-func TestRelay409OfOurOwnAnswerIsOurs(t *testing.T) {
+// GAOS v0.43.0: only a 200 is ours. A 409 carrying our own actor (a second tab) is adopted as GAOS's.
+func TestRelay409IsNeverOurs(t *testing.T) {
 	f := relayFixture(t)
 	f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		_, _ = w.Write([]byte(answered("qa-job-r-pr", "Approve", "lgtm", relaySource)))
 	}
 	w, m := postAnswer(f.r, asUser("QA"), histApprove)
-	if w.Code != 200 || m["delivered"] != "gaos" {
+	if w.Code != 409 || m["code"] != "answered_in_gaos" || m["status"] != "approved" {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
-	if a := readApproval(t, f.d, "qa-job-r-pr"); a.source != caseauto.SourceHistory || a.status != "approved" {
+	if a := readApproval(t, f.d, "qa-job-r-pr"); a.source != caseauto.SourceGAOS || a.status != "approved" {
 		t.Fatalf("%+v", a)
+	}
+}
+
+func TestRelay409FromTheGAOSOperator(t *testing.T) {
+	f := relayFixture(t)
+	f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":"already_answered","reason":"answered in GAOS","externalId":"qa-job-r-pr","status":"answered","choice":2,"optionLabel":"Reject","text":"","askedAt":"2026-11-21T09:00:00Z","expiresAt":"2026-11-24T09:00:00Z","answeredAt":"2026-11-21T10:00:00Z","source":{"kind":"gaos","client":"gaos-web","actor":"operator"}}`))
+	}
+	w, m := postAnswer(f.r, asUser("QA"), histApprove)
+	if w.Code != 409 || m["actor"] != "operator (GAOS)" || m["status"] != "rejected" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if a := readApproval(t, f.d, "qa-job-r-pr"); a.actor != "operator (GAOS)" || a.source != caseauto.SourceGAOS {
+		t.Fatalf("%+v", a)
+	}
+}
+
+func TestRelay410AdoptsTheExpiry(t *testing.T) {
+	f := relayFixture(t)
+	f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGone)
+		_, _ = w.Write([]byte(`{"error":"expired","externalId":"qa-job-r-pr","status":"expired","askedAt":"2026-11-18T09:00:00Z","expiresAt":"2026-11-21T09:00:00Z"}`))
+	}
+	w, m := postAnswer(f.r, asUser("QA"), histApprove)
+	if w.Code != 409 || m["code"] != "expired_in_gaos" || m["status"] != "expired" {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+	if a := readApproval(t, f.d, "qa-job-r-pr"); a.status != "expired" || a.source != caseauto.SourceSystem || a.by != "gaos" {
+		t.Fatalf("%+v", a)
+	}
+}
+
+func TestRelay429IsRetriedOnce(t *testing.T) {
+	f := relayFixture(t)
+	f.r.approvalRelay.timeout = 5 * time.Second // Retry-After 0 is read as 1 s
+	f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
+		if f.gaos.posts.Load() == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = w.Write([]byte(answered("qa-job-r-pr", "Approve", "lgtm", relaySource)))
+	}
+	w, m := postAnswer(f.r, asUser("QA"), histApprove)
+	if w.Code != 200 || m["delivered"] != "gaos" || f.gaos.posts.Load() != 2 {
+		t.Fatalf("%d %s posts=%d", w.Code, w.Body, f.gaos.posts.Load())
+	}
+}
+
+func TestRelaySkippedForAUsernameGAOSRefuses(t *testing.T) {
+	f := relayFixture(t)
+	ctx := auth.SetUser(context.Background(), &auth.User{ID: "u3", Username: "bad name", Role: "QA"})
+	w, m := postAnswer(f.r, ctx, histApprove)
+	if w.Code != 200 || m["delivered"] != "local" || !strings.Contains(m["note"].(string), "cannot be sent to GAOS") || f.gaos.posts.Load() != 0 {
+		t.Fatalf("%d %s posts=%d", w.Code, w.Body, f.gaos.posts.Load())
 	}
 }
 
@@ -214,15 +271,22 @@ func TestRelayFallsBackLocally(t *testing.T) {
 		status int
 		note   string
 	}{
-		{"expired", 410, "expired in GAOS"},
+		{"bad actor", 400, "bad-actor"},
+		{"too many requests twice", 429, "HTTP 429"},
 		{"old GAOS without the route", 404, "no answer endpoint"},
 		{"server error", 500, "HTTP 500"},
 		{"bad choice", 422, "configuration error"},
+		{"bad text", 422, "bad-text"},
 		{"token", 401, "configuration error"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := relayFixture(t)
-			f.gaos.answer = func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(c.status); _, _ = w.Write([]byte(`{"error":"x","secret":"body"}`)) }
+			code := map[string]string{"bad actor": "bad-actor", "bad text": "bad-text", "bad choice": "bad-choice"}[c.name]
+			f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "0")
+				w.WriteHeader(c.status)
+				_, _ = w.Write([]byte(`{"error":"` + code + `","secret":"body"}`))
+			}
 			w, m := postAnswer(f.r, asUser("QA"), histApprove)
 			note, _ := m["note"].(string)
 			if w.Code != 200 || m["delivered"] != "local" || !strings.Contains(note, c.note) || strings.Contains(note, "secret") || strings.Contains(note, "http://") {
@@ -256,17 +320,17 @@ func TestRelayTimeout(t *testing.T) {
 			t.Fatalf("%d %s gets=%d", w.Code, w.Body, f.gaos.gets.Load())
 		}
 	})
-	t.Run("GAOS had taken it", func(t *testing.T) {
+	t.Run("GAOS shows an answer: adopted, never ours", func(t *testing.T) {
 		f := relayFixture(t)
 		f.gaos.answer = slow
 		f.gaos.get = func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(answered("qa-job-r-pr", "Approve", "lgtm", relaySource)))
 		}
 		w, m := postAnswer(f.r, asUser("QA"), histApprove)
-		if w.Code != 200 || m["delivered"] != "gaos" {
+		if w.Code != 409 || m["code"] != "answered_in_gaos" {
 			t.Fatalf("%d %s", w.Code, w.Body)
 		}
-		if a := readApproval(t, f.d, "qa-job-r-pr"); a.source != caseauto.SourceHistory || a.status != "approved" {
+		if a := readApproval(t, f.d, "qa-job-r-pr"); a.source != caseauto.SourceGAOS || a.status != "approved" {
 			t.Fatalf("%+v", a)
 		}
 	})

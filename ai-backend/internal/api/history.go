@@ -187,11 +187,11 @@ type historyBuild struct {
 	Runs        int                 `json:"runs"`
 	Steps       []runhistory.StepMs `json:"steps"`
 	// ConversationID is the job's non-archived AI conversation (AI_CONVERSATIONS.md), else null.
-	ConversationID *int64               `json:"conversation_id"`
+	ConversationID *int64 `json:"conversation_id"`
 	// Approval is the job's latest approval round (HISTORY_ANSWER.md), else null.
-	Approval *buildApproval `json:"approval"`
-	sums           []runhistory.StepSum // from job_events
-	lastAt         *time.Time           // the job's last event
+	Approval *buildApproval       `json:"approval"`
+	sums     []runhistory.StepSum // from job_events
+	lastAt   *time.Time           // the job's last event
 }
 
 // buildApproval is a build's latest approval round and where its answer came from.
