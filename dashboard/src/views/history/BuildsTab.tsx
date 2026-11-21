@@ -5,7 +5,7 @@ import { ChevronRight } from 'lucide-react';
 import { absoluteTime, entityHref, formatMs } from '../knowledge/api';
 import { JOB_CHIP_CLASS, jobChipStatus, jobHref } from '../knowledge/CaseAutomation';
 import { Empty, ErrorNote, Pagination, RelTime, SkeletonRows } from '../knowledge/ui';
-import { Build, StepMs, STEP_COLOR, TabProps, WAITING_STEPS, listBuilds, plural, productLabel, useHistoryList } from './api';
+import { Build, StepMs, STEP_COLOR, TabProps, WAITING_STEPS, answerSourceLabel, listBuilds, plural, productLabel, useHistoryList } from './api';
 import { FilterSelect, FilterText } from './filters';
 import { conversationHref } from '../conversations/api';
 
@@ -50,6 +50,7 @@ function StepList({ b }: { b: Build }) {
         {b.runs > 0 && <> · {b.runs} Playwright run{b.runs === 1 ? '' : 's'} logged</>}
         {b.batch_id && <> · epic batch {b.batch_id}</>}. Step times run from one event to the next and include any backend restart.
       </p>
+      {b.approval && b.approval.status !== 'open' && <AnsweredVia a={b.approval} />}
       {b.error && <p className="text-sm text-red-700 break-words">{b.error}</p>}
       {b.conversation_id !== null && (
         <Link to={conversationHref(b.conversation_id)} className="mr-4 text-sm text-primary-700 hover:underline">
@@ -65,6 +66,24 @@ function StepList({ b }: { b: Build }) {
   );
 }
 
+/** "Approval approved via GAOS by Budi": source label from our own column, actor apart. */
+function AnsweredVia({ a }: { a: NonNullable<Build['approval']> }) {
+  const via = answerSourceLabel(a.source, a.answered_by);
+  return (
+    <p className="text-sm text-gray-700" data-testid="answered-via">
+      Approval <span className="font-medium">{a.status}</span>
+      {via && <> via {via}</>}
+      {a.actor && (
+        <>
+          {' '}
+          by <span className="break-words">{a.actor}</span>
+        </>
+      )}
+      {a.answered_at && <> · {absoluteTime(a.answered_at)}</>}.
+    </p>
+  );
+}
+
 const ms = (v: number | null | undefined, running: boolean) => {
   if (v === null || v === undefined) return <span className="text-gray-400">–</span>;
   return (
@@ -75,7 +94,13 @@ const ms = (v: number | null | undefined, running: boolean) => {
   );
 };
 
-export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) {
+export default function BuildsTab({
+  filters,
+  setFilter,
+  refreshKey,
+  answerable,
+  onAnswer,
+}: TabProps & { answerable?: Set<string>; onAnswer?: (jobId: string) => void }) {
   const { data, error, loading, retry } = useHistoryList(listBuilds, filters, refreshKey);
   const [open, setOpen] = useState<string | null>(null);
   const page = Number(filters.page ?? 1);
@@ -89,6 +114,7 @@ export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) 
         <FilterSelect label="Status" value={filters.status ?? ''} options={['queued', 'running', 'completed', 'failed'].map((x) => [x, x])} onChange={(v) => setFilter('status', v)} />
         <FilterText label="Case" value={filters.case ?? ''} placeholder="TC-AUTH-001" onChange={(v) => setFilter('case', v)} />
         <FilterText label="Epic" value={filters.epic ?? ''} placeholder="AUTH" onChange={(v) => setFilter('epic', v)} />
+        <FilterSelect label="Approval" value={filters.approval ?? ''} options={[['open', 'Waiting for approval']]} onChange={(v) => setFilter('approval', v)} />
       </div>
 
       {s && (
@@ -163,6 +189,16 @@ export default function BuildsTab({ filters, setFilter, refreshKey }: TabProps) 
                       </td>
                       <td className="px-3 py-2">
                         <span className={`badge whitespace-nowrap ${JOB_CHIP_CLASS[st] ?? 'bg-gray-100 text-gray-700'}`}>{st}</span>
+                        {b.approval?.status === 'open' && answerable?.has(b.id) && onAnswer && (
+                          <button
+                            type="button"
+                            onClick={() => onAnswer(b.id)}
+                            className="mt-1 block btn btn-secondary h-7 px-2 text-xs"
+                            aria-label={`Answer the approval of ${b.id}`}
+                          >
+                            Answer
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-gray-600">
                         <RelTime at={b.created_at} />

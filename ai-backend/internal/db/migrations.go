@@ -995,6 +995,14 @@ ON DUPLICATE KEY UPDATE kb_feature_status_history.id = kb_feature_status_history
   INDEX idx_nav_obs_route (product_id, route_key, observed_at),
   CONSTRAINT fk_nav_obs_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// HISTORY_ANSWER.md: where an approval's answer came from (gaos, qa-tool:history, qa-tool:job-page,
+	// qa-tool:learning, system), who gave it, and GAOS's own source object. One ALTER, so it is
+	// atomic; the guard tests its first column.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'case_approvals' AND column_name = 'answer_source'
+ALTER TABLE case_approvals
+  ADD COLUMN answer_source VARCHAR(32) NULL,
+  ADD COLUMN answer_actor VARCHAR(120) NULL,
+  ADD COLUMN answer_source_detail JSON NULL;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

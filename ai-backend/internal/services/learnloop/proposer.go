@@ -187,7 +187,7 @@ func (p *Proposer) Run(ctx context.Context, job ProposalJob) (*Outcome, error) {
 		}
 		switch a.Status {
 		case caseauto.ApprovalApproved:
-			return p.publish(ctx, job, *d, a.AnsweredBy)
+			return p.publish(ctx, job, *d, a.Who())
 		case caseauto.ApprovalRejected:
 			return nil, p.fail(ctx, job, caseauto.StepApproval, "rejected%s", byText(a))
 		case caseauto.ApprovalExpired:
@@ -208,8 +208,8 @@ func (p *Proposer) Run(ctx context.Context, job ProposalJob) (*Outcome, error) {
 
 func byText(a *caseauto.Approval) string {
 	s := ""
-	if a.AnsweredBy != "" {
-		s = " by " + a.AnsweredBy
+	if w := a.Who(); w != "" {
+		s = " by " + w
 	}
 	if a.Text != "" {
 		s += ": " + caseauto.Clip(a.Text, 300)

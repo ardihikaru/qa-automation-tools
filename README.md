@@ -391,7 +391,8 @@ Only `/health` and `/api/auth/login` are public. When the backend has a DB, ever
 | `/api/products/{id}/navigation` (+ `/routes/{key}`) | GET | Route and page map of a product with coverage and the next cases to automate ([spec](docs/designs/NAVIGATION_MAP.md)); the dashboard's `/navigation` |
 | `/api/learning` (+ `/navigation`) | GET, POST, DELETE | Legacy crawler learning records (no longer read by the dashboard) |
 | `/api/learning/findings`, `/proposals`, `/timeline` (+ `/{id}/dismiss\|reopen\|check`) | GET / POST | Learning loop: findings from automation work, policy proposals (`policy_propose` jobs) for the automation repo, PR tracking ([spec](docs/designs/LEARNING_LOOP.md)) |
-| `/api/jobs`, `/api/jobs/{id}` (+ `/events`, `/approval`) | GET / POST | Job records (case automation) |
+| `/api/jobs`, `/api/jobs/{id}` (+ `/events`, `/approval`) | GET / POST | Job records (case automation); `/approval` takes `via` (`job-page`, `history`, `learning`) and relays a run-history answer to GAOS ([spec](docs/designs/HISTORY_ANSWER.md)) |
+| `/api/history/builds`, `/runs`, `/syncs`, `/approvals` | GET | Run history; `/approvals` lists every approval waiting now, answered from `/history` ([spec](docs/designs/RUN_HISTORY.md), [answer](docs/designs/HISTORY_ANSWER.md)) |
 
 ### Example API Calls
 

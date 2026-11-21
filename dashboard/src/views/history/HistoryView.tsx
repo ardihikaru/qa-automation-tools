@@ -6,7 +6,9 @@ import { RefreshCw } from 'lucide-react';
 import { usePageHeader } from '../../components/pageHeader';
 import { Product, api } from '../products/api';
 import { inputCls, selectCls } from '../knowledge/styles';
-import { DEFAULT_PAGE_SIZE, Filters } from './api';
+import { DEFAULT_PAGE_SIZE, Filters, WaitingApproval, listWaitingApprovals } from './api';
+import AnswerDialog from './AnswerDialog';
+import WaitingApprovals from './WaitingApprovals';
 import { FilterField } from './filters';
 import BuildsTab from './BuildsTab';
 import RunsTab from './RunsTab';
@@ -15,7 +17,7 @@ import ConversationsTab from './ConversationsTab';
 
 type TabId = 'builds' | 'runs' | 'syncs' | 'conversations';
 const TABS: { id: TabId; label: string; keys: string[] }[] = [
-  { id: 'builds', label: 'Builds', keys: ['type', 'status', 'case', 'epic', 'batch'] },
+  { id: 'builds', label: 'Builds', keys: ['type', 'status', 'case', 'epic', 'batch', 'approval'] },
   { id: 'runs', label: 'Playwright runs', keys: ['source', 'outcome', 'case', 'epic', 'job'] },
   { id: 'syncs', label: 'Knowledge syncs', keys: ['status'] },
   { id: 'conversations', label: 'AI conversations', keys: ['kind', 'q'] },
@@ -38,6 +40,26 @@ export default function HistoryView() {
   }, []);
 
   const refresh = useCallback(() => setRefreshKey((n) => n + 1), []);
+
+  // Approvals waiting now (HISTORY_ANSWER.md), shown above the tabs and answered in a dialog.
+  const [waiting, setWaiting] = useState<{ items: WaitingApproval[]; can_answer: boolean }>({ items: [], can_answer: false });
+  const [answering, setAnswering] = useState<WaitingApproval | null>(null);
+  const productFilter = params.get('product') ?? '';
+  useEffect(() => {
+    const ac = new AbortController();
+    listWaitingApprovals(productFilter || undefined, ac.signal)
+      .then((r) => setWaiting({ items: r.items ?? [], can_answer: !!r.can_answer }))
+      .catch(() => undefined); // the lists below still work
+    return () => ac.abort();
+  }, [productFilter, refreshKey]);
+  const answerJob = useCallback(
+    (jobId: string) => {
+      const it = waiting.items.find((w) => w.job_id === jobId);
+      if (it) setAnswering(it);
+    },
+    [waiting.items],
+  );
+  const waitingJobs = waiting.can_answer ? new Set(waiting.items.map((w) => w.job_id)) : new Set<string>();
   usePageHeader({
     title: 'Run history',
     actions: (
@@ -97,7 +119,7 @@ export default function HistoryView() {
   return (
     <div className="space-y-4 min-w-0">
       <p className="text-sm text-gray-600">
-        How long automation builds took (machine time apart from time waiting for a human approval), every Playwright run the QA tools received, and knowledge sync durations.
+        How long automation builds took (machine time apart from time waiting for a human approval), every Playwright run the QA tools received, and knowledge sync durations. Approvals waiting now can be answered here.
       </p>
 
       <form onSubmit={onSubmit} className="card card-body flex flex-wrap items-end gap-3" aria-label="Filters">
@@ -125,6 +147,9 @@ export default function HistoryView() {
         )}
       </form>
 
+      <WaitingApprovals items={waiting.items} canAnswer={waiting.can_answer} onAnswer={setAnswering} />
+      {answering && <AnswerDialog item={answering} onClose={() => setAnswering(null)} onAnswered={refresh} />}
+
       <div role="tablist" aria-label="Run history sections" className="flex gap-1 border-b border-gray-200 overflow-x-auto" onKeyDown={onTabKey}>
         {TABS.map((t) => {
           const active = t.id === tab;
@@ -150,7 +175,7 @@ export default function HistoryView() {
 
       <div role="tabpanel" id={`history-panel-${tab}`} aria-labelledby={`history-tab-${tab}`} className="min-w-0">
         {badRange ? null : tab === 'builds' ? (
-          <BuildsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
+          <BuildsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} answerable={waitingJobs} onAnswer={answerJob} />
         ) : tab === 'runs' ? (
           <RunsTab filters={filters} setFilter={setFilter} refreshKey={refreshKey} />
         ) : tab === 'syncs' ? (
