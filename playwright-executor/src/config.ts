@@ -57,7 +57,7 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     token,
     runTimeoutMs: int(env, 'RUN_TIMEOUT_SECONDS', 900, 30, 7200) * 1000,
     maxQueue: int(env, 'MAX_QUEUE', 10, 0, 100),
-    repoPool: env.EXECUTOR_REPO_POOL || '/home/qa/devel/projects/qa-automation-tools/repos',
+    repoPool: env.EXECUTOR_REPO_POOL || `${env.HOME ?? '/home/qa'}/devel/projects/qa-automation-tools/repos`,
     envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/qa'}/.config/qa-automation`,
     allowedHosts,
     navReporter: resolveNavReporter(env),

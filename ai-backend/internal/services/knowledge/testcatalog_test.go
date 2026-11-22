@@ -29,11 +29,15 @@ func loadFixture(t *testing.T, root string) map[string][]byte {
 	return files
 }
 
-// TestSUTGolden parses a verbatim copy of automation-test-sut docs/ at 521618a. The expected
-// numbers are the output of `node scripts/test-catalog.mjs --check` at that commit ("Catalog OK").
+// TestSUTGolden parses the synthetic fixture testdata/sample-catalog (a fictional "Acme Clinic"
+// catalog, see testdata/README.md). It is written to be valid, so it must parse with 0 problems,
+// and it covers every layout branch: 3 parts, 2- and 3-digit feature ids, a ".NN" sub-feature,
+// rows without a sub-module, sub-module names that differ only in case, epics in two service
+// folders plus a nested area, unmapped stories, every case status, and a skipped _template.md and
+// README.md. Update the numbers below whenever the fixture changes.
 func TestSUTGolden(t *testing.T) {
 	f, _ := Lookup(TestCatalogFormatName)
-	snap, problems, err := f.Parse(loadFixture(t, "testdata/sut-521618a"))
+	snap, problems, err := f.Parse(loadFixture(t, "testdata/sample-catalog"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,15 +62,15 @@ func TestSUTGolden(t *testing.T) {
 		name      string
 		got, want int
 	}{
-		{"parts", len(snap.Parts), 4},
-		{"modules", len(snap.Modules), 39},
-		{"features", len(snap.Features), 444},
-		{"epics", len(snap.Epics), 46},
-		{"stories", len(snap.Stories), 246},
-		{"unmapped", unmapped, 9},
-		{"test cases", len(snap.TestCases), 1659},
-		{"automated", automated, 456},
-		{"features with stories", len(withStories), 70},
+		{"parts", len(snap.Parts), 3},
+		{"modules", len(snap.Modules), 7},
+		{"features", len(snap.Features), 26},
+		{"epics", len(snap.Epics), 5},
+		{"stories", len(snap.Stories), 17},
+		{"unmapped", unmapped, 2},
+		{"test cases", len(snap.TestCases), 31},
+		{"automated", automated, 14},
+		{"features with stories", len(withStories), 13},
 		{"submodules", len(snap.Submodules), goldenSubmodules},
 	}
 	for _, c := range checks {
@@ -84,10 +88,93 @@ func TestSUTGolden(t *testing.T) {
 			t.Errorf("bad epic code %q", e.Code)
 		}
 	}
+
+	// Parts and modules.
+	if p := snap.Parts[0]; p.Code != "A" || p.Name != "Part A — Core clinic platform (clinic-backend + clinic-web)" || p.SourceFile != "docs/modules/A-core.md" {
+		t.Errorf("part A = %+v", p)
+	}
+	mods := map[string]Module{}
+	for _, m := range snap.Modules {
+		mods[m.Code] = m
+	}
+	if m := mods["C02"]; m.PartCode != "C" || m.Name != "Partner Claims" || m.SourceFile != "docs/modules/C-partner-api.md" {
+		t.Errorf("module C02 = %+v", m)
+	}
+
+	// Features: anchors stripped, 3-digit and sub-feature ids, statuses, as-of "—", empty sub-module.
+	fs := map[string]Feature{}
+	for _, x := range snap.Features {
+		fs[x.Code] = x
+	}
+	if x := fs["A01.07"]; x.ModuleCode != "A01" || x.ReleaseStatus != "PROD" || x.StatusAsOf != "2026-11-12" || x.RepoEntry != "clinic-backend + clinic-web" {
+		t.Errorf("A01.07 = %+v", x)
+	}
+	if x := fs["B01.003.01"]; x.ModuleCode != "B01" || x.ReleaseStatus != "IN-PROGRESS" || x.StatusAsOf != "" || x.Evidence != "S:PAY-010" {
+		t.Errorf("B01.003.01 = %+v", x)
+	}
+	if x := fs["B01.001"]; x.ModuleCode != "B01" || x.SubmoduleCode == "" {
+		t.Errorf("B01.001 = %+v", x)
+	}
+	if x := fs["A03.03"]; x.ReleaseStatus != "UNKNOWN" || x.Notes != "status not confirmed yet" {
+		t.Errorf("A03.03 = %+v", x)
+	}
+	if fs["A01.08"].SubmoduleCode != "" || fs["A01.08"].ReleaseStatus != "NOT-STARTED" || fs["A01.03"].ReleaseStatus != "DEV-DONE" {
+		t.Errorf("A01.08 = %+v, A01.03 = %+v", fs["A01.08"], fs["A01.03"])
+	}
+	if fs["A01.01"].SubmoduleCode != fs["A01.02"].SubmoduleCode || fs["A01.01"].SubmoduleCode == fs["A01.04"].SubmoduleCode {
+		t.Errorf("sub-module names differing only in case must share a code: %q %q", fs["A01.01"].SubmoduleCode, fs["A01.02"].SubmoduleCode)
+	}
+
+	// Epics: service folder, nested area.
+	ep := map[string]Epic{}
+	for _, e := range snap.Epics {
+		ep[e.Code] = e
+	}
+	if e := ep["APPT"]; e.Service != "clinic-backend" || e.Area != "" || e.Title != "Appointments and visit check-in (clinic-backend)" {
+		t.Errorf("epic APPT = %+v", e)
+	}
+	if e := ep["VCLAIM"]; e.Service != "vendor-api" || e.Area != "partners" || e.SourceFile != "docs/test-catalog/vendor-api/partners/claims.md" {
+		t.Errorf("epic VCLAIM = %+v", e)
+	}
+
+	// Stories: feature links in order, unmapped reasons, skipped README and _template.
+	st := map[string]Story{}
+	for _, s := range snap.Stories {
+		st[s.Code] = s
+	}
+	if got := st["US-APPT-03"].FeatureCodes; strings.Join(got, ",") != "A01.07,A02.01" || st["US-APPT-03"].EpicCode != "APPT" {
+		t.Errorf("US-APPT-03 = %+v", st["US-APPT-03"])
+	}
+	if s := st["US-BILL-04"]; s.UnmappedReason != "the end-of-day cash count is a back-office routine with no product feature" || len(s.FeatureCodes) != 0 {
+		t.Errorf("US-BILL-04 = %+v", s)
+	}
+	for _, skipped := range []string{"US-EXAMPLE-01", "US-README-01"} {
+		if _, ok := st[skipped]; ok {
+			t.Errorf("%s comes from a file the parser must skip", skipped)
+		}
+	}
+
+	// Test cases: automation, spec paths, reasons.
+	tc := map[string]TestCase{}
+	for _, c := range snap.TestCases {
+		tc[c.Code] = c
+	}
+	if c := tc["TC-PATREG-003"]; !c.Automated || c.StoryCode != "US-PATREG-02" || c.Level != "WEB" || strings.Join(c.SpecPaths, ",") != "tests/web/patients/merge.spec.ts" {
+		t.Errorf("TC-PATREG-003 = %+v", c)
+	}
+	if c := tc["TC-PATREG-004"]; c.Automated || c.Status != "blocked" || c.ReasonCategory != "defect" || c.ReasonDetail != "BUG-101 merge ignores open invoices" {
+		t.Errorf("TC-PATREG-004 = %+v", c)
+	}
+	if c := tc["TC-VCLAIM-004"]; c.EpicCode != "VCLAIM" || c.Status != "wont" || c.Polarity != "-" || c.Priority != "P2" || c.ReasonCategory != "not-needed" {
+		t.Errorf("TC-VCLAIM-004 = %+v", c)
+	}
+	if _, ok := tc["TC-EXAMPLE-001"]; ok {
+		t.Error("_template.md rows must be skipped")
+	}
 }
 
-// goldenSubmodules is the distinct (module, lower(name)) count recorded when the fixture was copied.
-const goldenSubmodules = 200
+// goldenSubmodules is the distinct (module, lower(name)) count of the fixture.
+const goldenSubmodules = 14
 
 func parse(t *testing.T, files map[string]string) (*Snapshot, []Problem, error) {
 	t.Helper()
@@ -99,9 +186,9 @@ func parse(t *testing.T, files map[string]string) (*Snapshot, []Problem, error) 
 }
 
 const partA = "# Part A — Core\r\n\n### A01 — Registrasi\n\n| ID | Sub | Feature | Repo | Status | As of | Ev | Notes | E | S | T | A |\n| --- |\n" +
-	"| <a id=\"f-a01-01\"></a>A01.01 | Master Pasien | Search | his | 🟢 `PROD` | 2026-11-12 | GIT:main | | x | 1 | 2 | 1 |\r\n" +
-	"| A01.02 | master pasien | Edit | his | `WEIRD` | — | | n | | | | |\n" +
-	"| A02.01 | | Wrong heading | his | `UNKNOWN` | — | | | | | | |\n" +
+	"| <a id=\"f-a01-01\"></a>A01.01 | Master Pasien | Search | app | 🟢 `PROD` | 2026-11-12 | GIT:main | | x | 1 | 2 | 1 |\r\n" +
+	"| A01.02 | master pasien | Edit | app | `WEIRD` | — | | n | | | | |\n" +
+	"| A02.01 | | Wrong heading | app | `UNKNOWN` | — | | | | | | |\n" +
 	"| A01.03 | too | few |\n"
 
 const epicOut = "# Outpatient\n\n## User stories\n" +

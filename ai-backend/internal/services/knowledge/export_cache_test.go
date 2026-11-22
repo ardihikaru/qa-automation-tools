@@ -431,7 +431,7 @@ func TestExportErrors(t *testing.T) {
 func TestExportBaseName(t *testing.T) {
 	long := strings.Repeat("a", 70)
 	cases := map[string]string{
-		"SUT":           "SUT",
+		"SUT":             "SUT",
 		"My Product / v2": "My-Product-v2",
 		"  --x--  ":       "x",
 		"日本語":             "product-7",

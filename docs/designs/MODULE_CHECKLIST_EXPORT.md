@@ -40,7 +40,7 @@ The markdown catalogue is **not** read at export time. The source is the synced 
 *   **Exposing MinIO to browsers** (no presigned URLs). The backend always streams.
 *   **A history UI.** The history table is read only by the export in v1.
 *   **A new object-storage use for anything else.** The `objectstore` package is generic, but this spec authorises one caller.
-*   **`status_as_of` as a date source.** It is the date the catalogue last *confirmed* a status (fixture `testdata/sut-521618a/docs/modules/C-partner-app.md`), not the date it changed, so it is not used.
+*   **`status_as_of` as a date source.** It is the date the catalogue last *confirmed* a status (fixture `testdata/sample-catalog/docs/modules/C-partner-api.md`), not the date it changed, so it is not used.
 
 ## Decisions (user, 2026-11-17)
 1.  Generation on the backend (PDF, Excel, CSV), not in the browser.
@@ -421,7 +421,7 @@ Deploy is a separate approval (hard rule 8). None of these items blocks approvin
 *   **Rules:** `.claude/rules/secrets.md` (add `~/.config/minio/*`).
 *   **Dashboard:** `dashboard/src/views/knowledge/KnowledgeView.tsx`, new `dashboard/src/views/knowledge/ChecklistDialog.tsx`, `dashboard/src/views/knowledge/api.ts`, `dashboard/README.md`.
 *   **E2E (optional):** `this-qa-automation-system-playwright/tests/api/knowledge.spec.ts` (extend: 400 on a bad format, 200 with the right headers when object storage is configured).
-*   **Not changed:** the executor, `docker-compose.prod.yml`, nginx, `lib/`, the sync parser (`sut.go`, `catalog.go`), the `Tree` JSON shape.
+*   **Not changed:** the executor, `docker-compose.prod.yml`, nginx, `lib/`, the sync parser (`testcatalog.go`, `catalog.go`), the `Tree` JSON shape.
 
 ## Phases
 Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase starts after the earlier one is merged.
@@ -437,11 +437,11 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
     *   `objectstore`: key validation (outside prefix, empty remainder, `//`, `.` and `..` segments, leading `/`, backslash, control characters); constructor rejects an empty prefix; the interface has no list/delete.
     *   **Config redaction:** `%v`, `%+v` and `%#v` of `ObjectStoreConfig` contain no secret; invalid namespace and plaintext-off-WireGuard make the config invalid.
     *   **Date order (`pickStatusDate`), table test:** a `sync` row wins over a `backfill` row; only `backfill` gives `backfill`; neither gives a dash; rows with a status other than the current one are ignored; the marks (`~` and the `Sumber tanggal` value) are right for each source in all three renderers.
-    *   **Renderers** over a small hand-built snapshot and a snapshot built from `testdata/sut-521618a`: non-empty output with the right magic bytes (`%PDF-`, `PK`, BOM); the row count in CSV and XLSX equals the number of active synced features whose module and part are active; with `last_update=1` the date strings are present (Jakarta time, Indonesian months) and empty or `—` for unknown; formula-injection cells are neutralised; non-cp1252 characters become `?` in the PDF; determinism (two renders give identical content).
+    *   **Renderers** over a small hand-built snapshot and a snapshot built from `testdata/sample-catalog`: non-empty output with the right magic bytes (`%PDF-`, `PK`, BOM); the row count in CSV and XLSX equals the number of active synced features whose module and part are active; with `last_update=1` the date strings are present (Jakarta time, Indonesian months) and empty or `—` for unknown; formula-injection cells are neutralised; non-cp1252 characters become `?` in the PDF; determinism (two renders give identical content).
     *   **Golden hashes:** a hash of the CSV, of a normalised XLSX cell dump and of the PDF bytes (fixed creation date) for the fixture snapshot. A change fails the test until `TEMPLATE_VERSION` is raised and the hashes are updated, so a library upgrade cannot change the output silently.
     *   **Cache logic** against the fake store and injected clock and renderer: miss then hit (the second call does not render), `force=1` then `regenerated`, force within the cooldown becomes `hit` (including a negative age), a new sync id, a changed `TEMPLATE_VERSION`, a renamed product, a new history watermark and a different namespace each give a different key; `Get`/`Stat`/`Put` errors give a `bypass` result with the generated file and the right `Put` skipping; concurrent calls render once and a forced call does not join an unforced flight (`-race`); the extra `Put`s run after the result is returned (`Wait()`).
     *   **Handler** with a fake `snapshotSource`: 405, 400 on bad `format`/`last_update`/`force` (`strictBool`: `0|1|true|false` only), 503 when the cache is nil, headers, the order 405/400/404/503/409. Cases that need real rows (404 for a missing product, 409 with no succeeded sync, a read-only role getting 200) are in the DB list.
-3.  **DB tests** (run when `QA_TEST_MYSQL_DSN` is set; helpers `testdb.New`, `sync_test.go:setupProduct`, `crud_integration_test.go:setupCRUDIntegrationRouter`), using the `testdata/sut-521618a` fixtures:
+3.  **DB tests** (run when `QA_TEST_MYSQL_DSN` is set; helpers `testdb.New`, `sync_test.go:setupProduct`, `crud_integration_test.go:setupCRUDIntegrationRouter`), using the `testdata/sample-catalog` fixtures:
     *   a **first** sync writes one `backfill`-source row per feature; a later new feature writes a `sync` row;
     *   a second sync of the same commit writes none;
     *   change one feature's status in a copied fixture and sync again: exactly one new `sync` row with the right `prev_status`;

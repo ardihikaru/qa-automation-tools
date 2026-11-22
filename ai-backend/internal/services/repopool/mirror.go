@@ -23,7 +23,7 @@ import (
 const MirrorsDir = ".kb-mirrors"
 
 var (
-	shaRe        = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	// mirrorGitCfg disables everything in git that could run code or rewrite objects.
 	mirrorGitCfg = []string{"-c", "core.hooksPath=/dev/null", "-c", "gc.auto=0", "-c", "maintenance.auto=false", "-c", "fetch.writeFetchHEAD=false"}
 )

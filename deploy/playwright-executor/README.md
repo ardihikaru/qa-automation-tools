@@ -33,7 +33,7 @@ app-host has 4 vCPU and 3.8 GiB RAM, and also runs Docker (qa-automation, gaos) 
 | `OOMScoreAdjust` | `500` | Under global memory pressure, the executor dies before Docker or ai-claude-cli. |
 | App level | concurrency 1 | One Chromium at a time, `--renderer-process-limit=2`, V8 heap 512 MB per renderer. |
 
-The `example-org` user manager delegates the `cpu memory pids` controllers (`/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/cgroup.controllers`), so these limits are enforced even though this is a user unit.
+The `qa` user manager delegates the `cpu memory pids` controllers (`/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/cgroup.controllers`), so these limits are enforced even though this is a user unit.
 
 ## Interface
 

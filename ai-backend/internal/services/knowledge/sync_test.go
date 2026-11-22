@@ -61,7 +61,7 @@ func (r *fakeRepo) set(sha string, files map[string]string) {
 }
 
 const (
-	modA = "# Part A\n### A01 — Reg\n| <a id=\"f-a01-01\"></a>A01.01 | Pasien | Search | his | `PROD` | 2026-01-01 | | | | | | |\n| A01.02 | Pasien | Edit | his | `UNKNOWN` | — | | | | | | |\n"
+	modA = "# Part A\n### A01 — Reg\n| <a id=\"f-a01-01\"></a>A01.01 | Pasien | Search | app | `PROD` | 2026-01-01 | | | | | | |\n| A01.02 | Pasien | Edit | app | `UNKNOWN` | — | | | | | | |\n"
 	epic = "# Out\n- **US-OUT-01** (A01.01) — search\n- **US-OUT-02** (A01.02) — edit\n" +
 		"| ☑ | TC-OUT-001 | US-OUT-01 | G1 | + | API | P0 | automated | `t.spec.ts` | |\n" +
 		"| ☐ | TC-OUT-002 | US-OUT-02 | G2 | - | WEB | P1 | planned | | |\n"

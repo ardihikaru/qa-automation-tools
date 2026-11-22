@@ -95,7 +95,7 @@ func TestBuildChecklistOrphans(t *testing.T) {
 func fixtureSnapshot(t *testing.T, dates bool) (*ChecklistSnapshot, *Snapshot) {
 	t.Helper()
 	f, _ := Lookup(TestCatalogFormatName)
-	snap, _, err := f.Parse(loadFixture(t, "testdata/sut-521618a"))
+	snap, _, err := f.Parse(loadFixture(t, "testdata/sample-catalog"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func fixtureSnapshot(t *testing.T, dates bool) (*ChecklistSnapshot, *Snapshot) {
 	}
 	parts, skipped := buildChecklist(in)
 	return &ChecklistSnapshot{
-		ProductName: "SUT", SyncID: 7, CommitSHA: "521618a0000000000000000000000000000000aa",
+		ProductName: "SUT", SyncID: 7, CommitSHA: "5a3c1e00000000000000000000000000000000aa",
 		SyncedAt: time.Date(2026, 11, 17, 2, 30, 0, 0, time.UTC), Skipped: skipped, Parts: parts,
 	}, snap
 }
@@ -336,7 +336,9 @@ func hashHex(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString
 
 // TestGoldenHashes pins the output for the fixture snapshot. When it fails, the output changed:
 // raise TemplateVersion and update the hashes (they are printed). A library upgrade that changes
-// the output fails here too, so it cannot change cached files silently.
+// the output fails here too, so it cannot change cached files silently. A change to the fixture
+// (testdata/sample-catalog) alone changes the hashes too: then update them without raising
+// TemplateVersion, since rendered output for real catalogs is unchanged.
 func TestGoldenHashes(t *testing.T) {
 	cs, _ := fixtureSnapshot(t, true)
 	var dump bytes.Buffer
@@ -353,9 +355,9 @@ func TestGoldenHashes(t *testing.T) {
 		"pdf":  hashHex(render(t, cs, "pdf", true)),
 	}
 	want := map[string]string{
-		"csv":  "9df6f91d814b8c34717bbe25a0174b79338668f5c7a90ac55aadf3036d25eec4",
-		"xlsx": "e63e8d1a65ac0b2a1805013b69ab18f145ebc6de79910809ec002742831ec34c",
-		"pdf":  "04cdb6c739edbc7892de4b2520bb0e63e555702847e06a1287f984e74322b29a",
+		"csv":  "9a18e9d1913df354a7b41070c04d99559805997877765fb4ad29dc8f591d7a11",
+		"xlsx": "60a6a1c5c3d39f606073ca5e477f1eb2f1b44e6c7454b08874ca69795791afb0",
+		"pdf":  "98ba4a278c183a10d22f7c846c1ce7ba29054d9c59bb7be8d59455f220011886",
 	}
 	for k, v := range got {
 		if want[k] != v {

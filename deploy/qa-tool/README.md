@@ -1,5 +1,7 @@
 # qa-tool deployment
 
+> Host names and IPs here are generic placeholders. Resolve `edge-host`, `db-host`, `app-host`, `10.8.0.x` and the domains through the gitignored `.private/name-map.md` (see `CLAUDE.local.md`) before running anything.
+
 ## Overview
 Production deployment of qa-automation at **https://qa-tool.mfardiansyah.id**.
 Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-host`).

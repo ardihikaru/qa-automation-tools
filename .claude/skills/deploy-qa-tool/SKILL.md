@@ -5,6 +5,8 @@ description: Deploy, roll back, health-check or debug the production qa-automati
 
 # Deploy qa-tool
 
+> Host names and IPs here are generic placeholders. Resolve `edge-host`, `db-host`, `app-host`, `10.8.0.x` and the domains through the gitignored `.private/name-map.md` (see `CLAUDE.local.md`) before running anything.
+
 Topology and invariants: [deploy/qa-tool/README.md](../../../deploy/qa-tool/README.md). Deploying is outward-facing, so **only do it when the user asks**.
 
 ## Pre-flight (local)

@@ -49,7 +49,7 @@ services:
       - ./nginx.dashboard.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       # Bound to the WireGuard address only: reachable from the edge-host edge, never from the LAN/public.
-      - "${QATOOL_BIND_IP:-10.8.0.9}:${QATOOL_PORT:-8140}:80"
+      - "${QATOOL_BIND_IP:-127.0.0.1}:${QATOOL_PORT:-8140}:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]

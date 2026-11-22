@@ -23,7 +23,7 @@ func TestValidateConfig(t *testing.T) {
 		}
 	}
 	bad := []string{
-		"http://gaos.mfardiansyah.id/api/v1", "http://localhost:8080/api/v1", "http://10.10.1.4/api/v1", "http://10.11.0.4/api/v1",
+		"http://gaos.mfardiansyah.id/api/v1", "http://localhost:8080/api/v1", "http://100.64.1.4/api/v1", "http://8.8.8.8/api/v1",
 		"ftp://gaos.mfardiansyah.id", "https://user:pw@gaos.mfardiansyah.id/api/v1", "https://gaos.mfardiansyah.id/api/v1?x=1",
 		"https://gaos.mfardiansyah.id/api/v1?", "https://gaos.mfardiansyah.id/api/v1#f", "https:///api", "not a url", "gaos.mfardiansyah.id/api/v1",
 	}
