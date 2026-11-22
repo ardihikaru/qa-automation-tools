@@ -35,7 +35,7 @@ EGM artifact directory: .dev/docs
 
 | IP | ssh alias | Role for this repo |
 |---|---|---|
-| 10.8.0.1 / 203.0.113.10 | `edge-host` | Shared nginx TLS edge: `/etc/nginx/conf.d/qa-tool.conf`, cert lineage `qa-tool` |
+| 10.8.0.1 / 203.0.113.10 | `edge-host` | Shared nginx TLS edge: `/etc/nginx/conf.d/qa-tool.conf`, cert lineage `qa-tool-mfardiansyah` |
 | 10.8.0.4 | `db-host` | MySQL `:5306` (container `master-compose-ai-mysqldb-master-1`, DB/user `qa_automation`); **ai-manager `:8099`** |
 | 10.8.0.7 | `taskmgr-host` | taskmgr Neo4j (optional one-shot user seed; port not reachable from app-host) |
 | 10.8.0.9 | `app-host` | This app (Docker Compose, `10.8.0.9:8140`); **playwright-executor `:8141`** (systemd `--user`, 2.5 GiB / 60 % CPU cap); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |

@@ -42,6 +42,7 @@ TEST-RESULTS.md
 
 # Deploy secrets (app-host only)
 .env.prod
+.env.prod.bak*
 .env.*.local
 
 # Per-product env of the automation repo for case_run (staging credentials). The real files live in

@@ -55,7 +55,7 @@ ssh app-host 'cd ~/devel/projects/qa-automation-tools && docker compose -f deplo
 - The live file is `/etc/nginx/conf.d/qa-tool.conf`. The repo mirror is `deploy/qa-tool/nginx-edge.conf`; keep them identical.
 - The repo mirror is the source of truth for *content*. The live file is what runs, so after any change confirm they match: `ssh edge-host 'cat /etc/nginx/conf.d/qa-tool.conf' | diff - deploy/qa-tool/nginx-edge.conf`.
 - Change procedure: (1) back up the live file with `sudo cp /etc/nginx/conf.d/qa-tool.conf /tmp/qa-tool.conf.bak`, (2) `scp` the new file to `/tmp`, then `sudo install -m 644` it into conf.d, (3) run `sudo nginx -t`. **Only when that succeeds**, run `sudo systemctl reload nginx`. If it fails, `sudo install` the `.bak` back and run `nginx -t` again.
-- Cert: lineage `qa-tool`, webroot `/var/www/acme`, renewed automatically by certbot. To check it: `ssh edge-host 'sudo certbot renew --dry-run --cert-name qa-tool'`.
+- Cert: lineage `qa-tool-mfardiansyah`, webroot `/var/www/acme`, renewed automatically by certbot. To check it: `ssh edge-host 'sudo certbot renew --dry-run --cert-name qa-tool-mfardiansyah'`.
 - Never add `default_server`. Every `map` variable must be prefixed with `$qatool_`.
 
 ## Host facts (app-host)

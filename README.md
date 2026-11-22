@@ -63,7 +63,7 @@ for details.
 - Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
   [Code of Conduct](CODE_OF_CONDUCT.md).
 - To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue for it.
-- [MIT](LICENSE) © ardihikaru.
+- [MIT](LICENSE) © 2025-2026 ardihikaru.
 
 > **Maintainers:** the real host names, domains and infra notes of the reference deployment are kept
 > out of this public repo, in a gitignored `.private/` folder plus `CLAUDE.local.md`. AI agents
@@ -650,4 +650,4 @@ qa-automation-tools/
 
 ## License
 
-[MIT](LICENSE). Copyright © 2025 ardihikaru.
+[MIT](LICENSE). Copyright © 2025-2026 ardihikaru.
