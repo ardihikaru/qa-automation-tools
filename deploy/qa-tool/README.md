@@ -8,7 +8,7 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 
 | Hop | Host | Address | What |
 |---|---|---|---|
-| Edge | `edge-host` | 203.0.113.10 / 10.8.0.1 | nginx, TLS (Let's Encrypt lineage `qa-tool`), `/etc/nginx/conf.d/qa-tool.conf` |
+| Edge | `edge-host` | 203.0.113.10 / 10.8.0.1 | nginx, TLS (Let's Encrypt lineage `qa-tool-mfardiansyah`), `/etc/nginx/conf.d/qa-tool.conf` |
 | App | `app-host` | 10.8.0.9:8140 | Docker Compose: `dashboard` (nginx + SPA, proxies `/api`, `/health`) and `backend` (Go, :8080 internal) |
 | DB | `db-host` | 10.8.0.4:5306 | MySQL 8 `master-compose-ai-mysqldb-master-1`, database `qa_automation`, user `qa_automation` |
 | AI | `db-host` | 10.8.0.4:8099 | ai-manager (`POST /v1/chat`, Basic auth), always with `provider: claude-v3`, `no_fallback` |
@@ -45,4 +45,4 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 - AI round trip on app-host: `docker compose -f deploy/qa-tool/docker-compose.prod.yml exec backend wget -qO- localhost:8080/health`
 - Logs: `docker compose -f deploy/qa-tool/docker-compose.prod.yml logs -f backend`
 - Rollback: `deploy.sh <last OK sha from deploys.log>`; roll forward later with `deploy.sh --branch main`
-- Cert renewal: `ssh edge-host 'sudo certbot renew --dry-run --cert-name qa-tool'`
+- Cert renewal: `ssh edge-host 'sudo certbot renew --dry-run --cert-name qa-tool-mfardiansyah'`
