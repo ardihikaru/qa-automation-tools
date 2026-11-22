@@ -2,7 +2,7 @@
  * Product knowledge base API tests (docs/designs/PRODUCT_KNOWLEDGE_SYNC.md).
  *
  * Read-only by default: logs in as the impersonator (E2E_IMPERSONATOR_USERNAME / _PASSWORD)
- * and reads the HISv3 knowledge base. Set E2E_KB_SYNC_AS=<username of an Admin/DevOps/
+ * and reads the SUT knowledge base. Set E2E_KB_SYNC_AS=<username of an Admin/DevOps/
  * Developer/QA/QC user> to also impersonate that user and run one sync (a write that adds one
  * kb_syncs row; kept by design, like audit rows).
  */
@@ -25,9 +25,9 @@ test.describe('Knowledge base API', () => {
     const login = await api.post('/api/auth/login', { headers: json, data: { username: impersonator, password: impersonatorPassword } });
     expect(login.status()).toBe(200);
     const { products } = await (await api.get('/api/products')).json();
-    const his = products.find((p: { name: string }) => p.name === 'HISv3');
-    test.skip(!his, 'no HISv3 product');
-    base = `/api/products/${his.id}/knowledge`;
+    const sut = products.find((p: { name: string }) => p.name === (process.env.QA_PRODUCT_NAME || 'SUT'));
+    test.skip(!sut, 'no SUT product');
+    base = `/api/products/${sut.id}/knowledge`;
   });
 
   test.afterEach(async () => {

@@ -6,7 +6,7 @@
 *   **Code:** `ai-backend/internal/api/gaos_inbound.go`, `router.go:ServeHTTP`, `auth/middleware.go:IsAuthAllowList`.
 
 ## Overview
-GAOS's QA tab has **Pull from QA tools** and **Push to QA tools** buttons. They call two routes on the QA tools host root (`GAOS_QA_URL`, e.g. `http://10.10.0.9:8140`, nginx already forwards all of `/api/`):
+GAOS's QA tab has **Pull from QA tools** and **Push to QA tools** buttons. They call two routes on the QA tools host root (`GAOS_QA_URL`, e.g. `http://10.8.0.9:8140`, nginx already forwards all of `/api/`):
 
 *   `GET /api/v1/gaos/results?product=<gaos id>&after=<cursor>&limit=<n>`: GAOS pulls automation facts.
 *   `POST /api/v1/gaos/catalog`: GAOS pushes its planning decisions.
@@ -27,4 +27,4 @@ GAOS's QA tab has **Pull from QA tools** and **Push to QA tools** buttons. They 
 *   A "withdraw a case" call.
 
 ## Rollout
-Migrate (`cmd/databasemigration`), set `GAOS_INBOUND_TOKEN` in rnd-v3 `.env.prod`, deploy; then on the GAOS side put the same token in `GAOS_QA_TOKEN_FILE` (`deploy/stacks/prod.api-qa-out`) and restart GAOS with `GAOS_QA_URL=http://10.10.0.9:8140`.
+Migrate (`cmd/databasemigration`), set `GAOS_INBOUND_TOKEN` in app-host `.env.prod`, deploy; then on the GAOS side put the same token in `GAOS_QA_TOKEN_FILE` (`deploy/stacks/prod.api-qa-out`) and restart GAOS with `GAOS_QA_URL=http://10.8.0.9:8140`.

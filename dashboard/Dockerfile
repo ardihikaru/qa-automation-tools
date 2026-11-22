@@ -23,7 +23,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx config. nginx.conf is gitignored (local); fresh clones build with
 # --build-arg NGINX_CONF=nginx.conf.example and mount the real config at runtime
-# (see deploy/his-v3-qa/docker-compose.prod.yml).
+# (see deploy/qa-tool/docker-compose.prod.yml).
 ARG NGINX_CONF=nginx.conf
 COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
 

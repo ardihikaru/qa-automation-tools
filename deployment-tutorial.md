@@ -1,6 +1,6 @@
 # Google Cloud Run Deployment Tutorial
 
-> **Legacy.** Production now runs as a Docker Compose stack on rnd-v3 (see [deploy/his-v3-qa/README.md](deploy/his-v3-qa/README.md)). The database is MySQL 8 (schema `qa_automation` on rnd-v2 `10.10.0.4:5306`), configured with `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` or a MySQL `DATABASE_URL` DSN.
+> **Legacy.** Production now runs as a Docker Compose stack on app-host (see [deploy/qa-tool/README.md](deploy/qa-tool/README.md)). The database is MySQL 8 (schema `qa_automation` on db-host `10.8.0.4:5306`), configured with `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` or a MySQL `DATABASE_URL` DSN.
 
 This document describes how to deploy the QA Automation Tools (ai-backend and dashboard) to Google Cloud Run.
 
@@ -12,9 +12,9 @@ This document describes how to deploy the QA Automation Tools (ai-backend and da
 
 ## Project Configuration
 
-- **Project ID**: `qa-automation-tools-sismedika`
+- **Project ID**: `qa-automation-tools-example-org`
 - **Region**: `asia-southeast1` (Jakarta)
-- **Container Registry**: `gcr.io/qa-automation-tools-sismedika`
+- **Container Registry**: `gcr.io/qa-automation-tools-example-org`
 
 ## Step-by-Step Deployment
 
@@ -25,7 +25,7 @@ This document describes how to deploy the QA Automation Tools (ai-backend and da
 gcloud auth login
 
 # Set the active project
-gcloud config set project qa-automation-tools-sismedika
+gcloud config set project qa-automation-tools-example-org
 ```
 
 ### Step 2: Enable Required APIs
@@ -51,16 +51,16 @@ gcloud auth configure-docker
 
 ```bash
 cd ai-backend
-docker build -t gcr.io/qa-automation-tools-sismedika/ai-backend:latest .
-docker push gcr.io/qa-automation-tools-sismedika/ai-backend:latest
+docker build -t gcr.io/qa-automation-tools-example-org/ai-backend:latest .
+docker push gcr.io/qa-automation-tools-example-org/ai-backend:latest
 ```
 
 #### Build Dashboard
 
 ```bash
 cd dashboard
-docker build -t gcr.io/qa-automation-tools-sismedika/dashboard:latest .
-docker push gcr.io/qa-automation-tools-sismedika/dashboard:latest
+docker build -t gcr.io/qa-automation-tools-example-org/dashboard:latest .
+docker push gcr.io/qa-automation-tools-example-org/dashboard:latest
 ```
 
 ### Step 5: Deploy to Cloud Run
@@ -69,11 +69,11 @@ docker push gcr.io/qa-automation-tools-sismedika/dashboard:latest
 
 ```bash
 gcloud run deploy ai-backend \
-  --image gcr.io/qa-automation-tools-sismedika/ai-backend:latest \
+  --image gcr.io/qa-automation-tools-example-org/ai-backend:latest \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.10.0.4:5306)/qa_automation?parseTime=true" \
+  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.8.0.4:5306)/qa_automation?parseTime=true" \
   --set-env-vars "MINIMAX_API_KEY=YOUR_API_KEY" \
   --set-env-vars "AI_MODEL=MiniMax-M2.5" \
   --set-env-vars "AI_BASE_URL=https://api.minimax.io/v1" \
@@ -91,7 +91,7 @@ gcloud run deploy ai-backend \
 
 ```bash
 gcloud run deploy dashboard \
-  --image gcr.io/qa-automation-tools-sismedika/dashboard:latest \
+  --image gcr.io/qa-automation-tools-example-org/dashboard:latest \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
@@ -161,12 +161,12 @@ To update an existing deployment, simply rebuild and redeploy:
 
 ```bash
 # Rebuild
-docker build -t gcr.io/qa-automation-tools-sismedika/ai-backend:latest .
-docker push gcr.io/qa-automation-tools-sismedika/ai-backend:latest
+docker build -t gcr.io/qa-automation-tools-example-org/ai-backend:latest .
+docker push gcr.io/qa-automation-tools-example-org/ai-backend:latest
 
 # Redeploy (will use new image automatically)
 gcloud run deploy ai-backend \
-  --image gcr.io/qa-automation-tools-sismedika/ai-backend:latest \
+  --image gcr.io/qa-automation-tools-example-org/ai-backend:latest \
   --platform managed \
   --region asia-southeast1
 ```
@@ -175,8 +175,8 @@ gcloud run deploy ai-backend \
 
 After deployment, the services will be available at:
 
-- **ai-backend**: `https://ai-backend-1087642958941.asia-southeast1.run.app`
-- **Dashboard**: `https://dashboard-1087642958941.asia-southeast1.run.app`
+- **ai-backend**: `https://ai-backend-000000000000.asia-southeast1.run.app`
+- **Dashboard**: `https://dashboard-000000000000.asia-southeast1.run.app`
 
 ## Quick Deploy Commands
 
@@ -185,16 +185,16 @@ After deployment, the services will be available at:
 ```bash
 # Build
 cd ai-backend
-docker build -t gcr.io/qa-automation-tools-sismedika/ai-backend:latest .
-docker push gcr.io/qa-automation-tools-sismedika/ai-backend:latest
+docker build -t gcr.io/qa-automation-tools-example-org/ai-backend:latest .
+docker push gcr.io/qa-automation-tools-example-org/ai-backend:latest
 
 # Deploy (with all environment variables)
 gcloud run deploy ai-backend \
-  --image gcr.io/qa-automation-tools-sismedika/ai-backend:latest \
+  --image gcr.io/qa-automation-tools-example-org/ai-backend:latest \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.10.0.4:5306)/qa_automation?parseTime=true,MINIMAX_API_KEY=YOUR_API_KEY,AI_MODEL=MiniMax-M2.5,AI_BASE_URL=https://api.minimax.io/v1,API_SECRET_KEY=your-secret-key,CORS_ENABLED=true,CORS_ORIGINS=*"
+  --set-env-vars "DATABASE_URL=qa_automation:YOUR_PASSWORD@tcp(10.8.0.4:5306)/qa_automation?parseTime=true,MINIMAX_API_KEY=YOUR_API_KEY,AI_MODEL=MiniMax-M2.5,AI_BASE_URL=https://api.minimax.io/v1,API_SECRET_KEY=your-secret-key,CORS_ENABLED=true,CORS_ORIGINS=*"
 ```
 
 ### Rebuild and Deploy Dashboard
@@ -202,12 +202,12 @@ gcloud run deploy ai-backend \
 ```bash
 # Build
 cd dashboard
-docker build -t gcr.io/qa-automation-tools-sismedika/dashboard:latest .
-docker push gcr.io/qa-automation-tools-sismedika/dashboard:latest
+docker build -t gcr.io/qa-automation-tools-example-org/dashboard:latest .
+docker push gcr.io/qa-automation-tools-example-org/dashboard:latest
 
 # Deploy
 gcloud run deploy dashboard \
-  --image gcr.io/qa-automation-tools-sismedika/dashboard:latest \
+  --image gcr.io/qa-automation-tools-example-org/dashboard:latest \
   --platform managed \
   --region asia-southeast1 \
   --allow-unauthenticated \

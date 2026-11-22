@@ -187,7 +187,7 @@ dashboard/src/views/
 
 ## 3. Database Architecture
 
-> **Superseded (database).** The Neon/PostgreSQL design below is historical. The database is now MySQL 8, a single schema `qa_automation` on the shared rnd-v2 MySQL (`10.10.0.4:5306`), accessed through `database/sql` with `go-sql-driver/mysql`. The current DDL lives in [ai-backend/internal/db/migrations.go](ai-backend/internal/db/migrations.go) and is described in [ai-backend/internal/db/README.md](ai-backend/internal/db/README.md).
+> **Superseded (database).** The Neon/PostgreSQL design below is historical. The database is now MySQL 8, a single schema `qa_automation` on the shared db-host MySQL (`10.8.0.4:5306`), accessed through `database/sql` with `go-sql-driver/mysql`. The current DDL lives in [ai-backend/internal/db/migrations.go](ai-backend/internal/db/migrations.go) and is described in [ai-backend/internal/db/README.md](ai-backend/internal/db/README.md).
 
 ### 3.1 Schema Overview
 
@@ -447,7 +447,7 @@ Dashboard displays:
 
 ### 8.1 Current Deployment (Staging)
 
-> **Superseded.** This describes the original Cloud Run + Neon setup. See [deploy/his-v3-qa/README.md](deploy/his-v3-qa/README.md) for the current deployment.
+> **Superseded.** This describes the original Cloud Run + Neon setup. See [deploy/qa-tool/README.md](deploy/qa-tool/README.md) for the current deployment.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -464,7 +464,7 @@ Dashboard displays:
 ┌─────────────────────────────────────────────────────────────┐
 │                    External Services                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Neon Database   │   Minimax API   │   HIS V3 Staging     │
+│  Neon Database   │   Minimax API   │   SUT Staging     │
 │  (PostgreSQL)    │   (AI)          │   (Target App)       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -473,9 +473,9 @@ Dashboard displays:
 
 | Service | URL |
 |---------|-----|
-| AI Backend | https://ai-backend-1087642958941.asia-southeast1.run.app |
+| AI Backend | https://ai-backend-000000000000.asia-southeast1.run.app |
 | Dashboard | (to be determined) |
-| HIS V3 Staging | https://stag-app-hisv3.sismedika.online/ |
+| SUT Staging | https://stag-app.mfardiansyah.id/ |
 
 ---
 

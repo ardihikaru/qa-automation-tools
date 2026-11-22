@@ -455,7 +455,7 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 			msg = "skipped: the report gives no reason"
 		}
 		if caseresults.HarnessHint(skipReason) {
-			msg += " (hint: the HISv3 e2e harness prerequisites, e.g. the staging DB credential file, are missing on the executor host; no result was stored)"
+			msg += " (hint: the SUT e2e harness prerequisites, e.g. the staging DB credential file, are missing on the executor host; no result was stored)"
 		} else {
 			msg += " (no result was stored)"
 		}

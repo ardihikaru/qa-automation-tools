@@ -8,7 +8,7 @@
 *   **Repo state:** this spec and its `SITEMAP.md` row are on `main` (merged with PR #13).
 
 ## Overview
-A product today has exactly one repo: `products.repo_url`, `root_dir`, `branch` and the verify state live on the `products` row (`ai-backend/internal/db/migrations.go:286-301`, `ai-backend/internal/models/models.go:207-219`). Real products span several repos. HISv3, for example, has a **central repo** (`his-v3-ai`) that manages the other repos.
+A product today has exactly one repo: `products.repo_url`, `root_dir`, `branch` and the verify state live on the `products` row (`ai-backend/internal/db/migrations.go:286-301`, `ai-backend/internal/models/models.go:207-219`). Real products span several repos. SUT, for example, has a **central repo** (`sut-ai`) that manages the other repos.
 
 A product now owns a list of repos with these roles:
 
@@ -19,7 +19,7 @@ A product now owns a list of repos with these roles:
 Each repo lists the branches to keep checked out and one default branch.
 
 ## Problem
-*   One repo per product cannot describe HISv3 or any multi-repo product.
+*   One repo per product cannot describe SUT or any multi-repo product.
 *   Only one branch can be checked out at a time (`Checkout` flips one working tree: `repopool.go:352-379`).
 *   Nothing records which repo PRs may come from, and nothing stops a future PR or branch feature from touching a sibling repo.
 
@@ -34,7 +34,7 @@ Each repo lists the branches to keep checked out and one default branch.
 ## Non-Goals
 *   No auto-discovery of siblings from the central repo.
 *   No PR-creation UI or API. This spec defines and tests the gate and records which repo PRs may come from.
-*   The executor still uses a single `HISV3_STAGING_URL`; it does not consume per-repo paths (follow-up).
+*   The executor still uses a single `TARGET_STAGING_URL`; it does not consume per-repo paths (follow-up).
 *   No changes to pool mount, `gh` auth, `REPO_POOL_ALLOWED_OWNERS` or the probe client.
 *   No per-repo staging URL: `staging_url` stays on the product.
 *   Deleting a checkout from disk. Deleting a registry row (or changing a repo's `root_dir`) leaves files in place.
@@ -154,9 +154,9 @@ SELECT p.id, p.name FROM products p WHERE NOT EXISTS (SELECT 1 FROM product_repo
 
 **Deploy order.** Run `go run -mod=mod ./cmd/databasemigration` **before** starting the new binary (the old binary ignores the extra tables; the new binary needs them). After the new binary is live, run the migration once more to pick up products created by the old binary in the window (idempotent).
 
-**Mandatory pre-implementation step (blocks the implementation PR).** (1) Run `SELECT VERSION()` on the rnd-v2 MySQL (read-only; the schema work is not done there). (2) Run entries 1 to 5 twice on a **scratch** MySQL 8 instance of the same minor version, never the shared `qa_automation` schema. (3) Record the version, the result (error numbers if any) and the final accepted DDL in this spec before implementation starts. If error 3104 or any DDL error occurs, the DDL here is amended and re-reviewed. Items previously listed as assumptions (generated-column unique index, the 3104 restriction, `ON DUPLICATE KEY UPDATE x = x`, regexp escaping in the Go raw string) are verification outcomes of this step, not beliefs.
+**Mandatory pre-implementation step (blocks the implementation PR).** (1) Run `SELECT VERSION()` on the db-host MySQL (read-only; the schema work is not done there). (2) Run entries 1 to 5 twice on a **scratch** MySQL 8 instance of the same minor version, never the shared `qa_automation` schema. (3) Record the version, the result (error numbers if any) and the final accepted DDL in this spec before implementation starts. If error 3104 or any DDL error occurs, the DDL here is amended and re-reviewed. Items previously listed as assumptions (generated-column unique index, the 3104 restriction, `ON DUPLICATE KEY UPDATE x = x`, regexp escaping in the Go raw string) are verification outcomes of this step, not beliefs.
 
-**DDL verification result (2026-11-13).** rnd-v2 runs MySQL Community Server 8.0.33. Entries 1 to 5 were run twice on a scratch `mysql:8.0.33` container (local Docker, never `qa_automation`): no error 3104; both runs idempotent, including with legacy rows present. Confirmed: a second main or central repo per product gives 1062 on `uq_product_repos_main` / `_central`; a second default branch gives 1062 on `uq_product_repo_branch_default`; `a/b` and `a--b` collide on `uq_product_repo_branch_slug`; `Main` and `main` coexist (`utf8mb4_bin`); deleting a product cascades to its repos and branches; a legacy product with a `.branches` segment in `root_dir` is skipped by entry 4 without aborting. **One defect found and fixed:** entry 5 originally used `ON DUPLICATE KEY UPDATE branch = branch`, which fails with error 1052 (ambiguous column) because the SELECT also exposes `branch`; the DDL above now qualifies the target column. Still to verify in Go: the regexp escaping inside the migration raw string.
+**DDL verification result (2026-11-13).** db-host runs MySQL Community Server 8.0.33. Entries 1 to 5 were run twice on a scratch `mysql:8.0.33` container (local Docker, never `qa_automation`): no error 3104; both runs idempotent, including with legacy rows present. Confirmed: a second main or central repo per product gives 1062 on `uq_product_repos_main` / `_central`; a second default branch gives 1062 on `uq_product_repo_branch_default`; `a/b` and `a--b` collide on `uq_product_repo_branch_slug`; `Main` and `main` coexist (`utf8mb4_bin`); deleting a product cascades to its repos and branches; a legacy product with a `.branches` segment in `root_dir` is skipped by entry 4 without aborting. **One defect found and fixed:** entry 5 originally used `ON DUPLICATE KEY UPDATE branch = branch`, which fails with error 1052 (ambiguous column) because the SELECT also exposes `branch`; the DDL above now qualifies the target column. Still to verify in Go: the regexp escaping inside the migration raw string.
 
 ### Legacy compatibility and rollback
 The legacy columns `products.repo_url`, `root_dir`, `branch`, `playwright_accessible`, `last_verified_at`, `verify_report` and `uq_products_root_dir` are kept (not dropped, not made nullable) for at least one release.
@@ -193,7 +193,7 @@ One clone per repo, one `git worktree` per extra branch, as siblings of the clon
 <pool>/<root_dir>.branches/<slug>      linked worktree, one per additional branch
 ```
 
-Why worktrees: one object store and one `git fetch` per repo (separate clones would multiply disk use of large histories on rnd-v3). Why not inside `<root_dir>`: extra directories in the default branch's tree appear as untracked content and would be walked by `HasPlaywright` (`repopool.go:391-416`) and the executor.
+Why worktrees: one object store and one `git fetch` per repo (separate clones would multiply disk use of large histories on app-host). Why not inside `<root_dir>`: extra directories in the default branch's tree appear as untracked content and would be walked by `HasPlaywright` (`repopool.go:391-416`) and the executor.
 
 **Slug.** `slug = strings.ReplaceAll(branch, "/", "--")`. It is a single valid directory segment because `branchRe` (`repopool.go:31`) allows only `A-Za-z0-9._/-` with an alphanumeric first character. `ValidateBranch` already rejects `.lock` (`:68-69`), so no separate slug `.lock` rule is needed. Registered branches must have `len(slug) <= 100` (else 400 "branch name too long for a worktree"; no hash fallback, to keep names predictable). The DB `UNIQUE(repo_id, slug)` rejects `a/b` vs `a--b`.
 
@@ -281,7 +281,7 @@ func writeAllowed(isMain, flag bool, op RepoOp) error
 Truth table: unknown `op` is denied; `isMain` allowed; `!isMain && flag` allowed; otherwise `ErrWriteNotAllowed`. No row means `ErrRepoNotFound` (deny). A missing settings row means flag false. The result is not cached. Handlers map `ErrWriteNotAllowed` to 403 with that message. A non-main central repo is a sibling.
 
 **Real defence now (not only a contract).** `SyncBranches(allowPush)` sets, for every repo where `allowPush` is false (non-main repo and flag off), `git config remote.origin.pushurl DISABLED` (a relative path that is not a repository, so `git push origin` fails), and unsets it (`git config --unset remote.origin.pushurl`, exit code 5 for "not set" is ignored) when `allowPush` is true. `allowPush = repo.is_main || flag`. Git shares the clone's config with all its linked worktrees, so one setting covers every branch directory. The policy is re-applied on every sync, and `PUT /{id}` that changes the flag or a promotion that changes which repo is main triggers a best-effort `Pool.SetPushPolicy` for the affected repos after the DB commit (busy repos log and are fixed by the next sync).
-**Bypass note.** This is a guard, not a sandbox: an explicit `git push <url>`, any process holding `GH_TOKEN` (the backend's `gh`), or anyone with a shell on rnd-v3 can still push. The control against that remains token scope (read-only, fine-grained token) and `REPO_POOL_ALLOWED_OWNERS`, both unchanged. Whether the executor process has a push-capable credential on rnd-v3 is **not verified here**.
+**Bypass note.** This is a guard, not a sandbox: an explicit `git push <url>`, any process holding `GH_TOKEN` (the backend's `gh`), or anyone with a shell on app-host can still push. The control against that remains token scope (read-only, fine-grained token) and `REPO_POOL_ALLOWED_OWNERS`, both unchanged. Whether the executor process has a push-capable credential on app-host is **not verified here**.
 Scope: no route performs a write-class op yet, so `repoWriteAllowed` has no production caller in this PR; any future endpoint that pushes, branches or opens a PR **must** call it first (stated as an invariant in `ai-backend/internal/api/README.md`).
 
 ### API
@@ -289,14 +289,14 @@ Everything is under `/api/products`; the router forwards the whole prefix (`rout
 
 **Product JSON** (GET, and the body returned by every mutating route):
 ```json
-{ "id": 1, "name": "HISv3", "staging_url": "https://...", "allow_non_automation_work": false,
+{ "id": 1, "name": "SUT", "staging_url": "https://...", "allow_non_automation_work": false,
   "repo_url": "...", "root_dir": "...", "branch": "main",          // legacy, mirrored from main
   "playwright_accessible": true, "last_verified_at": "2026-11-13T...Z", "verify_report": {...}, // main's
   "repos": [ <Repo>, ... ], "created_at": "...", "updated_at": "..." }
 ```
 **Repo JSON**:
 ```json
-{ "id": 7, "product_id": 1, "name": "his-v3-ai", "repo_url": "https://github.com/o/r", "root_dir": "o/r",
+{ "id": 7, "product_id": 1, "name": "sut-ai", "repo_url": "https://github.com/o/r", "root_dir": "o/r",
   "is_main": false, "is_central": true, "default_branch": "main", "branches": ["main", "dev"],
   "playwright_accessible": false, "last_verified_at": null, "verify_report": null,
   "sync_report": { "synced_at": "...Z", "results": [ {"name":"main","status":"ok","message":""} ] },
@@ -392,14 +392,14 @@ Handlers: `validateProduct` is split into `validateProduct` (name, staging URL) 
 *   **`UNIQUE(product_id, repo_url)` is exact-string**; the normalised check is in handlers, so a concurrent pair of differently spelled URLs could both pass.
 
 ## Assumptions Goldfish reviewers must challenge
-*   The DDL (flag-derived stored generated columns under `UNIQUE(product_id, flag)`, plus an FK `ON DELETE CASCADE` on `product_id`) is valid on the rnd-v2 MySQL version. **Unverified**; resolved only by the mandatory pre-implementation scratch run.
+*   The DDL (flag-derived stored generated columns under `UNIQUE(product_id, flag)`, plus an FK `ON DELETE CASCADE` on `product_id`) is valid on the db-host MySQL version. **Unverified**; resolved only by the mandatory pre-implementation scratch run.
 *   The `NOT REGEXP '(^|/)[^/]*\\.branches(/|$)'` expression in a Go raw string reaches MySQL with the intended escaping.
 *   Taking `SELECT ... FROM products WHERE id=? FOR UPDATE` first in every mutating tx gives one global order and cannot deadlock with the verifier or the legacy routes.
 *   `git worktree add --track -b`, `git worktree list --porcelain`, `git rev-parse --git-common-dir` and `git config remote.origin.pushurl` behave as described for a clone made by `gh repo clone`, running as root in the container; sharing config across worktrees is the default (no `extensions.worktreeConfig`). Not run here.
 *   Treating `clone`, `sync` and `verify` as read-class matches the intent of "write operation (branch creation, PR)".
 *   Mirroring the main repo into the legacy columns is enough for a safe rollback, and nothing else reads those columns (a grep of `ai-backend` found only `products.go` and the router; `playwright-executor` was not searched exhaustively).
 *   The reserved `.branches` suffix, the two-part resolver and the `Lstat` check leave no path where a branch name or `root_dir` reaches outside the pool or into another repo's checkout.
-*   A 10-branch cap, a 100-character slug cap and a 10-minute sync budget are adequate for HISv3-sized repos on rnd-v3.
+*   A 10-branch cap, a 100-character slug cap and a 10-minute sync budget are adequate for SUT-sized repos on app-host.
 
 ## Target Files
 *   Already present on the branch: `docs/designs/PRODUCT_REPOS.md`, and its row in `docs/designs/SITEMAP.md` (only the status flips later).
@@ -414,6 +414,6 @@ Handlers: `validateProduct` is split into `validateProduct` (name, staging URL) 
 4.  `repopool` tests with temp bare origins: add, fast-forward, remove, keep dirty, default swap (including dirty swap), `a/b` vs `a--b`, existing path that is not the expected worktree, missing remote branch, diverged local branch, `<root_dir>.branches` as a symlink to outside the pool, a symlink at the slug directory, branch `-x` and `a/../b`, push policy set/unset (a `git push` to a temp origin fails while disabled).
 5.  Concurrency: two parallel promotions and a verify on one product leave exactly one main and a consistent mirror (DB-gated).
 6.  `cd dashboard && npm run build && npx tsc --noEmit`.
-7.  Manual on a scratch stack: HISv3 shape (central `his-v3-ai`, main automation repo, two siblings with several branches): sync all branches, flag off shows a disabled push URL and the guard denies, flag on enables, invariants hold from the UI; Admin/DevOps vs Developer toggle.
+7.  Manual on a scratch stack: SUT shape (central `sut-ai`, main automation repo, two siblings with several branches): sync all branches, flag off shows a disabled push URL and the guard denies, flag on enables, invariants hold from the UI; Admin/DevOps vs Developer toggle.
 8.  Rollback drill on a scratch stack: deploy new, edit a product, redeploy the old binary, confirm the old UI shows the main repo coherently; roll forward and rerun the migration.
-9.  After the spec PR merges later: `git worktree list` and `git branch -a` show no leftovers. No deploy without a separate approval (`deploy-his-v3-qa` skill).
+9.  After the spec PR merges later: `git worktree list` and `git branch -a` show no leftovers. No deploy without a separate approval (`deploy-qa-tool` skill).

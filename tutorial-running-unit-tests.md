@@ -10,7 +10,7 @@ This guide is for running **unit tests** in `ai-backend` that do not require a M
 2. Terminal at repo root:
 
 ```bash
-cd /home/ardi/devel/projects/sismedika/qa-automation-tools
+cd ~/devel/projects/qa-automation-tools
 ```
 
 ## Unit Test Command (Recommended)

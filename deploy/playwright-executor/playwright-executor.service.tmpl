@@ -1,5 +1,5 @@
 # playwright-executor — systemd USER unit (rendered by install.sh; do not edit the installed copy).
-# Installed at ~/.config/systemd/user/playwright-executor.service on rnd-v3 (user sismedika, linger on),
+# Installed at ~/.config/systemd/user/playwright-executor.service on app-host (user qa, linger on),
 # the same pattern as ai-claude-cli.service. The user manager delegates cpu/memory/pids, so the
 # limits below are enforced by the kernel on the whole process tree (node + every Chromium process).
 [Unit]
@@ -18,7 +18,7 @@ RestartSec=5
 TimeoutStopSec=45
 KillMode=mixed
 
-# --- Resource budget (rnd-v3: 4 vCPU, 3.8 GiB RAM) ---
+# --- Resource budget (app-host: 4 vCPU, 3.8 GiB RAM) ---
 # Hard cap 2.5 GiB for node + Chromium; throttle/reclaim starts at 2.25 GiB. No swap.
 MemoryHigh=2304M
 MemoryMax=2560M

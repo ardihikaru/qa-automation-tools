@@ -13,7 +13,7 @@ import (
 func TestRecordIntegration(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	if _, err := d.Exec(ctx, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`); err != nil {
+	if _, err := d.Exec(ctx, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`); err != nil {
 		t.Fatal(err)
 	}
 	const report = `{"stats":{"startTime":"2026-11-14T10:00:00.123Z","duration":2500.4},"suites":[{"specs":[

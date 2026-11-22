@@ -32,7 +32,7 @@ It builds to a single binary from `cmd/server` (module `github.com/qa-automation
 | `internal/services/executor/` | playwright-executor HTTP client (`Submit`, `Get`, `Wait`, `Health`) | [playwright-executor](../playwright-executor/README.md) |
 | `internal/services/skills/` | Skill registry and built-in skills | [README](./internal/services/skills/README.md) |
 | `internal/services/gaossync/` | GAOS integration: pushes a flagged product's test cases to the GAOS kanban REST API (create-only, idempotent) after each knowledge sync, on flag-on and on demand; the Inbox client asks for approvals and relays an answer given on the run history (HISTORY_ANSWER.md) | [README](./internal/services/gaossync/README.md) |
-| `internal/services/knowledge/` | Product knowledge base: format adapters (`hisv3-test-catalog-v1`), sync engine (bare-mirror read, diff/upsert, AI change summary, scheduler), queries for `/api/products/{id}/knowledge/*` | [README](./internal/services/knowledge/README.md) |
+| `internal/services/knowledge/` | Product knowledge base: format adapters (`test-catalog-v1`), sync engine (bare-mirror read, diff/upsert, AI change summary, scheduler), queries for `/api/products/{id}/knowledge/*` | [README](./internal/services/knowledge/README.md) |
 | `internal/services/objectstore/` | Prefix-locked MinIO/S3 client (`Stat`, `Get`, `Put` only) caching the module checklist export | [README](./internal/services/objectstore/README.md) |
 | `internal/services/conversations/` | AI conversations (AI_CONVERSATIONS.md): the store behind `ai.Service` (every exchange per job / sync / call, redacted, deduplicated), archive, unarchive, prune, audit | [README](./internal/services/conversations/README.md) |
 | `internal/services/runhistory/` | Run history (RUN_HISTORY.md): `Record` logs every Playwright report in `pw_runs`/`pw_run_cases`; `Breakdown` folds a build's step times | [README](./internal/services/runhistory/README.md) |
@@ -75,7 +75,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 
 ## Deployment
 
-- Production: [deploy/his-v3-qa](../deploy/his-v3-qa/README.md). Docker Compose on rnd-v3-vpn, behind the clino nginx edge, at https://qa-tool.sismedika.com.
+- Production: [deploy/qa-tool](../deploy/qa-tool/README.md). Docker Compose on app-host, behind the edge-host nginx edge, at https://qa-tool.mfardiansyah.id.
   The image is built from this directory's `Dockerfile`.
 - `cloudbuild.yaml` (Cloud Run) is **legacy** and is no longer the deploy path.
 

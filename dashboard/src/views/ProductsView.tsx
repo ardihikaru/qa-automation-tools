@@ -197,7 +197,7 @@ export default function ProductsView() {
     <div>
       {!detail && (
         <div className="flex flex-wrap items-center justify-between mb-6 gap-3">
-          <p className="text-sm text-gray-500 min-w-0">Repos, branches and staging URLs Playwright tests, checked out on rnd-v3-vpn.</p>
+          <p className="text-sm text-gray-500 min-w-0">Repos, branches and staging URLs Playwright tests, checked out on app-host.</p>
           <button
             className="btn btn-primary flex items-center gap-2 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!canManage}
@@ -340,12 +340,12 @@ export default function ProductsView() {
       {editing && (
         <Modal title="Add product" onClose={() => !saving && setEditing(null)}>
           <form onSubmit={submitForm} className="space-y-3">
-            <Field label="Name" value={editing.name} onChange={(v) => setField('name', v)} placeholder="HISv3" required />
+            <Field label="Name" value={editing.name} onChange={(v) => setField('name', v)} placeholder="SUT" required />
             <Field label="Main URL (staging)" value={editing.staging_url} onChange={(v) => setField('staging_url', v)} placeholder="https://staging.example.com" required />
             <p className="text-xs text-gray-500">The first repo is both the main (AI workspace) and the automation repo. Change roles in the product detail. Add central and sibling repos from the product details.</p>
             <Field label="Main repo name" value={editing.repo_name} onChange={(v) => setField('repo_name', v)} placeholder="main" required />
             <Field label="Repo link" value={editing.repo_url} onChange={(v) => setField('repo_url', v)} placeholder="https://github.com/owner/repo" required />
-            <Field label="Root dir (inside the repo pool)" value={editing.root_dir} onChange={(v) => setField('root_dir', v)} placeholder="owner/repo" hint="Relative to the pool, e.g. sismedika/hisv3. Created by Clone." required />
+            <Field label="Root dir (inside the repo pool)" value={editing.root_dir} onChange={(v) => setField('root_dir', v)} placeholder="owner/repo" hint="Relative to the pool, e.g. example-org/sut. Created by Clone." required />
             <BranchesField value={editing.draft} onChange={(d) => setEditing((cur) => (cur ? { ...cur, draft: d } : cur))} name="new-product" disabled={saving} />
             {formError && <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{formError}</div>}
             <div className="flex justify-end gap-2 pt-2">

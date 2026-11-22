@@ -458,7 +458,7 @@ Dashboard displays:
 ┌─────────────────────────────────────────────────────────────┐
 │                    External Services                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Neon Database   │   Minimax API   │   HIS V3 Staging     │
+│  Neon Database   │   Minimax API   │   SUT Staging     │
 │  (PostgreSQL)    │   (AI)          │   (Target App)       │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -467,9 +467,9 @@ Dashboard displays:
 
 | Service | URL |
 |---------|-----|
-| AI Backend | https://ai-backend-1087642958941.asia-southeast1.run.app |
+| AI Backend | https://ai-backend-000000000000.asia-southeast1.run.app |
 | Dashboard | (to be determined) |
-| HIS V3 Staging | https://stag-app-hisv3.sismedika.online/ |
+| SUT Staging | https://stag-app.mfardiansyah.id/ |
 
 ---
 

@@ -92,7 +92,7 @@ func TestArchiveGuardsAndPrune(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
 	st := &Store{DB: d, Screen: NewScreen()}
-	mustExec(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	mustExec(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	mustExec(t, d, `INSERT INTO job_runs (id, type, status, created_at) VALUES ('job-run','case_create','running',UTC_TIMESTAMP()), ('job-done','case_create','completed',UTC_TIMESTAMP())`)
 	mustExec(t, d, `INSERT INTO kb_syncs (id, product_id, status, trigger_kind, started_at, ai_status) VALUES (7,1,'succeeded','manual',UTC_TIMESTAMP(),'pending')`)
 	mustExec(t, d, `INSERT INTO pw_runs (product_id, source, run_ref, job_id, started_at) VALUES (1,'case-create','job-done','job-done',UTC_TIMESTAMP(3))`)

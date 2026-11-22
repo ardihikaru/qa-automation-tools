@@ -50,7 +50,7 @@ func TestHistoryRoutesNeedADatabaseAndGET(t *testing.T) {
 func TestHistoryBuildsDB(t *testing.T) {
 	d := testdb.New(t)
 	r := NewRouter(d, nil, nil, nil)
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
 	must(t, d, `INSERT INTO kb_test_cases (product_id, code, epic_code, spec_paths, content_hash) VALUES (1,'TC-AUTH-001','AUTH','[]',?), (1,'TC-PAT-001','PAT','[]',?)`, hash64, hash64)
 	t0 := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
 	ins := func(id, typ, status, payload string, created time.Time, started, completed *time.Time, result string) {
@@ -103,7 +103,7 @@ func TestHistoryBuildsDB(t *testing.T) {
 	if a["queue_ms"] != float64(10000) || a["active_ms"] != float64(7200000) || a["waiting_ms"] != float64(5400000) || a["machine_ms"] != float64(1800000) {
 		t.Errorf("job-a timing %v %v %v %v", a["queue_ms"], a["active_ms"], a["waiting_ms"], a["machine_ms"])
 	}
-	if a["epic_code"] != "AUTH" || a["batch_id"] != "eb-1" || a["product_name"] != "HIS" || a["pr_url"] != "https://example/pr/1" || a["approvals"] != float64(2) || a["runs"] != float64(2) {
+	if a["epic_code"] != "AUTH" || a["batch_id"] != "eb-1" || a["product_name"] != "SUT" || a["pr_url"] != "https://example/pr/1" || a["approvals"] != float64(2) || a["runs"] != float64(2) {
 		t.Errorf("job-a fields %v", a)
 	}
 	steps := map[string]float64{}
@@ -165,7 +165,7 @@ func TestHistoryRunsAndTheIngestDoors(t *testing.T) {
 	r := NewRouter(d, nil, nil, nil)
 	r.SetResultsIngestToken(ingestTok)
 	ctx := context.Background()
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	for _, c := range []string{"TC-AUTH-001", "TC-AUTH-002", "TC-VOCBOOK-007"} {
 		must(t, d, `INSERT INTO kb_test_cases (product_id, code, epic_code, spec_paths, content_hash) VALUES (1,?,?,'[]',?)`, c, strings.Split(c, "-")[1], hash64)
 	}
@@ -291,12 +291,12 @@ func TestHistoryRunsAndTheIngestDoors(t *testing.T) {
 func TestHistorySyncsDB(t *testing.T) {
 	d := testdb.New(t)
 	r := NewRouter(d, nil, nil, nil)
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
 	must(t, d, `INSERT INTO kb_syncs (product_id, status, trigger_kind, started_at, finished_at) VALUES
 		(1,'succeeded','manual','2026-11-20 08:00:00','2026-11-20 08:01:30'), (1,'failed','schedule','2026-11-19 08:00:00','2026-11-19 08:00:05'), (2,'running','manual','2026-11-20 09:00:00',NULL)`)
 	m := getJSON(t, r, "/api/history/syncs", 200)
 	list := items(m)
-	if m["total"] != float64(3) || list[0]["status"] != "running" || list[0]["duration_ms"] != nil || list[1]["duration_ms"] != float64(90000) || list[1]["trigger"] != "manual" || list[1]["product_name"] != "HIS" {
+	if m["total"] != float64(3) || list[0]["status"] != "running" || list[0]["duration_ms"] != nil || list[1]["duration_ms"] != float64(90000) || list[1]["trigger"] != "manual" || list[1]["product_name"] != "SUT" {
 		t.Fatalf("syncs %v", m)
 	}
 	for q, want := range map[string]int{"product=1": 2, "status=failed": 1, "from=2026-11-20": 2} {

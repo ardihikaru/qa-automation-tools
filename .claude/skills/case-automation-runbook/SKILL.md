@@ -1,6 +1,6 @@
 ---
 name: case-automation-runbook
-description: Run an existing HISv3 test case's Playwright spec, or create a new automation spec for a case with claude-v3, through the qa-tool (job states, live event log, approval via dashboard or GAOS Inbox, PR on the automation repo). Use when asked to run/rerun/create automation for a case, watch or debug a case_run/case_create job, or fix why one is stuck or failed.
+description: Run an existing SUT test case's Playwright spec, or create a new automation spec for a case with claude-v3, through the qa-tool (job states, live event log, approval via dashboard or GAOS Inbox, PR on the automation repo). Use when asked to run/rerun/create automation for a case, watch or debug a case_run/case_create job, or fix why one is stuck or failed.
 ---
 
 # Case automation runbook
@@ -15,10 +15,10 @@ Contract: [docs/designs/CASE_AUTOMATION.md](../../../docs/designs/CASE_AUTOMATIO
 ## Watching
 `GET /api/jobs/{id}/events?since=<seq>` (poll 2 s) or the dashboard `/jobs/{id}`. Executor side: `GET :8141/v1/runs/{id}?since=<n>` (bearer, never print it).
 
-## Prerequisites on rnd-v3 (check, never print values)
-- `REPO_POOL_HOST_DIR` in `deploy/his-v3-qa/.env.prod` (host path of the pool the backend sees as `/data/repos`).
+## Prerequisites on app-host (check, never print values)
+- `REPO_POOL_HOST_DIR` in `deploy/qa-tool/.env.prod` (host path of the pool the backend sees as `/data/repos`).
 - The product has an `automation` repo, verified, cloned in the pool; `npm ci` is done by the executor once per lockfile hash.
-- `~/.config/qa-automation/automation-<productId>.env`, mode 600, holding the automation repo's staging variables (see its `env/.env.staging.example`: URLs, `HIS_AUTH_*`, `PROTECTED_HOSTS`). The executor refuses a run if it is missing, not mode 600, or has a host outside `EXECUTOR_ALLOWED_HOSTS`. Ask the user to create it: never invent or print credentials.
+- `~/.config/qa-automation/automation-<productId>.env`, mode 600, holding the automation repo's staging variables (see its `env/.env.staging.example`: URLs, `SUT_AUTH_*`, `PROTECTED_HOSTS`). The executor refuses a run if it is missing, not mode 600, or has a host outside `EXECUTOR_ALLOWED_HOSTS`. Ask the user to create it: never invent or print credentials.
 - Executor unit re-installed after executor changes (`deploy-qa-tool` skill). Caps unchanged (2.5 GiB / 60 % CPU, one run at a time).
 
 ## Troubleshooting

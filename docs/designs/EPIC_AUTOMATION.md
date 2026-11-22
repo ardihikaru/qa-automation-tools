@@ -4,7 +4,7 @@ Status: **v3, implemented** (2026-11-15) after two EGM review rounds (readiness,
 
 ## 1. Problem
 
-GAOS tracks HISv3 as 47 epic cards ("Automate: AUTH", …), Blocked by its design gate (BR-46) with its own agent runner off. Each epic is a group of cases in `kb_test_cases`; 1,206 of 1,700 cases have no spec and 646 of those are plain *planned* (`reason_category = ''`). An operator can press **Create automation** on one case at a time; there is no way to say "work through AUTH".
+GAOS tracks SUT as 47 epic cards ("Automate: AUTH", …), Blocked by its design gate (BR-46) with its own agent runner off. Each epic is a group of cases in `kb_test_cases`; 1,206 of 1,700 cases have no spec and 646 of those are plain *planned* (`reason_category = ''`). An operator can press **Create automation** on one case at a time; there is no way to say "work through AUTH".
 
 ## 2. Goal and non-goals
 

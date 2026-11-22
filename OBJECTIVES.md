@@ -10,11 +10,11 @@ This document outlines the objectives of the AI-Powered QA and System Documentat
 
 Based on the project references, the main objectives are:
 
-1. **Read all available roles** in the HIS V3 system (e.g., https://stag-app-hisv3.sismedika.online/)
+1. **Read all available roles** in the SUT system (e.g., https://stag-app.mfardiansyah.id/)
 2. **Automatically generate full documentation** with AI narration. As of 2026-11-13, every LLM call goes through ai-manager pinned to **claude-v3**; MiniMax is dormant.
 3. **Documentation runs** (`docs_generate`, previously playwright-docs): self-exploration of system menus, screenshots and narratives
 4. **QA runs** (`qa_run`, previously playwright-qa): periodic QA automation that tests and submits results to the backend.
-   Both now run in **playwright-executor**, a systemd/mise service on rnd-v3 capped at 2.5 GiB / 60 % CPU ([spec](docs/designs/PLAYWRIGHT_EXECUTOR.md)).
+   Both now run in **playwright-executor**, a systemd/mise service on app-host capped at 2.5 GiB / 60 % CPU ([spec](docs/designs/PLAYWRIGHT_EXECUTOR.md)).
 5. **ai-backend**: Support communication with every data logging
 6. **dashboard**: Visualize everything related to QA automation activities
 7. **Automated testing** with detailed logs - query AI to analyze potential bugs (FE/BE), estimate commit hash where issue was introduced
@@ -151,7 +151,7 @@ Sections 6 and 7 below describe the deprecated packages. Their run paths now liv
 
 | Feature | Where | Status |
 |---------|-------|--------|
-| Run service (HTTP API, bearer auth, concurrency 1, timeouts) | `playwright-executor/src/server.ts`, `queue.ts` | ✅ Deployed on rnd-v3 :8141 |
+| Run service (HTTP API, bearer auth, concurrency 1, timeouts) | `playwright-executor/src/server.ts`, `queue.ts` | ✅ Deployed on app-host :8141 |
 | QA run: login, random exploration, built-in skills, JS errors, HTTP 5xx | `src/runs/qaRun.ts`, `src/skills/builtin.ts` | ✅ |
 | Docs run: per-role flows + screenshots | `src/runs/docsGenerate.ts`, `src/flows/flows.ts` | ✅ |
 | Backend dispatch (`/api/jobs/qa/run`, `/api/jobs/docs/generate`) | `ai-backend/internal/api/jobs_executor.go` | ✅ Issues → `raw_issues`, docs → Markdown via claude-v3 |
@@ -278,7 +278,6 @@ Sections 6 and 7 below describe the deprecated packages. Their run paths now liv
 - `pdf-instruction-summary.md` - Full system design from PDF
 - `system_analysis.md` - System analysis document
 - `database-admin.md` - Database schema design
-- `staging-hisv3-docs.md` - HIS V3 testing summary
 - `tutorial-playwright-docs.md` - How to run Playwright Docs
 
 ---

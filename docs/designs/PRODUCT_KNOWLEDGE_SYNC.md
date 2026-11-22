@@ -7,9 +7,9 @@
 *   **Code references** use function names. Line numbers are approximate.
 
 ## Overview
-A product's **automation repo** (`product_repos.is_automation = 1`) can hold a structured catalog of the product. HISv3's automation repo, `developersismedika/automation-test-hisv3`, keeps one under `docs/`. The table below shows what it contains; the counts are taken at commit `521618a`.
+A product's **automation repo** (`product_repos.is_automation = 1`) can hold a structured catalog of the product. SUT's automation repo, `example-org/automation-test-sut`, keeps one under `docs/`. The table below shows what it contains; the counts are taken at commit `521618a`.
 
-| Entity | Where it is defined | Example | HISv3 count |
+| Entity | Where it is defined | Example | SUT count |
 |---|---|---|---|
 | Part | `docs/modules/[A-D]-<name>.md`, one top-level file per part | `A` | 4 |
 | Module | a `### A01 — Name` heading inside a part file | `A01` | 39 |
@@ -37,12 +37,12 @@ The sync is a deterministic Go parser. claude-v3, reached through ai-manager, on
 3.  Every sync stores its diff and its parse problems. The AI writes a natural-language summary of the diff. If the AI step fails, the sync still counts as succeeded.
 4.  Pages to browse the Part → Module → Sub-module → Feature tree, the stories and the test cases. Every entity shows its trace chain: feature, then stories, then test cases, then spec paths.
 5.  Local notes and tags on any entity, and they survive re-syncs. Local draft stories and test cases, clearly marked, that can never collide with synced ids.
-6.  The format is pluggable per product (`knowledge_format`). The HISv3 format is the first one shipped, and the only one for now.
+6.  The format is pluggable per product (`knowledge_format`). The SUT format is the first one shipped, and the only one for now.
 
 ## Non-Goals
 *   **Writing back to the automation repo.** Synced records are read-only in the app. The sync never commits or pushes. It never touches the product's clone, its worktrees, its `.git` or its remote configuration (see "Reading the repo").
 *   **AI extraction of entities.** It is not repeatable. Each new product format gets its own Go adapter.
-*   **Reading the `SC-*` and long-form `US-*` source documents in `his-v3-ai`.**
+*   **Reading the `SC-*` and long-form `US-*` source documents in `sut-ai`.**
 *   **Linking test cases to executor runs.** That is future work. `spec_paths` makes it possible later.
 
 ## Decisions (user, 2026-11-13)
@@ -70,14 +70,14 @@ The product's clone in the pool is shared with AI agents and humans, so the sync
 *   **The `run()` helper truncates output at 2000 characters.** A new helper `runBytes(ctx, dir string, safeDirs []string, extraEnv []string, stdin io.Reader, timeout time.Duration, maxBytes int64, name string, args ...string) ([]byte, error)` returns stdout as raw bytes. It uses the same `childEnv`, process-group kill and `WaitDelay`. Stderr is captured separately, truncated, and used only in the error text.
 *   **Mirrors are owned by the sync.** Deleting a mirror is always safe, because the next sync recreates it.
 
-The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. HISv3's `docs/` holds about 1 MB of `.md` files plus one CSV.
+The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. SUT's `docs/` holds about 1 MB of `.md` files plus one CSV.
 
 ### Format adapters: package `ai-backend/internal/services/knowledge`
 *   **`catalog.go`**:
     *   `type Format interface { Name() string; Version() int; Parse(files map[string][]byte) (*Snapshot, []Problem, error) }`.
     *   `var formats = map[string]Format{…}`, with `Lookup(name)` and `Names()`.
     *   The `Snapshot` and `Problem{File, Line, Msg}` types, plus `Enums()` (see below).
-*   **`hisv3.go`** is named `hisv3-test-catalog-v1` and has `Version() = 1`. Raise the version on any change that alters parse output. It ports the parse half of `scripts/test-catalog.mjs` at `521618a`. Where that script uses `Map.set`, duplicates resolve as **last wins**, which matches the script, and every duplicate is also recorded as a Problem. Lines are split on `\n`, and a trailing `\r` is stripped from each line.
+*   **`testcatalog.go`** is named `test-catalog-v1` and has `Version() = 1`. Raise the version on any change that alters parse output. It ports the parse half of `scripts/test-catalog.mjs` at `521618a`. Where that script uses `Map.set`, duplicates resolve as **last wins**, which matches the script, and every duplicate is also recorded as a Problem. Lines are split on `\n`, and a trailing `\r` is stripped from each line.
     *   **Parts and modules.**
         *   Files: `^docs/modules/[A-D]-[^/]+\.md$`, top level only.
         *   Part: `{code: first letter, name: text of the first "# " line, or the base name if there is none}`.
@@ -146,8 +146,8 @@ The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. HISv3'
 
     Statuses `blocked`, `manual-only` and `wont` need a reason. An `automated` case needs at least one spec path. These two rules are enforced for local drafts (400) and are only Problems for synced rows.
 *   **Tests:**
-    *   `hisv3_test.go` has a table-driven test for every rule above, including CRLF input and each duplicate and last-wins case.
-    *   It also has a **golden test** over `testdata/hisv3-521618a/` (the `.md` files of `docs/` copied verbatim). It asserts 4 parts, 39 modules, 444 features, 46 epics, 246 stories (9 of them unmapped), and 1659 test cases (456 automated). The sub-module count is recorded at copy time.
+    *   `testcatalog_test.go` has a table-driven test for every rule above, including CRLF input and each duplicate and last-wins case.
+    *   It also has a **golden test** over `testdata/sample-catalog/`, a small synthetic catalog of a fictional app that covers every parser branch. It asserts 3 parts, 7 modules, 26 features, 14 sub-modules, 5 epics, 17 stories (2 of them unmapped), and 31 test cases (14 automated). See `testdata/README.md`.
     *   `testdata/README.md` records the source SHA and how to refresh the copy.
 
 ### Schema (appended to `ai-backend/internal/db/migrations.go`)
@@ -210,11 +210,11 @@ The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. HISv3'
 
     ```sql
     INSERT INTO product_settings (product_id, knowledge_format)
-    SELECT id, 'hisv3-test-catalog-v1' FROM products WHERE name = 'HISv3'
-    ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_settings.knowledge_format, 'hisv3-test-catalog-v1')
+    SELECT id, 'test-catalog-v1' FROM products WHERE name = 'SUT'
+    ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_settings.knowledge_format, 'test-catalog-v1')
     ```
 
-    Once any product has a value, including an admin's `''`, the guard skips the seed forever. While no product has a value, the seed runs on every migration and does nothing unless a product named `HISv3` exists. That is intended: a HISv3 product created later still gets the default.
+    Once any product has a value, including an admin's `''`, the guard skips the seed forever. While no product has a value, the seed runs on every migration and does nothing unless a product named `SUT` exists. That is intended: a SUT product created later still gets the default.
 
 The `kb_*` tables come before the ALTER and the seed, in the order `kb_syncs`, `kb_parts`, `kb_modules`, `kb_submodules`, `kb_features`, `kb_epics`, `kb_stories`, `kb_test_cases`, `kb_story_features`, `kb_annotations`.
 
@@ -297,7 +297,7 @@ The backend is one process, so every `running` or `pending` row found at startup
 *   It logs once when it starts, as `StartProductVerifier` does.
 *   The mirror lock is separate from the verifier's lock, so the two schedulers firing together do not contend.
 
-**Config:** `KB_SYNC_INTERVAL_MINUTES` uses `getEnvInt`, defaults to `360`, and `0` turns it off. It goes into `ProductsConfig.KnowledgeSyncIntervalMinutes` in `internal/config/config.go`, and is documented in `ai-backend/.env.example` and `deploy/his-v3-qa/.env.prod.example`.
+**Config:** `KB_SYNC_INTERVAL_MINUTES` uses `getEnvInt`, defaults to `360`, and `0` turns it off. It goes into `ProductsConfig.KnowledgeSyncIntervalMinutes` in `internal/config/config.go`, and is documented in `ai-backend/.env.example` and `deploy/qa-tool/.env.prod.example`.
 
 **Wiring in `cmd/server/main.go`:** after `router.SetRepoPool(pool)`:
 *   `syncer := knowledge.NewSyncer(database, pool, aiService)` (nil when `database == nil`);
@@ -505,14 +505,14 @@ Everything here is additive. The previous binary ignores the new tables and the 
 *   **Spec PR:** `docs/designs/PRODUCT_KNOWLEDGE_SYNC.md`, `docs/designs/SITEMAP.md` (this row added; `PRODUCT_REPOS_AUTOMATION_ROLE.md` flipped to Implemented, PR #17).
 *   **Backend:**
     *   `ai-backend/internal/services/repopool/repopool.go` (`ReadTree`, `runBytes`) and `repopool_test.go`, `README.md`
-    *   new `ai-backend/internal/services/knowledge/` (`catalog.go`, `hisv3.go`, `sync.go`, `store.go`, `query.go`, `text.go`, `*_test.go`, `testdata/**`, `README.md`)
+    *   new `ai-backend/internal/services/knowledge/` (`catalog.go`, `testcatalog.go`, `sync.go`, `store.go`, `query.go`, `text.go`, `*_test.go`, `testdata/**`, `README.md`)
     *   `ai-backend/internal/db/migrations.go`, `ai-backend/internal/db/README.md`
     *   new `ai-backend/internal/api/knowledge.go`, `knowledge_test.go`
     *   `ai-backend/internal/api/products.go`, `ai-backend/internal/api/router.go` (the field and setter only), `ai-backend/internal/api/README.md`
     *   `ai-backend/internal/models/models.go`
     *   `ai-backend/internal/config/config.go`
     *   `ai-backend/cmd/server/main.go`
-    *   `ai-backend/.env.example`, `deploy/his-v3-qa/.env.prod.example`
+    *   `ai-backend/.env.example`, `deploy/qa-tool/.env.prod.example`
 *   **Dashboard:** `dashboard/src/App.tsx`, `dashboard/src/views/products/ProductDetail.tsx`, `dashboard/src/views/products/api.ts`, new `dashboard/src/views/knowledge/*`, `dashboard/src/index.css` (drawer and reduced-motion only), `dashboard/README.md`.
 *   **E2E:** new `this-qa-automation-system-playwright/tests/knowledge.spec.ts`, following that directory's conventions.
 *   **Not changed:** the executor, Dockerfile, compose, nginx and `lib/`.
@@ -531,6 +531,6 @@ Everything here is additive. The previous binary ignores the new tables and the 
 2.  Migration: run `go run -mod=mod ./cmd/databasemigration` against prod `qa_automation` before the binary is deployed, then run it a second time and confirm it does nothing.
 3.  `cd dashboard && npm run build`.
 4.  After deploy, through `qa-tool-session` as `ai-service` impersonating an Admin (the user requested this write):
-    1.  Call `POST /api/products/<HISv3>/knowledge/sync` and poll until it succeeds.
+    1.  Call `POST /api/products/<SUT>/knowledge/sync` and poll until it succeeds.
     2.  Call `GET summary`. The counts must match the current HEAD.
     3.  Sync again. The diff must be empty and `unchanged` must be true.

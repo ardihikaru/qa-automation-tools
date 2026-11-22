@@ -11,11 +11,11 @@ import (
 )
 
 func TestValidateProduct(t *testing.T) {
-	ok := models.Product{Name: " HISv3 ", StagingURL: " https://staging.example.com "}
+	ok := models.Product{Name: " SUT ", StagingURL: " https://staging.example.com "}
 	if msg := validateProduct(&ok); msg != "" {
 		t.Fatalf("valid product rejected: %s", msg)
 	}
-	if ok.Name != "HISv3" || ok.StagingURL != "https://staging.example.com" {
+	if ok.Name != "SUT" || ok.StagingURL != "https://staging.example.com" {
 		t.Fatalf("fields must be trimmed: %+v", ok)
 	}
 	bad := []models.Product{

@@ -214,7 +214,7 @@ function fakeDeps(fx: Fx, script: (call: Call, c: { out: PassThrough; err: PassT
       return child as unknown as ChildProcess;
     }) as unknown as CaseRunDeps['spawn'],
     killGroup: (p, s) => kills.push([p, s]),
-    baseEnv: { PATH: '/bin', HOME: '/home/x', EXECUTOR_TOKEN: 'leak-me', HISV3_CREDENTIALS_FILE: '/secret', SECRET_OTHER: 'nope' },
+    baseEnv: { PATH: '/bin', HOME: '/home/x', EXECUTOR_TOKEN: 'leak-me', TARGET_CREDENTIALS_FILE: '/secret', SECRET_OTHER: 'nope' },
     graceMs: 20,
   };
 }
@@ -255,7 +255,7 @@ test('caseRun: npm ci then playwright, minimal env, redacted events, report and 
     assert.equal(c.opts.detached, true);
     assert.equal(c.opts.cwd, fx.repo);
     assert.equal(c.opts.env.EXECUTOR_TOKEN, undefined);
-    assert.equal(c.opts.env.HISV3_CREDENTIALS_FILE, undefined);
+    assert.equal(c.opts.env.TARGET_CREDENTIALS_FILE, undefined);
     assert.equal(c.opts.env.SECRET_OTHER, undefined);
     assert.equal(c.opts.env.PATH, '/bin');
   }

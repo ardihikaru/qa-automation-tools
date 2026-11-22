@@ -7,7 +7,7 @@ import (
 )
 
 func TestObjectStoreConfigRedaction(t *testing.T) {
-	c := ObjectStoreConfig{Endpoint: "10.10.0.5:9000", AccessKey: "AKIA-ACCESS-VALUE", SecretKey: "SECRET-VALUE-xyz", Bucket: "bkt", KeyNamespace: "prod", TimeoutSeconds: 5}
+	c := ObjectStoreConfig{Endpoint: "10.8.0.5:9000", AccessKey: "AKIA-ACCESS-VALUE", SecretKey: "SECRET-VALUE-xyz", Bucket: "bkt", KeyNamespace: "prod", TimeoutSeconds: 5}
 	for _, v := range []any{c, &c} {
 		for _, f := range []string{"%v", "%+v", "%#v", "%s"} {
 			out := fmt.Sprintf(f, v)
@@ -29,7 +29,7 @@ func TestObjectStoreConfigCheck(t *testing.T) {
 		t.Fatalf("valid TLS config: %v", err)
 	}
 	plainWG := ok
-	plainWG.UseSSL, plainWG.Endpoint = false, "10.10.0.9:9000"
+	plainWG.UseSSL, plainWG.Endpoint = false, "10.8.0.9:9000"
 	if err := plainWG.Check(); err != nil {
 		t.Errorf("plaintext on WireGuard must be accepted: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestObjectStoreConfigCheck(t *testing.T) {
 		"scheme in endpoint":   func(c *ObjectStoreConfig) { c.Endpoint = "https://minio:9000" },
 		"plaintext public ip":  func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "8.8.8.8:9000" },
 		"plaintext hostname":   func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "minio.local:9000" },
-		"plaintext 10.10.1.x":  func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "10.10.1.4:9000" },
+		"plaintext CGNAT ip":   func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "100.64.1.4:9000" },
 	}
 	for name, mut := range cases {
 		c := ok

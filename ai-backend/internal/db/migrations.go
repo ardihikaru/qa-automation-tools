@@ -624,12 +624,12 @@ WHERE m.is_main = 1 AND a.id IS NULL;`,
 	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'product_settings' AND column_name = 'knowledge_format'
 ALTER TABLE product_settings ADD COLUMN knowledge_format VARCHAR(50) NULL DEFAULT NULL;`,
 
-	// One-time seed: HISv3 uses the HISv3 test catalog. Skipped forever once any product has a
+	// One-time seed: SUT uses the SUT test catalog. Skipped forever once any product has a
 	// value (including an admin's ''), so it never overrides a decision.
 	`-- skip-if: SELECT COUNT(*) FROM product_settings WHERE knowledge_format IS NOT NULL
 INSERT INTO product_settings (product_id, knowledge_format)
-SELECT id, 'hisv3-test-catalog-v1' FROM products WHERE name = 'HISv3'
-ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_settings.knowledge_format, 'hisv3-test-catalog-v1');`,
+SELECT id, 'test-catalog-v1' FROM products WHERE name = 'SUT'
+ON DUPLICATE KEY UPDATE product_settings.knowledge_format = COALESCE(product_settings.knowledge_format, 'test-catalog-v1');`,
 	// COST_TRACKING: one row per AI call attempt made by this backend (success or failure), with
 	// the feature that issued it. Replaces the never-written request_logs for the /cost page.
 	`CREATE TABLE IF NOT EXISTS ai_call_log (
@@ -1003,6 +1003,10 @@ ALTER TABLE case_approvals
   ADD COLUMN answer_source VARCHAR(32) NULL,
   ADD COLUMN answer_actor VARCHAR(120) NULL,
   ADD COLUMN answer_source_detail JSON NULL;`,
+	// The test-catalog knowledge format lost its product prefix ("<product>-test-catalog-v1" is now
+	// "test-catalog-v1"). Idempotent: a second run matches no rows.
+	`UPDATE product_settings SET knowledge_format = 'test-catalog-v1'
+WHERE knowledge_format LIKE '%-test-catalog-v1';`,
 }
 
 const skipIfPrefix = "-- skip-if:"

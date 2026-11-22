@@ -1,6 +1,6 @@
 # playwright-executor — agent instructions
 
-This is the only place Playwright runs for qa-automation. It is a Node/TS HTTP service that runs on rnd-v3 as a systemd user unit, with its toolchain from mise. The contract is in [README.md](README.md). The parent rules are in [../CLAUDE.md](../CLAUDE.md). Deploy and ops are in [../deploy/playwright-executor/README.md](../deploy/playwright-executor/README.md).
+This is the only place Playwright runs for qa-automation. It is a Node/TS HTTP service that runs on app-host as a systemd user unit, with its toolchain from mise. The contract is in [README.md](README.md). The parent rules are in [../CLAUDE.md](../CLAUDE.md). Deploy and ops are in [../deploy/playwright-executor/README.md](../deploy/playwright-executor/README.md).
 
 - **Toolchain.** Always run through mise (`mise exec -- npm ...`). Node is pinned in `mise.toml`, and `playwright` is pinned to an exact version in `package.json`. Bumping Playwright means re-running `install.sh` so the matching Chromium is downloaded.
 - **Commands.**

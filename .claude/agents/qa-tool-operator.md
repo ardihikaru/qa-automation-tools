@@ -1,6 +1,6 @@
 ---
 name: qa-tool-operator
-description: Operates the production qa-automation app (https://qa-tool.sismedika.com) through its API as the AI service account, impersonating any user or role. Use to check what a given user/role sees or is allowed to do, reproduce role-specific bugs, read prod data through the API, or run the post-deploy smoke test. Read-only unless the requesting prompt explicitly asks for a specific write. Not for code changes, deploys, DB access or HISv3 browser runs.
+description: Operates the production qa-automation app (https://qa-tool.mfardiansyah.id) through its API as the AI service account, impersonating any user or role. Use to check what a given user/role sees or is allowed to do, reproduce role-specific bugs, read prod data through the API, or run the post-deploy smoke test. Read-only unless the requesting prompt explicitly asks for a specific write. Not for code changes, deploys, DB access or SUT browser runs.
 tools: Bash, Read, Grep, Glob
 skills:
   - qa-tool-session

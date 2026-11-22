@@ -58,7 +58,7 @@ func (f *fakeGAOS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const relaySource = `{"kind":"qa-tool","client":"qa-automation-tools","origin":"qa-tool.sismedika.com","actor":{"username":"tester","display":"Test Er"}}`
+const relaySource = `{"kind":"qa-tool","client":"qa-automation-tools","origin":"qa-tool.mfardiansyah.id","actor":{"username":"tester","display":"Test Er"}}`
 
 func answered(ext, label, text, source string) string {
 	return `{"externalId":"` + ext + `","status":"answered","choice":1,"optionLabel":"` + label + `","text":"` + text + `","answeredAt":"2026-11-21T10:00:00Z","source":` + source + `}`
@@ -83,7 +83,7 @@ func relayFixture(t *testing.T) relayFix {
 	r.SetGAOSInboundToken(inboundTok)
 	r.approvalRelay.timeout = 400 * time.Millisecond
 	r.approvalRelay.reconcile = 400 * time.Millisecond
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	must(t, d, `INSERT INTO product_settings (product_id, gaos_integrated, gaos_product_id) VALUES (1,1,'p-6')`)
 	now := time.Now().UTC()
 	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at, started_at) VALUES ('job-r','case_create','running',?,?,?)`,
@@ -144,7 +144,7 @@ func TestRelay200AppliesAtOnceAndTheLateWebhookIsANoOp(t *testing.T) {
 		t.Fatalf("request %s %+v", f.gaos.lastURL, f.gaos.lastReq)
 	}
 	a := readApproval(t, f.d, "qa-job-r-pr")
-	if a.status != "approved" || a.source != caseauto.SourceHistory || a.actor != "tester" || a.by != "dashboard" || !strings.Contains(a.detail, "qa-tool.sismedika.com") {
+	if a.status != "approved" || a.source != caseauto.SourceHistory || a.actor != "tester" || a.by != "dashboard" || !strings.Contains(a.detail, "qa-tool.mfardiansyah.id") {
 		t.Fatalf("%+v", a)
 	}
 	// GAOS also delivers the webhook: first answer wins, nothing is overwritten.
@@ -163,7 +163,7 @@ func TestRelay200AppliesAtOnceAndTheLateWebhookIsANoOp(t *testing.T) {
 
 func TestRelay409AppliesTheFirstAnswer(t *testing.T) {
 	f := relayFixture(t)
-	other := `{"kind":"gaos","client":"gaos-web","origin":"gaos.sismedika.com","actor":{"username":"budi","display":"Budi"}}`
+	other := `{"kind":"gaos","client":"gaos-web","origin":"gaos.mfardiansyah.id","actor":{"username":"budi","display":"Budi"}}`
 	f.gaos.answer = func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		_, _ = w.Write([]byte(strings.Replace(answered("qa-job-r-pr", "Reject", "not now", other), `{"externalId"`, `{"error":"already_answered","externalId"`, 1)))
@@ -369,7 +369,7 @@ func TestRelayWebhookBeforeOurAnswerIsClaimed(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	a := readApproval(t, f.d, "qa-job-r-pr")
-	if a.status != "approved" || a.source != caseauto.SourceHistory || a.actor != "tester" || !strings.Contains(a.detail, "qa-tool.sismedika.com") {
+	if a.status != "approved" || a.source != caseauto.SourceHistory || a.actor != "tester" || !strings.Contains(a.detail, "qa-tool.mfardiansyah.id") {
 		t.Fatalf("not claimed: %+v", a)
 	}
 	if ev := jobEventTexts(t, f.d, "job-r"); !strings.Contains(ev, "came from the run history by tester (relayed)") {
@@ -491,7 +491,7 @@ func TestHistoryApprovalsAndBuildsApproval(t *testing.T) {
 		byJob[it["job_id"].(string)] = it
 	}
 	c := byJob["job-r"]
-	if c["job_type"] != "case_create" || c["case_code"] != "TC-AUTH-001" || c["spec_path"] != "tests/auth/login.spec.ts" || c["relay"] != true || c["round"] != float64(1) || c["product_name"] != "HIS" {
+	if c["job_type"] != "case_create" || c["case_code"] != "TC-AUTH-001" || c["spec_path"] != "tests/auth/login.spec.ts" || c["relay"] != true || c["round"] != float64(1) || c["product_name"] != "SUT" {
 		t.Errorf("case_create %v", c)
 	}
 	if rep, _ := c["report"].(map[string]any); rep["passed"] != float64(3) || rep["skipped"] != float64(1) {

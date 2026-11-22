@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       allowedHosts: [
         'localhost',
         '127.0.0.1',
-        'qa-tool.minipc.sismedika.biz.id',
+        'qa-tool.local.mfardiansyah.id',
         ...(env.VITE_ALLOWED_HOSTS || '')
           .split(',')
           .map((h) => h.trim())

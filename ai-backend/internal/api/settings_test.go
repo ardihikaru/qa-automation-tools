@@ -11,9 +11,9 @@ import (
 func TestHandleSettings_NoSecrets(t *testing.T) {
 	r := &Router{}
 	r.SetSettings(SettingsInfo{
-		AIProvider: "ai-manager", ManagerURL: "http://user:pw@10.10.0.4:8099/v1/chat?k=secret",
+		AIProvider: "ai-manager", ManagerURL: "http://user:pw@10.8.0.4:8099/v1/chat?k=secret",
 		ManagerProvider: "claude-v3", NoFallback: true, TimeoutSeconds: 180,
-		ExecutorURL: "http://10.10.0.9:8141",
+		ExecutorURL: "http://10.8.0.9:8141",
 	})
 	rec := httptest.NewRecorder()
 	r.handleSettings(rec, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
@@ -30,7 +30,7 @@ func TestHandleSettings_NoSecrets(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AI.GatewayHost != "10.10.0.4:8099" || !got.AI.PinnedToClaudeV3 {
+	if got.AI.GatewayHost != "10.8.0.4:8099" || !got.AI.PinnedToClaudeV3 {
 		t.Fatalf("unexpected: %+v", got.AI)
 	}
 }

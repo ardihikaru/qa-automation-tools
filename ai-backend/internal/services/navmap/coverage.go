@@ -66,7 +66,7 @@ func CaseSets(routes []Route, links map[string][]CaseLink, facts map[string]Case
 			set[c] = true
 		}
 		// A wildcard route, and a route with no case of its own (a catalog prefix such as
-		// /api/v1/kiosk-his-v2), stand for the routes under them.
+		// /api/v1/kiosk-sut-v2), stand for the routes under them.
 		// The app root "/" never stands for the whole app.
 		if strings.HasSuffix(r.Path, "/*") || (len(set) == 0 && r.Path != "/") {
 			prefix := strings.TrimSuffix(r.Path, "*")

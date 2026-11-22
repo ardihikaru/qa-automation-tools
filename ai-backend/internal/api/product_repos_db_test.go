@@ -76,14 +76,14 @@ func find(t *testing.T, p models.Product, name string) models.ProductRepo {
 	return models.ProductRepo{}
 }
 
-func createHISv3(t *testing.T, r *Router) models.Product {
+func createSUT(t *testing.T, r *Router) models.Product {
 	t.Helper()
 	return mustCall(t, r, "Admin", http.MethodPost, "/api/products", map[string]any{
-		"name": "HISv3", "staging_url": "https://staging.example.com",
+		"name": "SUT", "staging_url": "https://staging.example.com",
 		"repos": []map[string]any{
 			{"name": "automation", "repo_url": "https://github.com/o/auto", "root_dir": "o/auto", "is_main": true,
 				"branches": []string{"main", "release/1.0"}, "default_branch": "main"},
-			{"name": "his-v3-ai", "repo_url": "https://github.com/o/his-v3-ai", "root_dir": "o/his-v3-ai", "is_central": true,
+			{"name": "sut-ai", "repo_url": "https://github.com/o/sut-ai", "root_dir": "o/sut-ai", "is_central": true,
 				"branches": []string{"dev"}, "default_branch": "dev"},
 		},
 	}, http.StatusCreated)
@@ -95,9 +95,9 @@ func createSplit(t *testing.T, r *Router, staging string) models.Product {
 	return mustCall(t, r, "Admin", http.MethodPost, "/api/products", map[string]any{
 		"name": "Split", "staging_url": staging,
 		"repos": []map[string]any{
-			{"name": "his-v3-ai", "repo_url": "https://github.com/o/his-v3-ai", "root_dir": "o/ai-main", "is_main": true,
+			{"name": "sut-ai", "repo_url": "https://github.com/o/sut-ai", "root_dir": "o/ai-main", "is_main": true,
 				"branches": []string{"dev"}, "default_branch": "dev"},
-			{"name": "automation-test-hisv3", "repo_url": "https://github.com/o/automation-test-hisv3", "root_dir": "o/auto-test", "is_automation": true,
+			{"name": "automation-test-sut", "repo_url": "https://github.com/o/automation-test-sut", "root_dir": "o/auto-test", "is_automation": true,
 				"branches": []string{"release", "main"}, "default_branch": "main"},
 		},
 	}, http.StatusCreated)
@@ -142,7 +142,7 @@ func assertMirror(t *testing.T, r *Router, pid int, ctx string) {
 
 func TestProductsAPI_CreateReadAndLegacyMirror(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	if len(p.Repos) != 2 || !p.Repos[0].IsMain || !p.Repos[0].IsAutomation || !p.Repos[1].IsCentral || p.Repos[1].IsAutomation {
 		t.Fatalf("order main, central; main defaults to automation: %+v", p.Repos)
 	}
@@ -174,7 +174,7 @@ func TestProductsAPI_CreateReadAndLegacyMirror(t *testing.T) {
 			t.Errorf("%s: want 400, got %d %s", name, code, b)
 		}
 	}
-	if code, _ := call(t, r, "Admin", http.MethodPost, "/api/products", map[string]any{"name": "HISv3", "staging_url": "https://s.example.com",
+	if code, _ := call(t, r, "Admin", http.MethodPost, "/api/products", map[string]any{"name": "SUT", "staging_url": "https://s.example.com",
 		"repo_url": "https://github.com/o/dupname", "root_dir": "o/dupname"}); code != http.StatusConflict {
 		t.Errorf("duplicate name: want 409, got %d", code)
 	}
@@ -197,9 +197,9 @@ func TestProductsAPI_CreateReadAndLegacyMirror(t *testing.T) {
 
 func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
-	central := find(t, p, "his-v3-ai")
+	central := find(t, p, "sut-ai")
 	main := find(t, p, "automation")
 
 	// Add a sibling; same repo spelled differently, root_dir overlap and duplicate name are 409.
@@ -230,7 +230,7 @@ func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 	}
 	// Central moves; central flag clears.
 	p = mustCall(t, r, "Admin", http.MethodPut, fmt.Sprintf("%s/repos/%d", base, sib.ID), map[string]any{"is_central": true}, http.StatusOK)
-	if !find(t, p, "sib").IsCentral || find(t, p, "his-v3-ai").IsCentral {
+	if !find(t, p, "sib").IsCentral || find(t, p, "sut-ai").IsCentral {
 		t.Fatalf("central must move: %+v", p.Repos)
 	}
 	p = mustCall(t, r, "Admin", http.MethodPut, fmt.Sprintf("%s/repos/%d", base, sib.ID), map[string]any{"is_central": false}, http.StatusOK)
@@ -245,11 +245,11 @@ func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 		t.Errorf("delete main: %d", code)
 	}
 	p = mustCall(t, r, "Admin", http.MethodPut, fmt.Sprintf("%s/repos/%d", base, central.ID), map[string]any{"is_main": true}, http.StatusOK)
-	if !find(t, p, "his-v3-ai").IsMain || find(t, p, "automation").IsMain {
+	if !find(t, p, "sut-ai").IsMain || find(t, p, "automation").IsMain {
 		t.Fatalf("promotion: %+v", p)
 	}
 	// Promoting main does not move the mirror: it follows the automation repo.
-	if p.RootDir != "o/auto" || p.Branch != "main" || !find(t, p, "automation").IsAutomation || find(t, p, "his-v3-ai").IsAutomation {
+	if p.RootDir != "o/auto" || p.Branch != "main" || !find(t, p, "automation").IsAutomation || find(t, p, "sut-ai").IsAutomation {
 		t.Fatalf("main promotion must not move the mirror: %+v", p)
 	}
 	assertMirror(t, r, p.ID, "main promotion")
@@ -274,7 +274,7 @@ func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 		}
 	}
 	p = mustCall(t, r, "Admin", http.MethodPut, fmt.Sprintf("%s/repos/%d", base, central.ID), map[string]any{"is_automation": true}, http.StatusOK)
-	if !find(t, p, "his-v3-ai").IsAutomation || find(t, p, "automation").IsAutomation || p.RootDir != "o/his-v3-ai" || p.Branch != "dev" {
+	if !find(t, p, "sut-ai").IsAutomation || find(t, p, "automation").IsAutomation || p.RootDir != "o/sut-ai" || p.Branch != "dev" {
 		t.Fatalf("automation promotion: %+v", p)
 	}
 	for _, rp := range p.Repos {
@@ -299,7 +299,7 @@ func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 	}
 	p = mustCall(t, r, "Developer", http.MethodPut, fmt.Sprintf("%s/repos/%d/branches", base, central.ID),
 		map[string]any{"branches": []string{"dev", "main", "release/2"}, "default_branch": "main"}, http.StatusOK)
-	if got := find(t, p, "his-v3-ai"); got.DefaultBranch != "main" || strings.Join(got.Branches, ",") != "main,dev,release/2" || p.Branch != "main" {
+	if got := find(t, p, "sut-ai"); got.DefaultBranch != "main" || strings.Join(got.Branches, ",") != "main,dev,release/2" || p.Branch != "main" {
 		t.Fatalf("branches: %+v branch=%s", got, p.Branch)
 	}
 	assertMirror(t, r, p.ID, "branches")
@@ -329,13 +329,13 @@ func TestProductsAPI_RepoLifecycleAndInvariants(t *testing.T) {
 
 func TestProductsAPI_FlagRoleAndLegacyPut(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
 	// Developer changing the flag: 403 and nothing in the request is saved.
 	if code, _ := call(t, r, "Developer", http.MethodPut, base, map[string]any{"name": "Renamed", "allow_non_automation_work": true}); code != http.StatusForbidden {
 		t.Fatalf("developer toggle: %d", code)
 	}
-	if got := mustCall(t, r, "Developer", http.MethodGet, base, nil, 200); got.Name != "HISv3" || got.AllowNonAutomationWork {
+	if got := mustCall(t, r, "Developer", http.MethodGet, base, nil, 200); got.Name != "SUT" || got.AllowNonAutomationWork {
 		t.Fatalf("nothing may be saved on 403: %+v", got)
 	}
 	// Same value from a Developer is fine (no change); legacy repo fields are ignored with 200.
@@ -376,9 +376,9 @@ func countRows(t *testing.T, r *Router, q string, args ...any) int {
 
 func TestProductsAPI_RepoLessProduct(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
-	sib := find(t, p, "his-v3-ai")
+	sib := find(t, p, "sut-ai")
 	// Simulate a backfill conflict / rollback window: the product has no repo rows.
 	if _, err := r.db.SQL.Exec(`DELETE FROM product_repos WHERE product_id=?`, p.ID); err != nil {
 		t.Fatal(err)
@@ -411,9 +411,9 @@ func TestProductsAPI_RepoLessProduct(t *testing.T) {
 
 func TestRepoWriteAllowedDB(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	ctx := context.Background()
-	main, sib := find(t, p, "automation"), find(t, p, "his-v3-ai")
+	main, sib := find(t, p, "automation"), find(t, p, "sut-ai")
 	if err := repoWriteAllowed(ctx, r.db, main.ID, RepoOpPush); err != nil {
 		t.Fatalf("main+automation: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestRepoWriteAllowedDB(t *testing.T) {
 	}
 	// Split roles: a main repo that is not automation is read-only while the flag is off.
 	sp := createSplit(t, r, "https://s.example.com")
-	aiMain, auto := find(t, sp, "his-v3-ai"), find(t, sp, "automation-test-hisv3")
+	aiMain, auto := find(t, sp, "sut-ai"), find(t, sp, "automation-test-sut")
 	if !aiMain.IsMain || aiMain.IsAutomation || auto.IsMain || !auto.IsAutomation {
 		t.Fatalf("split roles: %+v", sp.Repos)
 	}
@@ -448,7 +448,7 @@ func TestRepoWriteAllowedDB(t *testing.T) {
 // Randomised operations; after every one the legacy columns must equal the automation repo's values.
 func TestMirrorDrift(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
 	rng := rand.New(rand.NewSource(7))
 	n := 0
@@ -494,7 +494,7 @@ func TestMirrorDrift(t *testing.T) {
 // Parallel promotions leave exactly one main and one automation repo and a consistent mirror.
 func TestParallelPromotions(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
 	p = mustCall(t, r, "Admin", http.MethodPost, base+"/repos", map[string]any{"name": "third", "repo_url": "https://github.com/o/third", "root_dir": "o/third"}, 201)
 	var wg sync.WaitGroup
@@ -525,7 +525,7 @@ func repoReport(ok bool) repopool.Report {
 // Parallel automation promotions racing storeVerify: exactly one automation repo, consistent mirror.
 func TestParallelAutomationPromotions(t *testing.T) {
 	r := newDBRouter(t)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	base := fmt.Sprintf("/api/products/%d", p.ID)
 	p = mustCall(t, r, "Admin", http.MethodPost, base+"/repos", map[string]any{"name": "third", "repo_url": "https://github.com/o/third", "root_dir": "o/third"}, 201)
 	var wg sync.WaitGroup
@@ -586,7 +586,7 @@ func TestPrecedenceTable(t *testing.T) {
 			r := newDBRouter(t)
 			r.repoPool = repopool.New(t.TempDir()) // so the legacy routes get past the pool check
 			p := createSplit(t, r, "http://127.0.0.1:1")
-			main, auto := find(t, p, "his-v3-ai"), find(t, p, "automation-test-hisv3")
+			main, auto := find(t, p, "sut-ai"), find(t, p, "automation-test-sut")
 			degrade(t, r, p.ID, state)
 			base := fmt.Sprintf("/api/products/%d", p.ID)
 			rid := auto.ID
@@ -632,7 +632,7 @@ func TestPrecedenceTable(t *testing.T) {
 			switch state {
 			case "S1": // automation exists, main is missing: is_main:true repairs; the new repo is not automation.
 				got := mustCall(t, r, "Admin", "POST", base+"/repos", newRepoBody(map[string]any{"is_main": true}), 201)
-				if !find(t, got, "added").IsMain || find(t, got, "added").IsAutomation || !find(t, got, "automation-test-hisv3").IsAutomation {
+				if !find(t, got, "added").IsMain || find(t, got, "added").IsAutomation || !find(t, got, "automation-test-sut").IsAutomation {
 					t.Errorf("S1 repair: %+v", got.Repos)
 				}
 				assertMirror(t, r, p.ID, "S1 repair")
@@ -675,7 +675,7 @@ func TestVerifySplitRoles(t *testing.T) {
 	pool.HTTP = staging.Client()
 	r.repoPool = pool
 	p := createSplit(t, r, staging.URL)
-	mainRepo, auto := find(t, p, "his-v3-ai"), find(t, p, "automation-test-hisv3")
+	mainRepo, auto := find(t, p, "sut-ai"), find(t, p, "automation-test-sut")
 
 	for _, c := range []struct {
 		rp         models.ProductRepo
@@ -717,7 +717,7 @@ func TestVerifySplitRoles(t *testing.T) {
 		}
 		return out
 	}
-	mainRepo, auto = find(t, p, "his-v3-ai"), find(t, p, "automation-test-hisv3")
+	mainRepo, auto = find(t, p, "sut-ai"), find(t, p, "automation-test-sut")
 	if got := checks(auto); !got["playwright"] || !got["staging_url"] || !auto.PlaywrightAccessible {
 		t.Fatalf("automation report must have playwright and staging_url: %v", got)
 	}
@@ -738,10 +738,10 @@ func TestVerifySplitRoles(t *testing.T) {
 
 	// A staging change clears only the automation repo's state and re-mirrors.
 	p = mustCall(t, r, "Admin", http.MethodPut, fmt.Sprintf("/api/products/%d", p.ID), map[string]any{"staging_url": "https://other.example.com"}, 200)
-	if a := find(t, p, "automation-test-hisv3"); a.LastVerifiedAt != nil || a.PlaywrightAccessible {
+	if a := find(t, p, "automation-test-sut"); a.LastVerifiedAt != nil || a.PlaywrightAccessible {
 		t.Fatalf("automation state must be cleared: %+v", a)
 	}
-	if m := find(t, p, "his-v3-ai"); m.LastVerifiedAt == nil {
+	if m := find(t, p, "sut-ai"); m.LastVerifiedAt == nil {
 		t.Fatal("the main-only repo's state must survive a staging change")
 	}
 	if p.PlaywrightAccessible || p.LastVerifiedAt != nil {
@@ -755,7 +755,7 @@ func TestVerifySplitRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, _ = fetchProduct(ctx, r.db, p.ID)
-	if a := find(t, p, "automation-test-hisv3"); a.LastVerifiedAt != nil {
+	if a := find(t, p, "automation-test-sut"); a.LastVerifiedAt != nil {
 		t.Fatalf("a result computed for a demoted automation repo must be dropped: %+v", a)
 	}
 	assertMirror(t, r, p.ID, "stale")

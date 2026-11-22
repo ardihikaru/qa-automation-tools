@@ -1,7 +1,7 @@
 import { RefreshCw } from 'lucide-react';
 
 interface Props {
-  /** Accessible name, e.g. "Sync knowledge base of HISv3". */
+  /** Accessible name, e.g. "Sync knowledge base of SUT". */
   label: string;
   busy: boolean;
   disabled?: boolean;

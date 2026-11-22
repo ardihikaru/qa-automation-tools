@@ -4,7 +4,7 @@
 This document assesses the gap between frontend API calls and backend REST API implementations.
 
 ## Production API URL
-`https://ai-backend-1087642958941.asia-southeast1.run.app`
+`https://ai-backend-000000000000.asia-southeast1.run.app`
 
 ---
 

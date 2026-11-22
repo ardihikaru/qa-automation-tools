@@ -29,7 +29,7 @@ func TestValidateRepoURL(t *testing.T) {
 }
 
 func TestValidateRelDir(t *testing.T) {
-	for _, s := range []string{"hisv3", "org/repo", "a.b/c-d_e"} {
+	for _, s := range []string{"sut", "org/repo", "a.b/c-d_e"} {
 		if err := ValidateRelDir(s); err != nil {
 			t.Errorf("%q should be valid: %v", s, err)
 		}
@@ -180,8 +180,8 @@ func TestOwnerAllowed(t *testing.T) {
 	if !p.OwnerAllowed("https://github.com/anyone/repo") {
 		t.Fatal("empty allowlist allows any owner")
 	}
-	p.AllowedOwners = []string{"developersismedika"}
-	if !p.OwnerAllowed("https://github.com/DevelopersISMedika/repo") || p.OwnerAllowed("https://github.com/other/repo") {
+	p.AllowedOwners = []string{"example-org"}
+	if !p.OwnerAllowed("https://github.com/example-org/repo") || p.OwnerAllowed("https://github.com/other/repo") {
 		t.Fatal("allowlist must be case-insensitive and exclusive")
 	}
 	if err := p.Clone(context.Background(), "https://github.com/other/repo", "x/y"); err == nil {

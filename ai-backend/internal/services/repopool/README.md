@@ -2,7 +2,7 @@
 
 ## Overview
 
-Manages product repositories checked out under one **pool directory** (`REPO_POOL_DIR`, `/data/repos` in the backend container, `<repo>/repos` on rnd-v3). It validates inputs, clones with `gh`, switches branches with `git`, and verifies that a checkout can be used by Playwright. It is the only code in ai-backend that runs `gh` or `git`. `internal/api/products.go` and `product_repos.go` are its callers.
+Manages product repositories checked out under one **pool directory** (`REPO_POOL_DIR`, `/data/repos` in the backend container, `<repo>/repos` on app-host). It validates inputs, clones with `gh`, switches branches with `git`, and verifies that a checkout can be used by Playwright. It is the only code in ai-backend that runs `gh` or `git`. `internal/api/products.go` and `product_repos.go` are its callers.
 
 ## Interface
 

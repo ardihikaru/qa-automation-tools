@@ -362,7 +362,7 @@ export default function ProductDetail({ product, poolEnabled, canManage, canVeri
         {showAddForm && canManage && (
           <form onSubmit={submitNewRepo} className="card p-4 space-y-3" aria-label="Add repo">
             <h4 className="font-semibold">{hasMain ? 'Add repo' : 'Add the main repo'}</h4>
-            <Field label="Repo name" value={newRepo.name} onChange={(v) => setNewRepo((f) => ({ ...f, name: v }))} placeholder="his-v3-ai" required />
+            <Field label="Repo name" value={newRepo.name} onChange={(v) => setNewRepo((f) => ({ ...f, name: v }))} placeholder="sut-ai" required />
             <Field label="Repo link" value={newRepo.repo_url} onChange={(v) => setNewRepo((f) => ({ ...f, repo_url: v }))} placeholder="https://github.com/owner/repo" required />
             <Field label="Root dir (inside the repo pool)" value={newRepo.root_dir} onChange={(v) => setNewRepo((f) => ({ ...f, root_dir: v }))} placeholder="owner/repo" hint="Relative to the pool. Created by Clone." required />
             <div className="flex flex-wrap gap-4 text-sm">

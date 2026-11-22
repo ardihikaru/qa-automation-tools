@@ -130,7 +130,7 @@ const { test } = require(${JSON.stringify(path.resolve(__dirname, '..', '..', 'n
 test('TC-NAV-001 probe', async ({ request }) => {
   await request.get('service-status?token=secret');
   await request.get('service-status');
-  await request.post('http://127.0.0.1:${port}/api/v1/kiosk-his-v2/patients', { data: { a: 1 } });
+  await request.post('http://127.0.0.1:${port}/api/v1/kiosk-sut-v2/patients', { data: { a: 1 } });
   await request.fetch('swagger/index.html');
 });
 `);
@@ -155,7 +155,7 @@ test('TC-NAV-001 probe', async ({ request }) => {
     assert.deepEqual(got, [
       'api GET /api/v1/service-status 2 tests/api/rest/svc/a.spec.js api-rest',
       'api GET /api/v1/swagger/index.html 1 tests/api/rest/svc/a.spec.js api-rest',
-      'api POST /api/v1/kiosk-his-v2/patients 1 tests/api/rest/svc/a.spec.js api-rest',
+      'api POST /api/v1/kiosk-sut-v2/patients 1 tests/api/rest/svc/a.spec.js api-rest',
     ]);
     assert.ok(nav.entries.every((e: Record<string, unknown>) => e.title === 'TC-NAV-001 probe' && e.host === `127.0.0.1:${port}`));
     assert.ok(!JSON.stringify(nav).includes('secret'));

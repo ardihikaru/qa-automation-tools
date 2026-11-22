@@ -9,7 +9,7 @@ This document details the implementation and changes made to bridge gaps between
 ---
 
 ## Production API URL
-`https://ai-backend-1087642958941.asia-southeast1.run.app`
+`https://ai-backend-000000000000.asia-southeast1.run.app`
 
 ---
 

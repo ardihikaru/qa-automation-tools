@@ -40,12 +40,12 @@ dashboard/dist/
 TEST-SCENARIO.md
 TEST-RESULTS.md
 
-# Deploy secrets (rnd-v3 only)
+# Deploy secrets (app-host only)
 .env.prod
 .env.*.local
 
 # Per-product env of the automation repo for case_run (staging credentials). The real files live in
-# EXECUTOR_ENV_DIR on rnd-v3 (~/.config/qa-automation), never in git; commit only automation.env.example.
+# EXECUTOR_ENV_DIR on app-host (~/.config/qa-automation), never in git; commit only automation.env.example.
 automation-*.env
 automation-*.env.*
 *.env.bak*
@@ -55,8 +55,12 @@ automation-*.env.*
 
 # Claude Code personal settings
 .claude/settings.local.json
-deploy/his-v3-qa/deploys.log
+deploy/qa-tool/deploys.log
 
 # Product repo pool (cloned by the backend; only the placeholder is tracked)
 repos/*
 !repos/.gitkeep
+
+# Maintainer private overlay (real infra names; see CONTRIBUTING.md)
+/.private/
+/CLAUDE.local.md

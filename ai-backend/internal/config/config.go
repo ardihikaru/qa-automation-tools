@@ -63,7 +63,7 @@ type BackendConfig struct {
 	ObjectStore ObjectStoreConfig `yaml:"-"`
 }
 
-// ObjectStoreConfig points at the S3-compatible object store (the staging MinIO that HISv3 uses)
+// ObjectStoreConfig points at the S3-compatible object store (the staging MinIO that SUT uses)
 // where generated export files are cached. Env only. Unset or invalid means "not configured": the
 // export answers 503 and nothing else is affected.
 type ObjectStoreConfig struct {
@@ -78,8 +78,8 @@ type ObjectStoreConfig struct {
 
 var objectStoreNamespaceRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
-// wireGuardNet is the only network where a plaintext (non-TLS) object store is accepted.
-var wireGuardNet = &net.IPNet{IP: net.IPv4(10, 10, 0, 0), Mask: net.CIDRMask(24, 32)}
+// A plaintext (non-TLS) object store is accepted only on a private (RFC 1918) address,
+// e.g. a WireGuard peer.
 
 // String and GoString use a value receiver so %v, %+v and %#v of a value or a pointer never print a secret.
 func (c ObjectStoreConfig) String() string {
@@ -119,8 +119,8 @@ func (c ObjectStoreConfig) Check() error {
 		if h, _, err := net.SplitHostPort(c.Endpoint); err == nil {
 			host = h
 		}
-		if ip := net.ParseIP(host); ip == nil || !wireGuardNet.Contains(ip) {
-			return fmt.Errorf("MINIO_USE_SSL=false is accepted only for an endpoint inside 10.10.0.0/24")
+		if ip := net.ParseIP(host); ip == nil || !ip.IsPrivate() {
+			return fmt.Errorf("MINIO_USE_SSL=false is accepted only for an endpoint on a private (RFC 1918) IP address")
 		}
 	}
 	return nil
@@ -128,10 +128,10 @@ func (c ObjectStoreConfig) Check() error {
 
 // GAOSConfig points at the GAOS REST API (GAOS_INTEGRATION.md). Env only; unset = not configured.
 type GAOSConfig struct {
-	APIURL   string // GAOS_API_URL, e.g. https://gaos.sismedika.com/api/v1
+	APIURL   string // GAOS_API_URL, e.g. https://gaos.mfardiansyah.id/api/v1
 	APIToken string // GAOS_API_TOKEN (QA bearer, gaos_...); never logged
 	// WebURL is the public GAOS web app the /products badge links to (GAOS_WEB_URL, e.g.
-	// https://gaos.sismedika.com/app/). Optional; empty derives it from an https APIURL.
+	// https://gaos.mfardiansyah.id/app/). Optional; empty derives it from an https APIURL.
 	WebURL string
 	// InboundToken is the bearer GAOS presents to /api/v1/gaos/* (GAOS_INBOUND_TOKEN); never logged.
 	InboundToken string
@@ -139,10 +139,10 @@ type GAOSConfig struct {
 	ResultsToken string
 }
 
-// ExecutorConfig points at playwright-executor (systemd service on rnd-v3).
+// ExecutorConfig points at playwright-executor (systemd service on app-host).
 // Env only. An empty URL makes case_run jobs fail with "executor not configured".
 type ExecutorConfig struct {
-	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.10.0.9:8141
+	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.8.0.9:8141
 	Token          string // PLAYWRIGHT_EXECUTOR_TOKEN (shared bearer secret)
 	TimeoutMinutes int    // PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES: max wait per job, incl. queueing
 }
@@ -151,7 +151,7 @@ type ExecutorConfig struct {
 // GH_TOKEN (read by gh/git directly, never logged) authenticates clones.
 type ProductsConfig struct {
 	PoolDir string // REPO_POOL_DIR: pool root inside the process (empty disables clone/verify)
-	// PoolHostDir is REPO_POOL_HOST_DIR: the same pool as playwright-executor sees it on rnd-v3
+	// PoolHostDir is REPO_POOL_HOST_DIR: the same pool as playwright-executor sees it on app-host
 	// (PoolDir is a container path). case_run / case_create send repo_dir under it (CASE_AUTOMATION.md).
 	PoolHostDir           string
 	VerifyIntervalMinutes int // PRODUCTS_VERIFY_INTERVAL_MINUTES: scheduled verify, 0 disables
@@ -379,7 +379,7 @@ func LoadConfig() *Config {
 			Host: getEnvString("BACKEND_HOST", "0.0.0.0"),
 			Port: getEnvInt("PORT", 8080),
 			Database: DatabaseConfig{
-				Host:     getEnvString("DB_HOST", "10.10.0.4"),
+				Host:     getEnvString("DB_HOST", "127.0.0.1"),
 				Port:     getEnvInt("DB_PORT", 5306),
 				Username: getEnvString("DB_USER", "qa_automation"),
 				Password: getEnvString("DB_PASSWORD", ""),
@@ -388,7 +388,7 @@ func LoadConfig() *Config {
 			AI: AIConfig{
 				Provider:          getEnvString("AI_PROVIDER", "ai-manager"),
 				TimeoutSeconds:    getEnvInt("AI_TIMEOUT_SECONDS", 180),
-				ManagerURL:        getEnvString("AI_MANAGER_URL", "http://10.10.0.4:8099"),
+				ManagerURL:        getEnvString("AI_MANAGER_URL", "http://127.0.0.1:8099"),
 				ManagerLoginID:    getEnvString("AI_MANAGER_LOGIN_ID", ""),
 				ManagerSecretKey:  getEnvString("AI_MANAGER_SECRET_KEY", ""),
 				ManagerProvider:   getEnvString("AI_MANAGER_PROVIDER", "claude-v3"),

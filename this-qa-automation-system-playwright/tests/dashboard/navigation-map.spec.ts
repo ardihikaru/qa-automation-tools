@@ -1,6 +1,6 @@
 /**
  * The /navigation page (docs/designs/NAVIGATION_MAP.md section 7). Read-only against production:
- * logs in as the impersonator, opens the HISv3 map and one route's drill-down. Skipped without
+ * logs in as the impersonator, opens the SUT map and one route's drill-down. Skipped without
  * E2E_IMPERSONATOR_USERNAME / _PASSWORD; the tree checks skip until the map is built.
  */
 
@@ -22,10 +22,10 @@ test.describe('Navigation map page', () => {
       await page.waitForURL((u) => !u.pathname.startsWith('/login'));
 
       const resp = page.waitForResponse((r) => /\/api\/products\/\d+\/navigation\?/.test(r.url()) && r.request().method() === 'GET');
-      await page.goto(`${config.dashboardUrl}/navigation?surface=api&app=his-vendor-backend`);
+      await page.goto(`${config.dashboardUrl}/navigation?surface=api&app=sut-vendor-backend`);
       expect((await resp).status()).toBe(200);
       const noBuild = page.getByText('No navigation map for this product yet');
-      const header = page.getByRole('heading', { name: 'his-vendor-backend' });
+      const header = page.getByRole('heading', { name: 'sut-vendor-backend' });
       await expect(noBuild.or(header)).toBeVisible({ timeout: 15000 });
       test.skip(await noBuild.isVisible(), 'no navigation build yet');
 

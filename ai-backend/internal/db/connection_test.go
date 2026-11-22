@@ -9,7 +9,7 @@ import (
 
 func TestNormalizeDSN_PinsUTC(t *testing.T) {
 	for _, in := range []string{
-		"u:p@tcp(10.10.0.4:5306)/qa_automation?parseTime=true&loc=Local&multiStatements=true",
+		"u:p@tcp(10.8.0.4:5306)/qa_automation?parseTime=true&loc=Local&multiStatements=true",
 		"u:p@tcp(127.0.0.1:3306)/qa",
 		"u:p@tcp(h:1)/d?time_zone=%27%2B07%3A00%27&loc=Asia%2FJakarta",
 	} {

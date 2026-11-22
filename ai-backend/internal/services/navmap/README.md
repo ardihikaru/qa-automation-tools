@@ -21,4 +21,4 @@ Pure builder of a product's route and page inventory for the navigation map ([NA
 None.
 
 ## Verification
-`go test -mod=mod ./internal/services/navmap/`. Against a local HISv3 checkout: `NAV_LOCAL_REPO=… go test -mod=mod -run TestNavLocalRepo ./internal/services/knowledge/ -v`.
+`go test -mod=mod ./internal/services/navmap/`. Against a local SUT checkout: `NAV_LOCAL_REPO=… go test -mod=mod -run TestNavLocalRepo ./internal/services/knowledge/ -v`.

@@ -1,18 +1,18 @@
 {
   "deployment_timestamp": "2025-01-13T12:00:00Z",
-  "project": "qa-automation-tools-sismedika",
+  "project": "qa-automation-tools-example-org",
   "region": "asia-southeast1",
   "services": {
     "ai-backend": {
       "service_name": "qa-backend",
-      "image": "gcr.io/qa-automation-tools-sismedika/qa-backend:v2",
+      "image": "gcr.io/qa-automation-tools-example-org/qa-backend:v2",
       "status": "SUCCESS",
-      "url": "https://qa-backend-1087642958941.asia-southeast1.run.app",
+      "url": "https://qa-backend-000000000000.asia-southeast1.run.app",
       "memory": "512Mi",
       "cpu": "1",
       "port": 8080,
       "environment_variables": {
-        "DATABASE_URL": "qa_automation:***@tcp(10.10.0.4:5306)/qa_automation?parseTime=true",
+        "DATABASE_URL": "qa_automation:***@tcp(10.8.0.4:5306)/qa_automation?parseTime=true",
         "MINIMAX_API_KEY": "sk-api-***",
         "NODE_ENV": "production"
       },
@@ -31,14 +31,14 @@
     },
     "dashboard": {
       "service_name": "qa-dashboard",
-      "image": "gcr.io/qa-automation-tools-sismedika/qa-dashboard:v2",
+      "image": "gcr.io/qa-automation-tools-example-org/qa-dashboard:v2",
       "status": "SUCCESS",
-      "url": "https://qa-dashboard-1087642958941.asia-southeast1.run.app",
+      "url": "https://qa-dashboard-000000000000.asia-southeast1.run.app",
       "memory": "256Mi",
       "cpu": "1",
       "port": 80,
       "configuration": {
-        "nginx_proxy_to_backend": "https://qa-backend-1087642958941.asia-southeast1.run.app"
+        "nginx_proxy_to_backend": "https://qa-backend-000000000000.asia-southeast1.run.app"
       },
       "deployments": [
         {

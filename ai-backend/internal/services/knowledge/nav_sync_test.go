@@ -16,10 +16,10 @@ import (
 
 const (
 	navModB = "# Part B\n### B06 — Tech\n" +
-		"| <a id=\"f-b06-01\"></a>B06.01 | Liveness | Probe `GET /service-status` | his-vendor-backend `/api/v1/service-status` | `PROD` | 2026-01-01 | | | | | | |\n"
+		"| <a id=\"f-b06-01\"></a>B06.01 | Liveness | Probe `GET /service-status` | sut-vendor-backend `/api/v1/service-status` | `PROD` | 2026-01-01 | | | | | | |\n"
 	navEpic = "# Sys\n- **US-SYS-01** (B06.01) — probe\n" +
-		"| ☑ | TC-SYS-001 | US-SYS-01 | when `GET /api/v1/service-status` is sent then 200 | + | API | P1 | automated | `tests/api/rest/his-vendor-backend/TC-SYS-001.spec.ts` | |\n" +
-		"| ☐ | TC-SYS-002 | US-SYS-01 | GET /kiosk-his-v2/health — 200 | + | API | P1 | planned | | |\n"
+		"| ☑ | TC-SYS-001 | US-SYS-01 | when `GET /api/v1/service-status` is sent then 200 | + | API | P1 | automated | `tests/api/rest/sut-vendor-backend/TC-SYS-001.spec.ts` | |\n" +
+		"| ☐ | TC-SYS-002 | US-SYS-01 | GET /kiosk-sut-v2/health — 200 | + | API | P1 | planned | | |\n"
 	navPage = "export class LoginPage extends BasePage {\n  protected readonly path = '/auth/login';\n}\n"
 )
 
@@ -27,8 +27,8 @@ func navFiles() map[string]string {
 	return map[string]string{
 		"docs/modules/B-vendor.md":                             navModB,
 		"docs/test-catalog/vendor-backend/system.md":           navEpic,
-		"src/web/his-frontend/pages/auth/login.page.ts":        navPage,
-		"tests/api/rest/his-vendor-backend/TC-SYS-001.spec.ts": "test('TC-SYS-001 probe', async () => {});\n",
+		"src/web/sut-frontend/pages/auth/login.page.ts":        navPage,
+		"tests/api/rest/sut-vendor-backend/TC-SYS-001.spec.ts": "test('TC-SYS-001 probe', async () => {});\n",
 	}
 }
 
@@ -78,7 +78,7 @@ func navRouteCount(t *testing.T, d *db.DB, pid int) int {
 func TestNavBuiltBySync(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	repo.set("1111111111111111111111111111111111111111", navFiles())
 	var succeeded, unchanged atomic.Int32
@@ -108,9 +108,9 @@ func TestNavBuiltBySync(t *testing.T) {
 	}
 	rows.Close()
 	want := []string{
-		"api his-vendor-backend /api/v1/kiosk-his-v2/health",
-		"api his-vendor-backend /api/v1/service-status",
-		"web his-frontend /auth/login",
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2/health",
+		"api sut-vendor-backend /api/v1/service-status",
+		"web sut-frontend /auth/login",
 	}
 	if len(paths) != len(want) {
 		t.Fatalf("routes %v, want %v", paths, want)

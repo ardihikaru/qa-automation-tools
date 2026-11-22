@@ -108,7 +108,7 @@ func learnFixture(t *testing.T, replies ...string) (*Router, *db.DB, *learnLLM, 
 	}
 	t.Setenv("PATH", ghDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir, branch) VALUES (1,'HISv3','https://github.com/o/r','https://staging.example','auto','main'), (2,'OTHER','r2','s2','d2','main')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir, branch) VALUES (1,'SUT','https://github.com/o/r','https://staging.example','auto','main'), (2,'OTHER','r2','s2','d2','main')`)
 	must(t, d, `INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_automation) VALUES (1,'auto','https://github.com/o/r','auto',1,1)`)
 	llm := &learnLLM{replies: replies}
 	r := NewRouter(d, nil, nil, nil)
@@ -174,7 +174,7 @@ func TestHarvestIsIdempotentAndDeduplicates(t *testing.T) {
 		id := "job-a" + string(rune('1'+i))
 		addLearnJob(t, d, id, "completed", "", c, now)
 		must(t, d, `INSERT INTO case_approvals (job_id, product_id, case_code, external_id, status, answered_by, answer_text, created_at, answered_at) VALUES (?,1,?,?,'changes','dashboard',?,?,?)`,
-			id, c, "qa-"+id+"-pr", c+": the URL doubles /api/v1 because HIS_VENDOR_BACKEND_URL already ends in /api/v1", now, now)
+			id, c, "qa-"+id+"-pr", c+": the URL doubles /api/v1 because SUT_VENDOR_BACKEND_URL already ends in /api/v1", now, now)
 	}
 	// A rejection without a reason teaches nothing.
 	addLearnJob(t, d, "job-r", "failed", "rejected by dashboard", "TC-A-001", now)
@@ -232,7 +232,7 @@ func TestHarvestIsIdempotentAndDeduplicates(t *testing.T) {
 		Counts map[string]int      `json:"counts"`
 	}
 	decodeBody(t, w.Body.Bytes(), &page)
-	if w.Code != 200 || page.Total != 1 || page.Items[0].Occurrences != 2 || len(page.Items[0].Sources) != 2 || page.Counts["new"] != 1 || page.Items[0].ProductName != "HISv3" {
+	if w.Code != 200 || page.Total != 1 || page.Items[0].Occurrences != 2 || len(page.Items[0].Sources) != 2 || page.Counts["new"] != 1 || page.Items[0].ProductName != "SUT" {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 	w = dispatchAs(r, asUser("Viewer"), http.MethodGet, "/api/learning/findings", "")
@@ -304,7 +304,7 @@ func TestManualFindingsDismissReopenAndRoles(t *testing.T) {
 
 func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
-const learnPolicy = "Build REST URLs from restServices['his-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again."
+const learnPolicy = "Build REST URLs from restServices['sut-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again."
 
 func draftReply(slug, title string) string {
 	b, _ := json.Marshal(map[string]string{"decision": "new", "slug": slug, "title": title, "policy": learnPolicy, "rationale": "A reviewer asked for changes on a doubled prefix."})

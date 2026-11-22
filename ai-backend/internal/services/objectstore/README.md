@@ -1,7 +1,7 @@
 # services/objectstore
 
 ## Overview
-A minimal S3/MinIO client for the module checklist export cache ([MODULE_CHECKLIST_EXPORT.md](../../../../docs/designs/MODULE_CHECKLIST_EXPORT.md)). The bucket is the staging MinIO that HISv3 itself uses, so the package is locked to the key prefix `qa-automation/` and offers no way to list or delete. The only caller is `knowledge.ExportCache`.
+A minimal S3/MinIO client for the module checklist export cache ([MODULE_CHECKLIST_EXPORT.md](../../../../docs/designs/MODULE_CHECKLIST_EXPORT.md)). The bucket is the staging MinIO that SUT itself uses, so the package is locked to the key prefix `qa-automation/` and offers no way to list or delete. The only caller is `knowledge.ExportCache`.
 
 ## Interface
 - `Store` (`objectstore.go`): `Stat(ctx, key) (Info, bool, error)`, `Get(ctx, key) ([]byte, bool, error)` (a missing object is `(nil, false, nil)`), `Put(ctx, key, contentType, data) error` (overwrites). **No `List`, no `Delete`.**

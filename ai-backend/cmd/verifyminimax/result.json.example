@@ -1,6 +1,6 @@
 {
   "config": {
-    "api_key": "sk-api-NoA6y34Ln4gYBDcLRX4evn6drFQ8jBahptOAHzgV0L0r_e3Gbll6iegUVJMyYY8_hF6D6xbSENAG_BX4YGXbC752b8Q-l0oyxZ3dm12RJeTlrFwa4vqqVf8",
+    "api_key": "sk-api-REDACTED",
     "models": [
       "MiniMax-M2.7",
       "MiniMax-M2.7-highspeed",

@@ -29,7 +29,7 @@ func epicFixture(t *testing.T) (*Router, *db.DB) {
 	t.Helper()
 	d := testdb.New(t)
 	r := NewRouter(d, nil, nil, nil)
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1'), (2,'OTHER','r2','s2','d2')`)
 	must(t, d, `INSERT INTO kb_epics (product_id, code, content_hash) VALUES (1,'AUTH',?), (1,'PAT',?)`, hash64, hash64)
 	return r, d
 }

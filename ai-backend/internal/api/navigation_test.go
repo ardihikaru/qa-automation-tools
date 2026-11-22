@@ -20,11 +20,11 @@ func navRoutesFixture() []navmap.Route {
 		return navmap.Route{Key: navmap.RouteKey(surface, app, path), Surface: surface, App: app, Path: path}
 	}
 	return []navmap.Route{
-		mk("api", "his-vendor-backend", "/api/v1/service-status"),
-		mk("api", "his-vendor-backend", "/api/v1/kiosk-his-v2/patients/:rm"),
-		mk("api", "his-vendor-backend", "/api/v1/kiosk-his-v2/patients/search"),
-		mk("web", "his-frontend", "/auth/login"),
-		mk("web", "his-frontend", "/emr/patient/sl/:questionnaireID"),
+		mk("api", "sut-vendor-backend", "/api/v1/service-status"),
+		mk("api", "sut-vendor-backend", "/api/v1/kiosk-sut-v2/patients/:rm"),
+		mk("api", "sut-vendor-backend", "/api/v1/kiosk-sut-v2/patients/search"),
+		mk("web", "sut-frontend", "/auth/login"),
+		mk("web", "sut-frontend", "/emr/patient/sl/:questionnaireID"),
 	}
 }
 
@@ -39,19 +39,19 @@ func TestMatchNavEntries(t *testing.T) {
 		return ""
 	}
 	entries := []navEntry{
-		{Title: "TC-VSYS-001 probe", File: "tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Host: "stg", Path: "/api/v1/service-status", Hits: 2},
-		{Title: "TC-VSYS-001 probe", File: "tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Host: "stg", Path: "/api/v1/service-status", Hits: 1},
+		{Title: "TC-VSYS-001 probe", File: "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Host: "stg", Path: "/api/v1/service-status", Hits: 2},
+		{Title: "TC-VSYS-001 probe", File: "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Host: "stg", Path: "/api/v1/service-status", Hits: 1},
 		// A name in the path matches the parameter route; the literal "search" route wins over it.
-		{Title: "TC-VKPAT-002 lookup", File: "tests/api/rest/his-vendor-backend/k.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Path: "/api/v1/kiosk-his-v2/patients/search"},
-		{Title: "TC-VKPAT-003 by rm", File: "tests/api/rest/his-vendor-backend/k.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Path: "/api/v1/kiosk-his-v2/patients/RM0001234"},
+		{Title: "TC-VKPAT-002 lookup", File: "tests/api/rest/sut-vendor-backend/k.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Path: "/api/v1/kiosk-sut-v2/patients/search"},
+		{Title: "TC-VKPAT-003 by rm", File: "tests/api/rest/sut-vendor-backend/k.spec.ts", Project: "api-rest", Kind: "api", Method: "GET", Path: "/api/v1/kiosk-sut-v2/patients/RM0001234"},
 		// A web spec's GraphQL call: no api app from the folder, and no route: unmatched.
-		{Title: "TC-AUTH-011 login", File: "tests/web/his-frontend/auth/login.spec.ts", Project: "web-his-frontend-chromium", Kind: "api", Method: "POST", Path: "/user/query"},
-		{Title: "TC-AUTH-011 login", File: "tests/web/his-frontend/auth/login.spec.ts", Project: "web-his-frontend-mobile-chrome", Kind: "web", Path: "/auth/login"},
-		{Title: "TC-SL-001 TC-SL-002 form", File: "tests/web/his-frontend/emr/sl.spec.ts", Project: "web-his-frontend-chromium", Kind: "web", Path: "/emr/patient/sl/42"},
+		{Title: "TC-AUTH-011 login", File: "tests/web/sut-frontend/auth/login.spec.ts", Project: "web-sut-frontend-chromium", Kind: "api", Method: "POST", Path: "/user/query"},
+		{Title: "TC-AUTH-011 login", File: "tests/web/sut-frontend/auth/login.spec.ts", Project: "web-sut-frontend-mobile-chrome", Kind: "web", Path: "/auth/login"},
+		{Title: "TC-SL-001 TC-SL-002 form", File: "tests/web/sut-frontend/emr/sl.spec.ts", Project: "web-sut-frontend-chromium", Kind: "web", Path: "/emr/patient/sl/42"},
 		// Dropped: setup project, no code, unknown kind, rejected path.
-		{Title: "authenticate", File: "tests/setup/his-frontend.setup.ts", Project: "setup-his-frontend", Kind: "web", Path: "/auth/login"},
+		{Title: "authenticate", File: "tests/setup/sut-frontend.setup.ts", Project: "setup-sut-frontend", Kind: "web", Path: "/auth/login"},
 		{Title: "TC-AUTH-001 seed", File: "tests/setup/vendor-e2e.setup.ts", Project: "vendor-e2e-setup", Kind: "api", Path: "/api/v1/service-status"},
-		{Title: "no code here", File: "tests/web/his-frontend/a.spec.ts", Project: "web-his-frontend-chromium", Kind: "web", Path: "/auth/login"},
+		{Title: "no code here", File: "tests/web/sut-frontend/a.spec.ts", Project: "web-sut-frontend-chromium", Kind: "web", Path: "/auth/login"},
 		{Title: "TC-X-001 x", Kind: "ws", Path: "/x"},
 		{Title: "TC-X-001 x", Kind: "web", Path: "/a/../b"},
 	}
@@ -62,8 +62,8 @@ func TestMatchNavEntries(t *testing.T) {
 	}
 	want := map[string]int{
 		"TC-VSYS-001 GET " + key("/api/v1/service-status"):                3,
-		"TC-VKPAT-002 GET " + key("/api/v1/kiosk-his-v2/patients/search"): 1,
-		"TC-VKPAT-003 GET " + key("/api/v1/kiosk-his-v2/patients/:rm"):    1,
+		"TC-VKPAT-002 GET " + key("/api/v1/kiosk-sut-v2/patients/search"): 1,
+		"TC-VKPAT-003 GET " + key("/api/v1/kiosk-sut-v2/patients/:rm"):    1,
 		"TC-AUTH-011  " + key("/auth/login"):                              1,
 		"TC-SL-001  " + key("/emr/patient/sl/:questionnaireID"):           1,
 		"TC-SL-002  " + key("/emr/patient/sl/:questionnaireID"):           1,
@@ -87,10 +87,10 @@ func navFixture(t *testing.T) (*Router, *db.DB) {
 	r, d := epicFixture(t)
 	must(t, d, `INSERT INTO kb_epics (product_id, code, service, content_hash) VALUES (1,'VSYS','vendor-backend',?), (1,'VKAUTH','vendor-backend',?)`, hash64, hash64)
 	files := map[string][]byte{
-		"src/web/his-frontend/pages/auth/login.page.ts": []byte("export class LoginPage {\n  protected readonly path = '/auth/login';\n}\n"),
+		"src/web/sut-frontend/pages/auth/login.page.ts": []byte("export class LoginPage {\n  protected readonly path = '/auth/login';\n}\n"),
 	}
 	inv := navmap.Build(navmap.Input{
-		Features: []navmap.Feature{{Code: "B06.01", Name: "probe", RepoEntry: "his-vendor-backend `/api/v1/service-status`"}},
+		Features: []navmap.Feature{{Code: "B06.01", Name: "probe", RepoEntry: "sut-vendor-backend `/api/v1/service-status`"}},
 		Epics:    []navmap.Epic{{Code: "VSYS", Service: "vendor-backend"}, {Code: "VKAUTH", Service: "vendor-backend"}},
 		Cases: []navmap.Case{
 			{Code: "TC-VSYS-001", EpicCode: "VSYS", Polarity: "+", Scenario: "when `GET /api/v1/service-status` then 200"},
@@ -100,7 +100,7 @@ func navFixture(t *testing.T) (*Router, *db.DB) {
 			{Code: "TC-VSYS-010", EpicCode: "VSYS", Polarity: "+", Scenario: "when `GET /api/v1/service-status` twice"},
 			{Code: "TC-VSYS-011", EpicCode: "VSYS", Polarity: "+", Scenario: "when `GET /api/v1/service-status` slowly"},
 			{Code: "TC-VSYS-012", EpicCode: "VSYS", Polarity: "+", Scenario: "when `PUT /api/v1/service-status`"},
-			{Code: "TC-VKAUTH-007", EpicCode: "VKAUTH", Polarity: "+", Scenario: "GET /kiosk-his-v2/health — 200"},
+			{Code: "TC-VKAUTH-007", EpicCode: "VKAUTH", Polarity: "+", Scenario: "GET /kiosk-sut-v2/health — 200"},
 		},
 		Files: files,
 	})
@@ -115,9 +115,9 @@ func navFixture(t *testing.T) (*Router, *db.DB) {
 		strings.Repeat("a", 40), len(inv.Routes), len(inv.Links))
 	must(t, d, `INSERT INTO kb_features (product_id, code, module_code, name, release_status, content_hash) VALUES (1,'B06.01','B06','probe','PROD',?)`, hash64)
 
-	addCase(t, d, "TC-VSYS-001", "VSYS", "automated", "", "P1", `["tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts"]`)
-	addCase(t, d, "TC-VSYS-002", "VSYS", "automated", "", "P1", `["tests/api/rest/his-vendor-backend/TC-VSYS-002.spec.ts"]`)
-	addCase(t, d, "TC-VSYS-003", "VSYS", "automated", "", "P2", `["tests/api/rest/his-vendor-backend/TC-VSYS-003.spec.ts"]`)
+	addCase(t, d, "TC-VSYS-001", "VSYS", "automated", "", "P1", `["tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts"]`)
+	addCase(t, d, "TC-VSYS-002", "VSYS", "automated", "", "P1", `["tests/api/rest/sut-vendor-backend/TC-VSYS-002.spec.ts"]`)
+	addCase(t, d, "TC-VSYS-003", "VSYS", "automated", "", "P2", `["tests/api/rest/sut-vendor-backend/TC-VSYS-003.spec.ts"]`)
 	addCase(t, d, "TC-VSYS-009", "VSYS", "planned", "", "P2", `[]`)
 	addCase(t, d, "TC-VSYS-010", "VSYS", "planned", "", "P0", `[]`) // active job: excluded
 	addCase(t, d, "TC-VSYS-011", "VSYS", "planned", "", "P0", `[]`) // GAOS says wont: excluded
@@ -173,7 +173,7 @@ func TestNavigationMapAndRoute(t *testing.T) {
 	if ss["status"] != "passing" || ss["cases"].(float64) != 7 || ss["automated"].(float64) != 3 || ss["pass"].(float64) != 2 || ss["features"].(float64) != 1 {
 		t.Errorf("service-status coverage: %v", ss)
 	}
-	if h := byPath["/api/v1/kiosk-his-v2/health"]; h == nil || h["status"] != "planned" {
+	if h := byPath["/api/v1/kiosk-sut-v2/health"]; h == nil || h["status"] != "planned" {
 		t.Errorf("kiosk health: %v", h)
 	}
 	if l := byPath["/auth/login"]; l == nil || l["status"] != "untested" {
@@ -248,8 +248,8 @@ func TestNavigationMapAndRoute(t *testing.T) {
 	// Observations: stored by route key, idempotent per executor run, unmatched not stored.
 	ctx := context.Background()
 	nav := map[string]any{"version": 1, "entries": []any{
-		map[string]any{"title": "TC-VSYS-001 probe", "file": "tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts", "project": "api-rest", "kind": "api", "method": "GET", "host": "stg", "path": "/api/v1/service-status", "hits": 2},
-		map[string]any{"title": "TC-VSYS-001 probe", "file": "tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts", "project": "api-rest", "kind": "api", "method": "GET", "host": "stg", "path": "/api/v1/patients/Budi%20Santoso/1990-01-01"},
+		map[string]any{"title": "TC-VSYS-001 probe", "file": "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts", "project": "api-rest", "kind": "api", "method": "GET", "host": "stg", "path": "/api/v1/service-status", "hits": 2},
+		map[string]any{"title": "TC-VSYS-001 probe", "file": "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts", "project": "api-rest", "kind": "api", "method": "GET", "host": "stg", "path": "/api/v1/patients/Budi%20Santoso/1990-01-01"},
 	}}
 	for i := 0; i < 2; i++ {
 		cnt := storeNavObservations(ctx, d, 1, "job-old", "run-1", nav)

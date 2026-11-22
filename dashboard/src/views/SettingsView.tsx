@@ -134,7 +134,7 @@ export default function SettingsView() {
           <ol className="space-y-2 text-sm text-gray-700 list-decimal list-inside">
             <li>The dashboard calls the Go backend on same-origin <code>/api</code> (cookie auth).</li>
             <li>Run QA / Generate docs: the backend submits a run to <b>playwright-executor</b> and polls it.</li>
-            <li>The executor drives Chromium against HISv3 staging (one run at a time, 2.5 GiB / 60% CPU cap).</li>
+            <li>The executor drives Chromium against SUT staging (one run at a time, 2.5 GiB / 60% CPU cap).</li>
             <li>Issues are stored in MySQL; docs are written by <b>claude-v3</b> through <b>ai-manager</b>.</li>
             <li>Every LLM call goes ai-manager → claude-v3, with fallback disabled.</li>
           </ol>
@@ -171,17 +171,17 @@ function ArchitectureDiagram() {
         </defs>
         <Box x={10} y={20} label="Dashboard" sub="React SPA" />
         <Box x={200} y={20} label="ai-backend" sub="Go REST (Docker)" />
-        <Box x={400} y={20} label="MySQL" sub="qa_automation (rnd-v2)" tone="gray" w={150} />
+        <Box x={400} y={20} label="MySQL" sub="qa_automation (db-host)" tone="gray" w={150} />
         <Arrow x1={140} y1={44} x2={200} y2={44} />
         <Arrow x1={330} y1={44} x2={400} y2={44} />
 
-        <Box x={200} y={120} label="ai-manager" sub="rnd-v2 :8099" />
+        <Box x={200} y={120} label="ai-manager" sub="db-host :8099" />
         <Box x={400} y={120} label="claude-v3" sub="ai-claude-cli :8105" tone="green" w={150} />
         <Arrow x1={265} y1={68} x2={265} y2={120} />
         <Arrow x1={330} y1={144} x2={400} y2={144} />
 
-        <Box x={10} y={200} w={170} label="playwright-executor" sub="systemd, rnd-v3 :8141" />
-        <Box x={250} y={200} w={150} label="HISv3 staging" sub="Chromium target" tone="gray" />
+        <Box x={10} y={200} w={170} label="playwright-executor" sub="systemd, app-host :8141" />
+        <Box x={250} y={200} w={150} label="SUT staging" sub="Chromium target" tone="gray" />
         <Arrow x1={230} y1={68} x2={110} y2={200} />
         <Arrow x1={180} y1={224} x2={250} y2={224} />
 

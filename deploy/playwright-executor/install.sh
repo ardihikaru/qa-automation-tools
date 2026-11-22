@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install or upgrade playwright-executor as a systemd USER service on rnd-v3.
-# Idempotent. Run as the service user (sismedika) from anywhere inside the repo checkout:
+# Install or upgrade playwright-executor as a systemd USER service on app-host.
+# Idempotent. Run as the service user (qa) from anywhere inside the repo checkout:
 #
 #   deploy/playwright-executor/install.sh            # install/upgrade + restart + health gate
 #   SKIP_DEPS=1 deploy/playwright-executor/install.sh  # skip apt deps (already installed)

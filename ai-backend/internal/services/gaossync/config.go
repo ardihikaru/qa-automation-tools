@@ -17,8 +17,6 @@ const MaxProductIDLen = 40
 // ValidProductID reports whether s is a GAOS product id (p-6, p-12, ...).
 func ValidProductID(s string) bool { return len(s) <= MaxProductIDLen && ProductIDRe.MatchString(s) }
 
-var vpnNet = netip.MustParsePrefix("10.10.0.0/24")
-
 // ValidateConfig checks GAOS_API_URL and GAOS_API_TOKEN and returns the normalised base URL
 // (trailing slashes trimmed). Both empty is "not configured" and returns ("", nil) so the caller
 // can tell it from a bad value. The error text never contains the token.
@@ -44,8 +42,8 @@ func ValidateConfig(apiURL, token string) (string, error) {
 	case "https":
 	case "http":
 		ip, err := netip.ParseAddr(u.Hostname())
-		if err != nil || !(ip.IsLoopback() || vpnNet.Contains(ip)) {
-			return "", errors.New("GAOS_API_URL must be https (http is allowed only to a loopback or 10.10.0.0/24 IP address)")
+		if err != nil || !(ip.IsLoopback() || ip.IsPrivate()) {
+			return "", errors.New("GAOS_API_URL must be https (http is allowed only to a loopback or private (RFC 1918) IP address)")
 		}
 	default:
 		return "", errors.New("GAOS_API_URL must be an https URL")

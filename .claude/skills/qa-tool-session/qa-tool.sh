@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# qa-tool.sh — drive the qa-automation API (https://qa-tool.sismedika.com) as
+# qa-tool.sh — drive the qa-automation API (https://qa-tool.mfardiansyah.id) as
 # the AI service account, with optional impersonation of any user.
 #
 # Credentials: $QA_TOOL_ENV (default ~/.config/qa-automation/ai-service.env,
@@ -32,7 +32,7 @@ set -a
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 set +a
-: "${QA_TOOL_URL:=https://qa-tool.sismedika.com}"
+: "${QA_TOOL_URL:=https://qa-tool.mfardiansyah.id}"
 [ -n "${QA_TOOL_USERNAME:-}" ] && [ -n "${QA_TOOL_PASSWORD:-}" ] || die "QA_TOOL_USERNAME/QA_TOOL_PASSWORD missing in $ENV_FILE"
 QA_TOOL_URL="${QA_TOOL_URL%/}"
 

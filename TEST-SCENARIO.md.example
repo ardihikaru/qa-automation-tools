@@ -1,19 +1,19 @@
-# Test Scenarios - HISv3 Staging
+# Test Scenarios - SUT Staging
 
-This file contains detailed test scenarios for documenting the HISv3 system.
+This file contains detailed test scenarios for documenting the SUT system.
 This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual testing.
 
 ## Overview
 
-- **Staging URL**: https://stag-app-hisv3.sismedika.online/
-- **Backend API**: https://ai-backend-1087642958941.asia-southeast1.run.app
+- **Staging URL**: https://stag-app.mfardiansyah.id/
+- **Backend API**: https://ai-backend-000000000000.asia-southeast1.run.app
 - **Documentation Output**: playwright-docs/output/
 
 ## Role-based Test Scenarios
 
 ### 1. Super Admin (KG prefix credentials)
 
-**Credential**: `KG2024001` / `Bismillah1!`
+**Credential**: `USER2024001` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -23,7 +23,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 2. Doctor GP (KG prefix credentials)
 
-**Credential**: `KG2024029` / `Bismillah1!`
+**Credential**: `USER2024029` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -35,7 +35,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 3. Nurse (KG prefix credentials)
 
-**Credential**: `KG2024003` / `Bismillah1!`
+**Credential**: `USER2024003` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -45,7 +45,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 4. Admission (KG prefix credentials)
 
-**Credential**: `KG2024008` / `Bismillah1!`
+**Credential**: `USER2024008` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -56,7 +56,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 5. Cashier (KG prefix credentials)
 
-**Credential**: `KG2024055` / `Bismillah1!`
+**Credential**: `USER2024055` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -67,7 +67,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 6. Pharmacy (KG prefix credentials)
 
-**Credential**: `KG2024053` / `Bismillah1!`
+**Credential**: `USER2024053` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -78,7 +78,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ### 7. Laboratory (KG prefix credentials)
 
-**Credential**: `KG2024054` / `Bismillah1!`
+**Credential**: `USER2024054` / `<staging-password>`
 
 | ID | Feature | Steps | Expected Result |
 |----|---------|-------|----------------|
@@ -96,7 +96,7 @@ This is a template that will be gitignored - copy to TEST-SCENARIO.md for actual
 
 ## Notes
 
-- All credentials share common password: `Bismillah1!`
+- All credentials share common password: `<staging-password>`
 - Add delays between steps for stability
 - Capture screenshots at each step for documentation
 - Record video for complex flows

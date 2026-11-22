@@ -40,7 +40,7 @@ and `internal/api/router.go`, and is used by `internal/services/skills`.
 - `aiService.go:EmbeddingRequest` / `aiService.go:EmbeddingResponse` types.
 
 ## Invariants
-- **Pinned upstream.** In production `Provider` is `claude-v3`, the Claude CLI REST on rnd-v3 `10.10.0.9:8105`, reached via ai-manager, and `NoFallback` is true. `Chat` sends `no_fallback`, and returns an error if the reply has `fallback: true` or comes from any provider other than `Provider`. `Health` returns `upstream_disabled:<provider>` when ai-manager's `/v1/health` lists the pinned provider as not enabled.
+- **Pinned upstream.** In production `Provider` is `claude-v3`, the Claude CLI REST on app-host `10.8.0.9:8105`, reached via ai-manager, and `NoFallback` is true. `Chat` sends `no_fallback`, and returns an error if the reply has `fallback: true` or comes from any provider other than `Provider`. `Health` returns `upstream_disabled:<provider>` when ai-manager's `/v1/health` lists the pinned provider as not enabled.
 - `ClassifyIssue` never fails because of the AI: a chat error falls through to the keyword heuristic.
 
 - `aiService.go:NewFromConfig` uses MiniMax only when `Provider == "minimax"`.
@@ -51,7 +51,7 @@ and `internal/api/router.go`, and is used by `internal/services/skills`.
   from `text`.
 - `aimanager.go:NewAIManagerProvider` trims trailing `/` from `URL`, defaults
   `Timeout` to 180s and `Caller` to `qa-automation`. The URL default
-  `http://10.10.0.4:8099` (WireGuard address) comes from `AI_MANAGER_URL` in config.
+  `http://10.8.0.4:8099` (WireGuard address) comes from `AI_MANAGER_URL` in config.
 - `aimanager.go:aiManagerProvider.Configured` requires non-empty `URL`,
   `LoginID`, and `SecretKey`. Otherwise `Chat` errors without any network call
   and `Health` returns `not_configured`.

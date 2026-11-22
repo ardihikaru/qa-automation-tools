@@ -4,7 +4,7 @@
 
 A small Node/TypeScript HTTP service that runs the Playwright jobs of qa-automation. Today the only run type is `case_run`: a product's automation spec, executed in its repo-pool clone against the staging hosts its env file allows. ai-backend submits runs and polls for results. The executor makes no LLM calls and no calls back to the backend.
 
-It runs on rnd-v3 (`10.10.0.9:8141`) as a **systemd user unit**, with Node provided by **mise**. A kernel cgroup caps it at **2.5 GiB RAM** and **60 % of all CPUs**. See [deploy/playwright-executor](../deploy/playwright-executor/README.md).
+It runs on app-host (`10.8.0.9:8141`) as a **systemd user unit**, with Node provided by **mise**. A kernel cgroup caps it at **2.5 GiB RAM** and **60 % of all CPUs**. See [deploy/playwright-executor](../deploy/playwright-executor/README.md).
 
 The former `qa_run` (exploration) and `docs_generate` (flow recording) run types, together with `playwright-qa/` and `playwright-docs/`, were removed in the legacy cleanup.
 
@@ -52,18 +52,18 @@ Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): wh
 
 | Key | Purpose |
 |---|---|
-| `EXECUTOR_BIND`, `EXECUTOR_PORT` | Listen address. Production uses `10.10.0.9:8141`. |
+| `EXECUTOR_BIND`, `EXECUTOR_PORT` | Listen address. Production uses `10.8.0.9:8141`. |
 | `EXECUTOR_TOKEN` | Bearer token, at least 32 chars. Also set in the backend's `PLAYWRIGHT_EXECUTOR_TOKEN`. |
-| `HISV3_STAGING_URL` | Optional. Only seeds the default `EXECUTOR_ALLOWED_HOSTS` (its host). |
+| `TARGET_STAGING_URL` | Optional. Only seeds the default `EXECUTOR_ALLOWED_HOSTS` (its host). |
 | `RUN_TIMEOUT_SECONDS` | Per-run limit (900). |
 | `MAX_QUEUE` | Maximum waiting runs (10). |
-| `EXECUTOR_REPO_POOL` | `case_run`: directory of automation repo clones (default `/home/sismedika/devel/projects/qa-automation-tools/repos`). |
+| `EXECUTOR_REPO_POOL` | `case_run`: directory of automation repo clones (default `/home/qa/devel/projects/qa-automation-tools/repos`). |
 | `EXECUTOR_ENV_DIR` | `case_run`: directory of `automation-<productId>.env` files, mode 600 (default `~/.config/qa-automation`). |
 | `EXECUTOR_NAV_REPORTER` | `0` turns the navigation reporter off (default on when the file loads). |
 | `BRAIN_TOWN_URL`, `BRAIN_TOWN_TOKEN` | Brain Town ingest URL and bearer token (secrets, env file only). Unset URL: reporter off. |
-| `BRAIN_TOWN_ORG`, `BRAIN_TOWN_PRODUCTS`, `BRAIN_TOWN_PRODUCT` | Org (default `sismedika`) and product key mapping (see above). |
+| `BRAIN_TOWN_ORG`, `BRAIN_TOWN_PRODUCTS`, `BRAIN_TOWN_PRODUCT` | Org (default `example-org`) and product key mapping (see above). |
 | `EXECUTOR_BRAIN_TOWN_REPORTER` | `0` turns the Brain Town reporter off. |
-| `EXECUTOR_ALLOWED_HOSTS` | `case_run`: comma-separated hostnames (`*.suffix` allowed) that the env file's http(s) URL values may point at. Default: the `HISV3_STAGING_URL` host, else none. |
+| `EXECUTOR_ALLOWED_HOSTS` | `case_run`: comma-separated hostnames (`*.suffix` allowed) that the env file's http(s) URL values may point at. Default: the `TARGET_STAGING_URL` host, else none. |
 
 ## Invariants
 

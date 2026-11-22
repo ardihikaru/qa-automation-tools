@@ -238,7 +238,7 @@ func buildPlan(cat *catalog) *plan {
 			if featureRe.MatchString(f.code) {
 				item.Features = append(item.Features, f.code)
 				// The greatest module code among the case's features: this is what GAOS's seed holds
-				// for all 57 multi-module cases of HISv3 (GAOS_INBOUND.md, "Module rule").
+				// for all 57 multi-module cases of SUT (GAOS_INBOUND.md, "Module rule").
 				if moduleRe.MatchString(f.module) && f.module > item.Module {
 					item.Module = f.module
 				}

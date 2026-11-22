@@ -15,13 +15,13 @@ import (
 )
 
 // AIManagerConfig configures the client for the production ai-manager gateway.
-// In production it is reached directly over WireGuard (http://10.10.0.4:8099),
+// In production it is reached directly over WireGuard (http://10.8.0.4:8099),
 // never through the public TLS edge.
 type AIManagerConfig struct {
-	URL       string // base URL, e.g. http://10.10.0.4:8099
+	URL       string // base URL, e.g. http://10.8.0.4:8099
 	LoginID   string // HTTP Basic login (shared ai-stack credentials)
 	SecretKey string // HTTP Basic secret
-	Provider  string // upstream provider inside ai-manager; this repo pins "claude-v3" (rnd-v3 Claude CLI)
+	Provider  string // upstream provider inside ai-manager; this repo pins "claude-v3" (app-host Claude CLI)
 	Model     string // optional upstream model
 	Caller    string // reported to ai-manager for usage attribution
 	// NoFallback forbids ai-manager from answering with a different provider.

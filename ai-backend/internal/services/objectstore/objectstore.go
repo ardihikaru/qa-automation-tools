@@ -1,5 +1,5 @@
 // Package objectstore is a minimal, prefix-locked S3 client for the export cache
-// (MODULE_CHECKLIST_EXPORT.md). The bucket is shared with HISv3, so the package offers only
+// (MODULE_CHECKLIST_EXPORT.md). The bucket is shared with SUT, so the package offers only
 // Stat, Get and Put, and refuses every key outside its fixed prefix. There is deliberately no
 // List and no Delete.
 package objectstore

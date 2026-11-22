@@ -4,7 +4,7 @@
 *   **Status:** rev 3, implemented (2026-11-21). Rev 1 was reviewed by four Goldfish reviewers (design, implementation readiness, codebase details, zoom-out): 8 Blockers, 23 Majors, 21 Nits; rev 2 by a second readiness reviewer: 2 Blockers, 5 Majors, 5 Nits. Every finding is resolved (sections 12 and 13). Not deployed.
 *   **Approval:** the product owner delegated every choice to the orchestrating agent ("work among your agents, never as my confirmation"). The EGM review is the gate; no human sign-off of this spec was asked for.
 *   **Depends on:** [CASE_AUTOMATION.md](CASE_AUTOMATION.md) (the `case_create` machine, `job_runs`/`job_events`, `case_approvals` and its two doors), [PRODUCT_REPOS_AUTOMATION_ROLE.md](PRODUCT_REPOS_AUTOMATION_ROLE.md) (`repoWriteAllowed`), [PRODUCT_KNOWLEDGE_SYNC.md](PRODUCT_KNOWLEDGE_SYNC.md) (`kb_assistants`: the synced `AGENTS.md` and `.claude/rules/*.md`), [GAOS_INBOUND.md](GAOS_INBOUND.md) (the inbox-answer webhook).
-*   **Terms.** *Automation repo*: the product's `product_repos` row with `is_automation = 1` (HISv3 = product 3 = `developersismedika/automation-test-hisv3`). *Finding*: one thing worth learning, observed in real work. *Proposal*: a `policy_propose` job: an AI-drafted policy for the automation repo, built from findings, approved by a human, published as a PR. *Learned policy*: a proposal whose PR was merged.
+*   **Terms.** *Automation repo*: the product's `product_repos` row with `is_automation = 1` (SUT = product 3 = `example-org/automation-test-sut`). *Finding*: one thing worth learning, observed in real work. *Proposal*: a `policy_propose` job: an AI-drafted policy for the automation repo, built from findings, approved by a human, published as a PR. *Learned policy*: a proposal whose PR was merged.
 
 ## 1. Analysis
 
@@ -12,10 +12,10 @@
 
 **Where findings come from now.** The `case_create` machine (`caseauto/machine.go`): generate → run → ≤ 3 repair rounds → approval (Approve / Reject / Needs changes, dashboard or GAOS Inbox) → push `qa-auto/<code>` → PR. Every step is a `job_events` row (`the reply was refused: …`, `the spec did not pass: …`, `the spec passed`); every human answer is a `case_approvals` row with `answer_text`. Epic batches drive many of these.
 
-**The feedback channel is half-blind.** `initialConvo` puts `AGENTS.md` in the prompt clipped to **12,000 bytes**, silently. HISv3's `AGENTS.md` is 30,480 bytes; the cut lands inside the §4 project map, so §4–§9 (coding standards, the REST rules of §5.3, the policies of §6, recipes, definition of done) never reach the model. `.claude/rules/*.md` are not read at all. A policy appended to `AGENTS.md` would be invisible, and a rules file would be too unless the machine reads it.
+**The feedback channel is half-blind.** `initialConvo` puts `AGENTS.md` in the prompt clipped to **12,000 bytes**, silently. SUT's `AGENTS.md` is 30,480 bytes; the cut lands inside the §4 project map, so §4–§9 (coding standards, the REST rules of §5.3, the policies of §6, recipes, definition of done) never reach the model. `.claude/rules/*.md` are not read at all. A policy appended to `AGENTS.md` would be invisible, and a rules file would be too unless the machine reads it.
 
 **Real findings of 2026-11-20** (the seed examples; none is invented):
-(a) a generated spec doubled `/api/v1` because `HIS_VENDOR_BACKEND_URL` already ends in `/api/v1`; a reviewer answered *Needs changes*, the repair fixed it → harvested as `review_changes`;
+(a) a generated spec doubled `/api/v1` because `SUT_VENDOR_BACKEND_URL` already ends in `/api/v1`; a reviewer answered *Needs changes*, the repair fixed it → harvested as `review_changes`;
 (b) Playwright's WHATWG URL layer decodes `%2e%2e` and normalises dot segments, so path-traversal cases need a raw HTTP request (TC-VSYS-008 left planned) → manual;
 (c) specs must use typed clients, not raw `request.get()` (golden rule 2) → a proposal must come back **covered**;
 (d) leak-marker lists diverged; now one `SERVER_LEAK_MARKERS` in `src/api/core/assertions.ts` → manual;

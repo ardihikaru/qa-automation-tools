@@ -7,7 +7,7 @@
 *   **Code references** cite function names; line numbers are approximate (read on 2026-11-13, `main` at `16f409f`).
 
 ## Overview
-Today **main** means two things: the AI agent's base workspace, and the repo that holds the Playwright e2e scripts and is the only PR source. The code expresses that as `writeAllowed(isMain, ...)`, the Playwright check only for `repo.IsMain` (`verifyAndStore`, `verifyAllProducts` in `ai-backend/internal/api/products.go`), and the legacy mirror from the main row (`mirrorMainToLegacy`, `ai-backend/internal/api/product_repos.go`). For HISv3 they differ: the AI base workspace is `his-v3-ai`, the Playwright automation lives in `automation-test-hisv3`.
+Today **main** means two things: the AI agent's base workspace, and the repo that holds the Playwright e2e scripts and is the only PR source. The code expresses that as `writeAllowed(isMain, ...)`, the Playwright check only for `repo.IsMain` (`verifyAndStore`, `verifyAllProducts` in `ai-backend/internal/api/products.go`), and the legacy mirror from the main row (`mirrorMainToLegacy`, `ai-backend/internal/api/product_repos.go`). For SUT they differ: the AI base workspace is `sut-ai`, the Playwright automation lives in `automation-test-sut`.
 
 Roles per product after this change:
 
@@ -17,7 +17,7 @@ Roles per product after this change:
 | `automation` | exactly one; may be the same repo as main | Holds the Playwright scripts; the only PR source; the repo the Playwright check and the staging probe apply to; the repo the product-level and legacy columns mirror. |
 | `central` | zero or one | Unchanged. |
 
-The first release is a **no-op for existing products**: the backfill sets automation = current main. Moving HISv3's roles is a separate, explicit post-deploy step (Decision 9).
+The first release is a **no-op for existing products**: the backfill sets automation = current main. Moving SUT's roles is a separate, explicit post-deploy step (Decision 9).
 
 ## Problem
 *   A product whose scripts live outside its AI workspace cannot be modeled: either main is the workspace (and the Playwright check fails, looking in the wrong repo) or main is the scripts repo (and the workspace is just a sibling).
@@ -31,7 +31,7 @@ The first release is a **no-op for existing products**: the backfill sets automa
 
 ## Non-Goals
 *   No PR-creation UI or API (no route performs a write-class op yet; the gate is tested, not called).
-*   No change to central, branches, worktrees, locking, sync or the pool; no per-repo staging URL; the executor still uses one `HISV3_STAGING_URL`.
+*   No change to central, branches, worktrees, locking, sync or the pool; no per-repo staging URL; the executor still uses one `TARGET_STAGING_URL`.
 *   No DB-level protection against deleting the automation repo (handler-enforced, like main).
 *   No auto-verify after a role change (Decision 8).
 
@@ -47,11 +47,11 @@ Made by the coordinator (second round, not re-asked):
 6.  **Legacy-column mirror follows the automation repo** (`mirrorMainToLegacy` is renamed `mirrorAutomationToLegacy`). The legacy columns (`repo_url`, `root_dir`, `branch`, `playwright_accessible`, `last_verified_at`, `verify_report`) are one record written from one row. The pre-PRODUCT_REPOS binary treats that single repo as "the repo with the tests" (clone, branch checkout, Playwright verify: `products.go` at `453ccec`, the clone branch step `if opErr == nil && p.Branch != ""`), so mirroring the automation row keeps that rollback view meaningful and keeps `products.playwright_accessible` equal to the automation repo's. The immediately previous release reads `product_repos`, not these columns. Splitting columns across two rows is rejected. Legacy `/verify|/clone|/checkout` routes also target the automation repo.
 7.  **Promotion semantics identical to main**: `is_automation:true` moves the flag atomically (clear old, set new, one tx). `is_automation:false` on the current automation repo is 409; deleting it is 409. A promotion clears the verify state of **both** the demoted and the promoted repo (their report shapes change).
 8.  **Promotion does not auto-verify.** The promoted repo shows "Unverified" until someone runs Verify (or the scheduled verifier does); the dashboard prompts "Verify now".
-9.  **HISv3 transition is an explicit post-deploy step** (section below).
+9.  **SUT transition is an explicit post-deploy step** (section below).
 10. **Main has no consumer beyond being a label and an AI-base-workspace pointer.** Evidence (grep, 2026-11-13): `grep -rnE 'FROM products|JOIN products|UPDATE products|INTO products|product_repos|PlaywrightAccessible|\.Branch\b' ai-backend/cmd ai-backend/internal --include=*.go --exclude=*_test.go`, minus `internal/api/product_repos.go`, `internal/api/products.go` and `internal/db/migrations.go`, finds only the `models.go` struct fields and an unrelated `rep.Branch` in `repopool.go`. `grep -rnE 'playwright_accessible|product_repos|FROM products|/api/products' playwright-executor/src playwright-executor/tests lib deploy playwright-qa playwright-docs this-qa-automation-system-playwright --exclude-dir=node_modules` finds one line: `this-qa-automation-system-playwright/tests/api/impersonation.spec.ts:69` (a POST that expects 403; unrelated). So nothing reads the legacy columns or `is_main` outside the two API files and the dashboard.
 
 ## Open Questions
-None. (An assumption, not a question: Decision 9's steps do not depend on what HISv3's production roles are today; they are stated as "ensure ... then promote".)
+None. (An assumption, not a question: Decision 9's steps do not depend on what SUT's production roles are today; they are stated as "ensure ... then promote".)
 
 ## Design
 
@@ -95,7 +95,7 @@ WHERE m.is_main = 1 AND a.id IS NULL;
 
 **Deploy order.** Run the migration command **before** starting the new binary (the new binary selects `is_automation`; without it every repo read is a 500). The previous binary ignores the column. Re-run the migration after the new binary is live.
 
-**Mandatory pre-implementation step (blocks the implementation PR).** On a scratch `mysql:8.0.33` container (rnd-v2's version, per `PRODUCT_REPOS.md` "DDL verification result"), never `qa_automation`: run the **full real `migrations` slice twice** via `RunMigrations` (not just the new entries), seeded with legacy-style rows, a rollback-window row (`is_main=1, is_automation=0`) and a row with automation != main. Record here the version, results, error numbers and the three "must be proven" items above, plus: a second `is_automation=1` row per product gives 1062 on `uq_product_repos_automation`; the second run changes nothing and leaves automation != main alone. **DDL verification result (run 2026-11-13, scratch `mysql:8.0.33` docker container on 127.0.0.1, never `qa_automation`; the real `RunMigrations` runner through `internal/testdb`, plus `cmd/databasemigration` against a scratch schema `step0`):** PASSED, no MySQL error on any step.
+**Mandatory pre-implementation step (blocks the implementation PR).** On a scratch `mysql:8.0.33` container (db-host's version, per `PRODUCT_REPOS.md` "DDL verification result"), never `qa_automation`: run the **full real `migrations` slice twice** via `RunMigrations` (not just the new entries), seeded with legacy-style rows, a rollback-window row (`is_main=1, is_automation=0`) and a row with automation != main. Record here the version, results, error numbers and the three "must be proven" items above, plus: a second `is_automation=1` row per product gives 1062 on `uq_product_repos_automation`; the second run changes nothing and leaves automation != main alone. **DDL verification result (run 2026-11-13, scratch `mysql:8.0.33` docker container on 127.0.0.1, never `qa_automation`; the real `RunMigrations` runner through `internal/testdb`, plus `cmd/databasemigration` against a scratch schema `step0`):** PASSED, no MySQL error on any step.
 *   Full `migrations` slice (33 entries) applied on an empty schema, then again (the testdb harness runs it once, the tests run it again, `TestMigrationsIdempotentAndBackfill` three times in total). The second run logs `Migration 32/33 skipped (guard > 0)` and nothing else changes.
 *   Proven: a generated column referencing `is_automation` added in the same ALTER (`automation_flag ... STORED AFTER central_flag`) works; `ALGORITHM=COPY, LOCK=SHARED` is accepted; the leading `-- skip-if:` comment line reaches MySQL without error (the whole entry text is executed).
 *   Seeded legacy-style rows, a rollback-window row (`is_main=1, is_automation=0`), a row with automation != main, and a main plus sibling product: the backfill heals the first and the last (main becomes automation), leaves automation != main alone, and the second run changes nothing (`TestMigrationsAutomationHealAndRerun`).
@@ -167,7 +167,7 @@ When automation != main the automation repo may have no default branch (backfill
 *   Callers pass `requirePlaywright = repo.IsAutomation` (`VerifyRepo` already takes the parameter, `repopool.go`; no change there). The staging probe merges into the **automation** report only. A main repo that is not automation gets the git checks only (`root_dir`, `git_repo`, `origin_matches`).
 *   `storeVerify` compares `is_automation`, and for the automation repo also `staging_url`; mirrors when automation.
 *   A `staging_url` change clears the automation repo's state and re-mirrors.
-*   `HasPlaywright` scans the root and immediate subdirectories (`repopool.go`). **Layout check (read-only, 2026-11-13):** `gh api repos/developersismedika/automation-test-hisv3/contents --jq '.[]|.type+" "+.name'` lists `playwright.config.ts` and `package.json` at the repo root (plus `tests/`, `src/`, `config/`, ...), so the check passes at the root.
+*   `HasPlaywright` scans the root and immediate subdirectories (`repopool.go`). **Layout check (read-only, 2026-11-13):** `gh api repos/example-org/automation-test-sut/contents --jq '.[]|.type+" "+.name'` lists `playwright.config.ts` and `package.json` at the repo root (plus `tests/`, `src/`, `config/`, ...), so the check passes at the root.
 *   **Main health indicator.** A broken main must not hide behind a green product chip. Reports are stored per repo, including non-automation ones (`storeVerify` writes `rep.OK` to that row's `playwright_accessible`, which for a non-automation repo means "checks passed"). The product list shows two chips when automation != main: "Automation: Accessible/Failing/Unverified" and "Main: OK/Failing/Unverified", the latter from the main repo's `last_verified_at` and `verify_report.ok`. No new API field.
 
 ### Write guard and push policy
@@ -191,7 +191,7 @@ func validateRepoSet(repos []repoBody) ([]repoBody, string) // returns the defau
 
 ```json
 POST /api/products/{id}/repos
-{ "name": "automation-test-hisv3", "repo_url": "https://github.com/o/automation-test-hisv3", "root_dir": "o/automation-test-hisv3",
+{ "name": "automation-test-sut", "repo_url": "https://github.com/o/automation-test-sut", "root_dir": "o/automation-test-sut",
   "is_automation": true, "branches": ["main"], "default_branch": "main" }
 ```
 
@@ -225,12 +225,12 @@ Role gating is unchanged (`is_automation` moves like main; it is not an Admin/De
 | Remote write (`repoWriteAllowed`), push URL enabled | only if also automation or flag | yes | only if flag | only if flag |
 | Delete / unset without promoting another | no | no | yes | yes |
 
-### HISv3 transition (post-deploy, explicit, human-run via the dashboard)
+### SUT transition (post-deploy, explicit, human-run via the dashboard)
 1.  Deploy: migration, then binary. Backfill makes automation = main on every product: **no behaviour change**.
-2.  For HISv3: ensure both `his-v3-ai` and `automation-test-hisv3` are registered repos (Add repo if missing; sync branches).
-3.  Make `his-v3-ai` main (Make main), then make `automation-test-hisv3` automation (Make automation), in that order or either; they are independent.
-4.  Expected transient state: the promoted automation repo and the demoted repo are **Unverified** (their reports are cleared; Decision 8) and the product chip shows Unverified; `his-v3-ai` is now read-only on the remote while the flag is off.
-5.  Click Verify on `automation-test-hisv3` (Playwright check at its root, staging probe) and on `his-v3-ai` (git checks). Chip returns to Accessible.
+2.  For SUT: ensure both `sut-ai` and `automation-test-sut` are registered repos (Add repo if missing; sync branches).
+3.  Make `sut-ai` main (Make main), then make `automation-test-sut` automation (Make automation), in that order or either; they are independent.
+4.  Expected transient state: the promoted automation repo and the demoted repo are **Unverified** (their reports are cleared; Decision 8) and the product chip shows Unverified; `sut-ai` is now read-only on the remote while the flag is off.
+5.  Click Verify on `automation-test-sut` (Playwright check at its root, staging probe) and on `sut-ai` (git checks). Chip returns to Accessible.
 
 ### Dashboard
 Files and exact edits (names, not line numbers, where they drift):
@@ -245,7 +245,7 @@ Files and exact edits (names, not line numbers, where they drift):
 *   `db/migrations_test.go` `TestMigrationsIdempotentAndBackfill`: after the double run, assert every legacy-backfilled repo has `is_automation=1` (the 2 repos, equal to the main ids); insert a product with an `is_main=1, is_automation=0` repo and one with automation != main, run migrations twice, assert the first is healed and the second untouched.
 *   `db/migrations_test.go` `TestUniqueKeyBackstopsAndCascade`: add a second-automation 1062 on `uq_product_repos_automation`.
 *   `api/product_repos_db_test.go` `assertMirror`: find the **automation** row (and assert exactly one main and one automation), compare the legacy columns to it (branch per the fallback rule).
-*   `TestProductsAPI_RepoLifecycleAndInvariants`: the promotion expectation (`find(...).IsMain ... p.RootDir != "o/his-v3-ai" || p.Branch != "dev"`) changes: promoting a repo to **main** no longer moves the mirror (root_dir stays the automation repo's, branch unchanged); add an automation promotion step where the mirror moves; add unset-automation and delete-automation 409 cases.
+*   `TestProductsAPI_RepoLifecycleAndInvariants`: the promotion expectation (`find(...).IsMain ... p.RootDir != "o/sut-ai" || p.Branch != "dev"`) changes: promoting a repo to **main** no longer moves the mirror (root_dir stays the automation repo's, branch unchanged); add an automation promotion step where the mirror moves; add unset-automation and delete-automation 409 cases.
 *   `TestProductsAPI_RepoLessProduct`: the four 409 cases keep the `no main repo` text (main is checked first); the final repair (`POST /repos` `is_main:true`, no `is_automation`, product has no repos) must also yield `IsAutomation`; assert via `assertMirror`.
 *   `TestMirrorDrift`: add `automate` (`PUT is_automation:true`) as an operation and `is_automation` on random adds; delete/unset of main or automation repos is 409 and must leave the invariants intact.
 *   `TestParallelPromotions`: keep, plus a variant promoting automation in parallel with `storeVerify`; assert exactly one automation and a consistent mirror.
@@ -312,6 +312,6 @@ WHERE NOT (p.repo_url <=> r.repo_url AND p.root_dir <=> r.root_dir
 1.  **Blocking:** scratch `mysql:8.0.33` run of the real full `migrations` slice twice (see Data model); record the result in this spec; also run the two post-flight queries and the roll-forward UPDATE there.
 2.  `cd ai-backend && go build -mod=mod ./... && go test -mod=mod ./...`, then again with `QA_TEST_MYSQL_DSN` on the scratch server.
 3.  `cd dashboard && npm run build && npx tsc --noEmit`.
-4.  Scratch stack: split-role product (main `his-v3-ai`, automation `automation-test-hisv3`): Playwright check only on the automation repo; flag off: automation push URL enabled, main disabled; promote automation moves the badge and re-mirrors; unset/delete automation gets 409; the degraded-state rows of the table by editing `is_automation` in SQL.
+4.  Scratch stack: split-role product (main `sut-ai`, automation `automation-test-sut`): Playwright check only on the automation repo; flag off: automation push URL enabled, main disabled; promote automation moves the badge and re-mirrors; unset/delete automation gets 409; the degraded-state rows of the table by editing `is_automation` in SQL.
 5.  Rollback drill (scratch): deploy new, split roles, redeploy the previous binary (it lists repos), delete the automation sibling with it, roll forward, run the roll-forward procedure and compare snapshots.
 6.  Deploy only with a separate approval (`deploy-qa-tool`); migration before binary.

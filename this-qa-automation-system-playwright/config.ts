@@ -1,11 +1,11 @@
 // Test configuration and constants
 export const config = {
   // Backend API
-  // Override with QA_BACKEND_URL (e.g. https://qa-tool.sismedika.com)
+  // Override with QA_BACKEND_URL (e.g. https://qa-tool.mfardiansyah.id)
   backendUrl: process.env.QA_BACKEND_URL || 'http://localhost:8080',
   
   // Dashboard
-  // Override with QA_DASHBOARD_URL (e.g. https://qa-tool.sismedika.com)
+  // Override with QA_DASHBOARD_URL (e.g. https://qa-tool.mfardiansyah.id)
   dashboardUrl: process.env.QA_DASHBOARD_URL || 'http://localhost:3000',
   
   // Impersonation tests (tests/api/impersonation.spec.ts); skipped when unset.

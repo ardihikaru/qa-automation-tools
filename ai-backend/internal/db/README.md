@@ -119,7 +119,7 @@ Concurrent racing is covered by the unique key: the loser of a promotion race ge
 - `kb_syncs`: one row per sync attempt; `running_flag` (generated from `status`) + `UNIQUE(product_id, running_flag)` allows one running sync per product. `counts`/`diff`/`problems` JSON are written in the same transaction as the entity rows; `ai_status` tracks the post-commit summary.
 - Entity tables `kb_parts`, `kb_modules`, `kb_submodules`, `kb_features`, `kb_epics`, `kb_stories`, `kb_test_cases`: `UNIQUE(product_id, code)`, every code column `utf8mb4_bin`, links by code; `origin` sync|local, `content_hash` (without location), `removed_at`/`removed_sync_id` soft delete.
 - `kb_story_features` (link index, `origin`), `kb_annotations` (keyed by `(product_id, entity_type, entity_code)`, survives re-syncs).
-- `product_settings.knowledge_format`: `NULL` never set, `''` off. Added by a guarded ALTER; a one-time guarded seed sets HISv3 to `hisv3-test-catalog-v1` while no product has a value.
+- `product_settings.knowledge_format`: `NULL` never set, `''` off. Added by a guarded ALTER; a one-time guarded seed sets SUT to `test-catalog-v1` while no product has a value.
 
 - `product_settings.gaos_integrated`, `gaos_product_id`, `gaos_last_sync_at`, `gaos_last_status` (`ok`/`failed`/`partial`), `gaos_last_note` (GAOS_INTEGRATION.md): one guarded ALTER, so a re-run is a no-op and user values survive; a missing settings row reads the defaults (off, empty).
 - `product_settings.gaos_push_requested_at` (`DATETIME(6) NULL`, the durable "a push is owed" marker; `NULL` = nothing owed) and `gaos_push_attempts` (`INT NOT NULL DEFAULT 0`, failed passes since the marker was set) (GAOS_INTEGRATION.md, "Durable delivery"): one guarded ALTER (guard on the first column).

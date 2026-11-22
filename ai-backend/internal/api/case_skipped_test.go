@@ -22,7 +22,7 @@ func TestFinishCaseRunSkipped(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	for _, code := range []string{"TC-VOCBOOK-007", "TC-VOCBOOK-008"} {
 		must(`INSERT INTO kb_test_cases (product_id, code, epic_code, spec_paths, content_hash) VALUES (1,?,?,?,?)`, code, "VOCBOOK", `[]`, strings.Repeat("0", 64))
 	}

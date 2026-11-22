@@ -1,5 +1,5 @@
 // Package executor is the client for playwright-executor, the systemd service
-// on rnd-v3 (default http://10.10.0.9:8141) that runs every Playwright job.
+// on app-host (default http://10.8.0.9:8141) that runs every Playwright job.
 //
 // The backend submits runs and polls for results; the executor never calls
 // the backend. Auth is a shared bearer token (PLAYWRIGHT_EXECUTOR_TOKEN).

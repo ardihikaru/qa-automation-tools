@@ -6,10 +6,10 @@
 *   **Superseded in part by [PRODUCT_REPOS.md](PRODUCT_REPOS.md):** the data model (one repo per product), the routes and the verify flow are replaced by multi-repo products. The pool, locks, child environment, SSRF probe and role rules stay in force.
 
 ## Overview
-A "Products" master list in the dashboard. Each product records its repo link, main (staging) URL, whether Playwright can reach it, and the root dir of its checkout on rnd-v3-vpn. A **Verify** button checks all of that. A repo pool dir in this repo lets the system `gh repo clone` repos and switch branches.
+A "Products" master list in the dashboard. Each product records its repo link, main (staging) URL, whether Playwright can reach it, and the root dir of its checkout on app-host. A **Verify** button checks all of that. A repo pool dir in this repo lets the system `gh repo clone` repos and switch branches.
 
 ## Problem
-No place defines which products exist, where their repos live, or whether the rnd-v3 VM can run Playwright against them. `playwright-executor` (merged, PR #3) targets one env-configured staging URL (`HISV3_STAGING_URL`); there is no per-product registry.
+No place defines which products exist, where their repos live, or whether the app-host VM can run Playwright against them. `playwright-executor` (merged, PR #3) targets one env-configured staging URL (`TARGET_STAGING_URL`); there is no per-product registry.
 
 ## Goals
 *   `products` table + CRUD API + dashboard page.
@@ -17,7 +17,7 @@ No place defines which products exist, where their repos live, or whether the rn
 *   Clone and branch switch from the UI via `gh` / `git`, confined to a pool dir.
 
 ## Non-Goals
-*   Making the executor consume per-product URLs (follow-up; today it uses `HISV3_STAGING_URL`).
+*   Making the executor consume per-product URLs (follow-up; today it uses `TARGET_STAGING_URL`).
 *   Running tests in the cloned repos.
 
 ## Technical Plan
@@ -30,7 +30,7 @@ No place defines which products exist, where their repos live, or whether the rn
 *   **UI:** `ProductsView` (table, add/edit modal, status chip, Verify/Clone/Switch branch, all via `SubmitButton`).
 
 ## Decisions (owner, 2026-11-13)
-1.  GitHub token: taken from the owner's `~/.config/github/token.txt` locally (checked valid with `gh`; value never printed). Production needs `GH_TOKEN` set in `.env.prod` on rnd-v3, which is a separate step.
+1.  GitHub token: taken from the owner's `~/.config/github/token.txt` locally (checked valid with `gh`; value never printed). Production needs `GH_TOKEN` set in `.env.prod` on app-host, which is a separate step.
 2.  The pool mount is read-write, for this one directory only.
 3.  Verify runs both on demand and on a schedule (`PRODUCTS_VERIFY_INTERVAL_MINUTES`, default 360).
 
@@ -49,7 +49,7 @@ Admin, DevOps and Developer may create, edit, delete, clone and switch branch. Q
 
 ## Target Files
 *   Create: `repos/.gitkeep`, `ai-backend/internal/api/products.go` (+ test), `ai-backend/internal/services/repopool/` (+ test), `dashboard/src/views/ProductsView.tsx`
-*   Modify: `ai-backend/internal/db/migrations.go`, `ai-backend/internal/models/models.go`, `ai-backend/internal/api/router.go`, `ai-backend/Dockerfile`, `deploy/his-v3-qa/docker-compose*.yml`, `deploy/his-v3-qa/.env.prod.example`, `.gitignore`, `dashboard/src/App.tsx`, `dashboard/src/components/Layout.tsx`, READMEs of touched packages, `docs/designs/SITEMAP.md`
+*   Modify: `ai-backend/internal/db/migrations.go`, `ai-backend/internal/models/models.go`, `ai-backend/internal/api/router.go`, `ai-backend/Dockerfile`, `deploy/qa-tool/docker-compose*.yml`, `deploy/qa-tool/.env.prod.example`, `.gitignore`, `dashboard/src/App.tsx`, `dashboard/src/components/Layout.tsx`, READMEs of touched packages, `docs/designs/SITEMAP.md`
 
 ## Verification Plan
 Go table tests for URL/branch/path validation and verify checks (temp git dirs); `go test -mod=mod ./...`; dashboard build + tsc; manual verify against a real repo and a bogus path.

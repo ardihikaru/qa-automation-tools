@@ -180,8 +180,20 @@ func appOfService(svc string, known map[string]bool) string {
 		return ""
 	case known[svc]:
 		return svc
-	case known["his-"+svc]:
-		return "his-" + svc
+	}
+	// A service folder may name an app without its product prefix ("vendor-backend" for
+	// "acme-vendor-backend"); accept the one known app that ends in "-"+svc.
+	match := ""
+	for app := range known {
+		if strings.HasSuffix(app, "-"+svc) {
+			if match != "" {
+				return svc // ambiguous
+			}
+			match = app
+		}
+	}
+	if match != "" {
+		return match
 	}
 	return svc
 }

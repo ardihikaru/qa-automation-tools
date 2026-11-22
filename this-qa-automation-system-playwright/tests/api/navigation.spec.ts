@@ -1,6 +1,6 @@
 /**
  * Navigation map API (docs/designs/NAVIGATION_MAP.md). Read-only: logs in as the impersonator
- * (E2E_IMPERSONATOR_USERNAME / _PASSWORD) and reads the HISv3 map. The map exists after the first
+ * (E2E_IMPERSONATOR_USERNAME / _PASSWORD) and reads the SUT map. The map exists after the first
  * knowledge sync that ran with this version; the route checks skip until then.
  */
 
@@ -21,9 +21,9 @@ test.describe('Navigation map API', () => {
     const login = await api.post('/api/auth/login', { headers: json, data: { username: impersonator, password: impersonatorPassword } });
     expect(login.status()).toBe(200);
     const { products } = await (await api.get('/api/products')).json();
-    const his = products.find((p: { name: string }) => p.name === 'HISv3');
-    test.skip(!his, 'no HISv3 product');
-    base = `/api/products/${his.id}/navigation`;
+    const sut = products.find((p: { name: string }) => p.name === (process.env.QA_PRODUCT_NAME || 'SUT'));
+    test.skip(!sut, 'no SUT product');
+    base = `/api/products/${sut.id}/navigation`;
   });
 
   test.afterEach(async () => {
@@ -37,15 +37,15 @@ test.describe('Navigation map API', () => {
     expect((await api.get(`${base}/routes/nope`)).status()).toBe(404);
   });
 
-  test('his-vendor-backend routes and his-frontend pages are mapped with coverage', async () => {
-    const res = await api.get(`${base}?surface=api&app=his-vendor-backend`);
+  test('sut-vendor-backend routes and sut-frontend pages are mapped with coverage', async () => {
+    const res = await api.get(`${base}?surface=api&app=sut-vendor-backend`);
     expect(res.status()).toBe(200);
     const map = await res.json();
     test.skip(!map.build, 'no navigation build yet (run a knowledge sync)');
     const paths: string[] = map.routes.map((r: { path: string }) => r.path);
     expect(paths).toContain('/api/v1/service-status');
     expect(paths).toContain('/api/v1/swagger/*');
-    expect(paths.some((p) => p.startsWith('/api/v1/kiosk-his-v2/'))).toBe(true);
+    expect(paths.some((p) => p.startsWith('/api/v1/kiosk-sut-v2/'))).toBe(true);
     const probe = map.routes.find((r: { path: string }) => r.path === '/api/v1/service-status');
     expect(probe.cases).toBeGreaterThan(0);
     expect(['failing', 'passing', 'automated', 'planned', 'untested']).toContain(probe.status);

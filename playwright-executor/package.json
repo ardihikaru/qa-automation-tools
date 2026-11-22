@@ -2,7 +2,7 @@
   "name": "playwright-executor",
   "version": "1.0.0",
   "private": true,
-  "description": "Small HTTP service that runs Playwright jobs (QA exploration, flow recording) against HISv3 staging for qa-automation ai-backend",
+  "description": "Small HTTP service that runs Playwright jobs (QA exploration, flow recording) against SUT staging for qa-automation ai-backend",
   "main": "dist/src/server.js",
   "engines": {
     "node": ">=22"

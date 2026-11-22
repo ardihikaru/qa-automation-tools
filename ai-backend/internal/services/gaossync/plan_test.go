@@ -10,11 +10,11 @@ const goodToken = "gaos_0123456789abcdef0123456789abcdef01"
 
 func TestValidateConfig(t *testing.T) {
 	ok := []struct{ url, want string }{
-		{"https://gaos.sismedika.com/api/v1", "https://gaos.sismedika.com/api/v1"},
-		{"https://gaos.sismedika.com/api/v1/", "https://gaos.sismedika.com/api/v1"},
+		{"https://gaos.mfardiansyah.id/api/v1", "https://gaos.mfardiansyah.id/api/v1"},
+		{"https://gaos.mfardiansyah.id/api/v1/", "https://gaos.mfardiansyah.id/api/v1"},
 		{"http://127.0.0.1:8080/api/v1", "http://127.0.0.1:8080/api/v1"},
 		{"http://[::1]:8080/api/v1", "http://[::1]:8080/api/v1"},
-		{"http://10.10.0.9:8142/api/v1", "http://10.10.0.9:8142/api/v1"},
+		{"http://10.8.0.9:8142/api/v1", "http://10.8.0.9:8142/api/v1"},
 	}
 	for _, c := range ok {
 		got, err := ValidateConfig(c.url, goodToken)
@@ -23,9 +23,9 @@ func TestValidateConfig(t *testing.T) {
 		}
 	}
 	bad := []string{
-		"http://gaos.sismedika.com/api/v1", "http://localhost:8080/api/v1", "http://10.10.1.4/api/v1", "http://10.11.0.4/api/v1",
-		"ftp://gaos.sismedika.com", "https://user:pw@gaos.sismedika.com/api/v1", "https://gaos.sismedika.com/api/v1?x=1",
-		"https://gaos.sismedika.com/api/v1?", "https://gaos.sismedika.com/api/v1#f", "https:///api", "not a url", "gaos.sismedika.com/api/v1",
+		"http://gaos.mfardiansyah.id/api/v1", "http://localhost:8080/api/v1", "http://100.64.1.4/api/v1", "http://8.8.8.8/api/v1",
+		"ftp://gaos.mfardiansyah.id", "https://user:pw@gaos.mfardiansyah.id/api/v1", "https://gaos.mfardiansyah.id/api/v1?x=1",
+		"https://gaos.mfardiansyah.id/api/v1?", "https://gaos.mfardiansyah.id/api/v1#f", "https:///api", "not a url", "gaos.mfardiansyah.id/api/v1",
 	}
 	for _, u := range bad {
 		if _, err := ValidateConfig(u, goodToken); err == nil {
@@ -33,7 +33,7 @@ func TestValidateConfig(t *testing.T) {
 		}
 	}
 	for _, tok := range []string{"gaos_short", "xaos_0123456789abcdef0123456789abcdef01", goodToken + " x", goodToken + "\n", "gaos_0123456789abcdef0123456789abcdé01"} {
-		_, err := ValidateConfig("https://gaos.sismedika.com/api/v1", tok)
+		_, err := ValidateConfig("https://gaos.mfardiansyah.id/api/v1", tok)
 		if err == nil {
 			t.Errorf("token %q must be refused", tok)
 		} else if strings.Contains(err.Error(), tok) {
@@ -43,7 +43,7 @@ func TestValidateConfig(t *testing.T) {
 	if b, err := ValidateConfig("", ""); b != "" || err != nil {
 		t.Errorf("both empty is not configured, not an error: %q %v", b, err)
 	}
-	if _, err := ValidateConfig("https://gaos.sismedika.com/api/v1", ""); err == nil {
+	if _, err := ValidateConfig("https://gaos.mfardiansyah.id/api/v1", ""); err == nil {
 		t.Error("url without token must be an error")
 	}
 	if _, err := ValidateConfig("", goodToken); err == nil {
@@ -108,7 +108,7 @@ func catCase(code, epic, story, status string) catCaseT {
 func TestBuildPlanSkipRulesAndMapping(t *testing.T) {
 	cat := &catalog{
 		features: map[string][]storyFeature{"US-AUTH-01": {{"A01.07", "A01"}, {"A01.02", "A01"}, {"Z99.01", "Z99"}, {"B02.001", "B02"}}},
-		epics:    map[string]catEpic{"AUTH": {"Authentication", "his-auth"}},
+		epics:    map[string]catEpic{"AUTH": {"Authentication", "sut-auth"}},
 	}
 	auto := catCase("TC-AUTH-002", "AUTH", "US-AUTH-01", "automated")
 	auto.specPaths = []string{"tests/auth/login.spec.ts"}
@@ -155,7 +155,7 @@ func TestBuildPlanSkipRulesAndMapping(t *testing.T) {
 	if c4 := p.cases[3]; c4.UserStory != "" {
 		t.Fatalf("a story code outside the pattern is dropped: %+v", c4)
 	}
-	if e := p.epics["AUTH"]; e.Title != "Authentication" || e.Service != "his-auth" || e.Source != "qa-automation-tools" || e.Module != "B02" {
+	if e := p.epics["AUTH"]; e.Title != "Authentication" || e.Service != "sut-auth" || e.Source != "qa-automation-tools" || e.Module != "B02" {
 		t.Fatalf("epic: %+v", e)
 	}
 	if e := p.epics["NEW"]; e.Title != "NEW" || e.Service != "" || e.Module != "" {

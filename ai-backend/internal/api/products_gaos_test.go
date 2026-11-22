@@ -106,7 +106,7 @@ func waitGAOSStatus(t *testing.T, r *Router, id int, want string) map[string]any
 func TestProductsGAOSJSONShapeAndDefaults(t *testing.T) {
 	f := newGAOSFake(t)
 	r := gaosRouter(t, f)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	g := gaosOf(getProduct(t, r, p.ID))
 	if g["integrated"] != false || g["product_id"] != "" || g["last_sync_at"] != nil || g["last_status"] != "" || g["last_note"] != "" || len(g) != 5 {
 		t.Fatalf("defaults: %v", g)
@@ -137,7 +137,7 @@ func New0() bool { var r Router; return r.gaos.Configured() }
 func TestProductsGAOSRoleRule(t *testing.T) {
 	f := newGAOSFake(t)
 	r := gaosRouter(t, f)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	url := fmt.Sprintf("/api/products/%d", p.ID)
 	for _, role := range []string{"Developer", "QA", "QC"} {
 		kcall(t, r, role, http.MethodPut, url, map[string]any{"gaos_integrated": true, "gaos_product_id": "p-6"}, http.StatusForbidden)
@@ -158,7 +158,7 @@ func TestProductsGAOSRoleRule(t *testing.T) {
 func TestProductsGAOSTurnOnNeedsIDAndConfiguredServer(t *testing.T) {
 	f := newGAOSFake(t)
 	r := gaosRouter(t, f)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	url := fmt.Sprintf("/api/products/%d", p.ID)
 	for _, bad := range []string{"6", "p-", "P-6", "p-6/x", "p-6 ", "p-" + strings.Repeat("1", 50)} {
 		kcall(t, r, "Admin", http.MethodPut, url, map[string]any{"gaos_integrated": true, "gaos_product_id": bad}, http.StatusBadRequest)
@@ -173,7 +173,7 @@ func TestProductsGAOSTurnOnNeedsIDAndConfiguredServer(t *testing.T) {
 	}
 
 	un := gaosRouter(t, nil)
-	p2 := createHISv3(t, un)
+	p2 := createSUT(t, un)
 	e = kcall(t, un, "Admin", http.MethodPut, fmt.Sprintf("/api/products/%d", p2.ID), map[string]any{"gaos_integrated": true, "gaos_product_id": "p-6"}, http.StatusBadRequest)
 	if !strings.Contains(fmt.Sprint(e["error"]), "not configured") {
 		t.Fatalf("%v", e)
@@ -191,7 +191,7 @@ func TestProductsGAOSTurnOnNeedsIDAndConfiguredServer(t *testing.T) {
 func TestProductsGAOSTurnOnPushesAndIDChangeResetsOutcome(t *testing.T) {
 	f := newGAOSFake(t)
 	r := gaosRouter(t, f)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	seedGAOSCase(t, r, p.ID)
 	url := fmt.Sprintf("/api/products/%d", p.ID)
 	kcall(t, r, "Admin", http.MethodPut, url, map[string]any{"gaos_integrated": true, "gaos_product_id": "p-6"}, http.StatusOK)
@@ -206,7 +206,7 @@ func TestProductsGAOSTurnOnPushesAndIDChangeResetsOutcome(t *testing.T) {
 		t.Fatalf("%v", first)
 	}
 	// Saving the same values again does not push.
-	kcall(t, r, "Admin", http.MethodPut, url, map[string]any{"gaos_integrated": true, "gaos_product_id": "p-6", "name": "HISv3"}, http.StatusOK)
+	kcall(t, r, "Admin", http.MethodPut, url, map[string]any{"gaos_integrated": true, "gaos_product_id": "p-6", "name": "SUT"}, http.StatusOK)
 	time.Sleep(200 * time.Millisecond)
 	if f.count() != 2 {
 		t.Fatalf("unchanged settings must not push: %d", f.count())
@@ -230,7 +230,7 @@ func TestProductsGAOSTurnOnPushesAndIDChangeResetsOutcome(t *testing.T) {
 func TestProductsGAOSSyncEndpoint(t *testing.T) {
 	f := newGAOSFake(t)
 	r := gaosRouter(t, f)
-	p := createHISv3(t, r)
+	p := createSUT(t, r)
 	seedGAOSCase(t, r, p.ID)
 	sync := fmt.Sprintf("/api/products/%d/gaos/sync", p.ID)
 	kcall(t, r, "Admin", http.MethodGet, sync, nil, http.StatusMethodNotAllowed)
@@ -273,6 +273,6 @@ func TestProductsGAOSSyncEndpoint(t *testing.T) {
 	}
 
 	un := gaosRouter(t, nil)
-	p2 := createHISv3(t, un)
+	p2 := createSUT(t, un)
 	kcall(t, un, "Admin", http.MethodPost, fmt.Sprintf("/api/products/%d/gaos/sync", p2.ID), nil, http.StatusBadRequest)
 }

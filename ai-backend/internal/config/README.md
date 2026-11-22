@@ -37,23 +37,23 @@ The result is cached in a package-level singleton. Consumers include
 | `DATABASE_URL` | `Backend.Database.ConnectionString` | unset (secret-bearing) |
 | `AI_PROVIDER` | `Backend.AI.Provider` | `ai-manager` |
 | `AI_TIMEOUT_SECONDS` | `Backend.AI.TimeoutSeconds` | `180` |
-| `AI_MANAGER_URL` | `Backend.AI.ManagerURL` | `http://10.10.0.4:8099` |
+| `AI_MANAGER_URL` | `Backend.AI.ManagerURL` | `http://10.8.0.4:8099` |
 | `AI_MANAGER_LOGIN_ID` | `Backend.AI.ManagerLoginID` | empty (secret) |
 | `AI_MANAGER_SECRET_KEY` | `Backend.AI.ManagerSecretKey` | empty (secret) |
 | `AI_MANAGER_PROVIDER` | `Backend.AI.ManagerProvider` | `claude-v3` |
 | `AI_MANAGER_NO_FALLBACK` | `Backend.AI.ManagerNoFallback` | `true` |
 | `AI_MANAGER_MODEL` | `Backend.AI.ManagerModel` | empty |
-| `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (`case_run` jobs fail). Prod: `http://10.10.0.9:8141` |
+| `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (`case_run` jobs fail). Prod: `http://10.8.0.9:8141` |
 | `PLAYWRIGHT_EXECUTOR_TOKEN` | `Backend.Executor.Token` | empty (secret) |
 | `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |
-| `GAOS_API_URL` | `Backend.GAOS.APIURL` | empty = GAOS integration off. https, or http only to a loopback / `10.10.0.0/24` IP literal; no userinfo, query or fragment (validated by `gaossync.ValidateConfig`) |
+| `GAOS_API_URL` | `Backend.GAOS.APIURL` | empty = GAOS integration off. https, or http only to a loopback / `10.8.0.0/24` IP literal; no userinfo, query or fragment (validated by `gaossync.ValidateConfig`) |
 | `GAOS_API_TOKEN` | `Backend.GAOS.APIToken` | empty (secret, never logged). Starts with `gaos_`, at least 37 characters |
 | `REPO_POOL_DIR` | `Backend.Products.PoolDir` | empty (clone/verify disabled). Prod: `/data/repos` |
-| `REPO_POOL_HOST_DIR` | `Backend.Products.PoolHostDir` | empty (case run / create-automation answer 503). The pool as playwright-executor sees it on rnd-v3, e.g. `/home/sismedika/devel/projects/qa-automation-tools/repos` |
+| `REPO_POOL_HOST_DIR` | `Backend.Products.PoolHostDir` | empty (case run / create-automation answer 503). The pool as playwright-executor sees it on app-host, e.g. `/home/qa/devel/projects/qa-automation-tools/repos` |
 | `PRODUCTS_VERIFY_INTERVAL_MINUTES` | `Backend.Products.VerifyIntervalMinutes` | `360` (`0` disables the scheduled verify) |
 | `REPO_POOL_ALLOWED_OWNERS` | `Backend.Products.AllowedOwners` | empty (any owner). Comma-separated GitHub owners allowed to be cloned |
 | `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET`, `MINIO_KEY_NAMESPACE` | `Backend.ObjectStore` | all empty = object storage not configured (the checklist export answers 503). Access and secret key are secrets; `ObjectStoreConfig.String`/`GoString` (value receivers) print `***` for both. Namespace must match `^[a-z0-9][a-z0-9-]{0,31}$`. Endpoint is `host:port` without a scheme |
-| `MINIO_USE_SSL` | `Backend.ObjectStore.UseSSL` | `true`. `false` is accepted only when the endpoint host is an IP inside `10.10.0.0/24` (`ObjectStoreConfig.Check`), otherwise the config counts as invalid |
+| `MINIO_USE_SSL` | `Backend.ObjectStore.UseSSL` | `true`. `false` is accepted only when the endpoint host is an IP inside `10.8.0.0/24` (`ObjectStoreConfig.Check`), otherwise the config counts as invalid |
 | `MINIO_TIMEOUT_SECONDS` | `Backend.ObjectStore.TimeoutSeconds` | `30` (per call) |
 | `GH_TOKEN` | not in `Config` | read by `gh`/`git` directly from the process env (secret, never logged) |
 | `MINIMAX_API_KEY` (dormant) | `Backend.AI.APIKey` | empty (secret) |

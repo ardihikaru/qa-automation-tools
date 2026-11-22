@@ -53,7 +53,7 @@ func TestCaseResultsDB(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	must(`INSERT INTO product_settings (product_id, gaos_integrated, gaos_product_id) VALUES (1,1,'p-6')`)
 	for _, code := range []string{"TC-AUTH-001", "TC-AUTH-002", "TC-AUTH-003"} {
 		must(`INSERT INTO kb_test_cases (product_id, code, epic_code, spec_paths, content_hash) VALUES (1,?,?,?,?)`, code, "AUTH", `[]`, strings.Repeat("0", 64))
@@ -126,7 +126,7 @@ func TestResultsIngestTriggersTheGAOSPush(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1'),(2,'Other','r2','s2','d2')`)
+	must(`INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1'),(2,'Other','r2','s2','d2')`)
 	must(`INSERT INTO product_settings (product_id, gaos_integrated, gaos_product_id) VALUES (1,1,'p-6'),(2,0,'')`)
 	for _, pid := range []int{1, 2} {
 		for _, code := range []string{"TC-AUTH-001", "TC-AUTH-002"} {

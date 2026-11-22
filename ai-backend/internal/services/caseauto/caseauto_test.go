@@ -412,7 +412,7 @@ func newRig(replies []string, results []RunResult) *rig {
 }
 
 func testJob() Job {
-	return Job{ID: "job-1", ProductID: 3, ProductName: "HISv3", Branch: "qa-auto/tc-patreg-020", DefaultBranch: "main",
+	return Job{ID: "job-1", ProductID: 3, ProductName: "SUT", Branch: "qa-auto/tc-patreg-020", DefaultBranch: "main",
 		AllowedHosts: []string{"staging.example.com"}, JobURL: "https://qa-tool.example/jobs/job-1",
 		Case: Case{Code: code, Scenario: "Check-in writes the registration number\nsteps...", StoryCode: "US-1", StoryText: "As a clerk", Features: []string{"F-1"}}}
 }
@@ -717,7 +717,7 @@ func TestValidateFixtures(t *testing.T) {
 		t.Fatalf("fixture names not extracted: %v", known)
 	}
 	spec := func(fx string) GeneratedFile {
-		return GeneratedFile{Path: "tests/api/rest/his-vendor-backend/TC-DMASTER-007.spec.ts",
+		return GeneratedFile{Path: "tests/api/rest/sut-vendor-backend/TC-DMASTER-007.spec.ts",
 			Content: "import { test } from '@playwright/test';\ntest('TC-DMASTER-007 ok', async ({ " + fx + " }) => {});\n"}
 	}
 	o := ValidateOptions{Code: "TC-DMASTER-007", Fixtures: known}
@@ -744,7 +744,7 @@ func TestEnvFailure(t *testing.T) {
 
 func TestValidateAllowsTargetsImportOnly(t *testing.T) {
 	mk := func(imp string) GeneratedFile {
-		return GeneratedFile{Path: "tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts",
+		return GeneratedFile{Path: "tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts",
 			Content: "import { test } from '@playwright/test';\nimport { x } from '" + imp + "';\ntest('TC-VSYS-001 ok', async () => {});\n"}
 	}
 	o := ValidateOptions{Code: "TC-VSYS-001"}

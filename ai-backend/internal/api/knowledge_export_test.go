@@ -96,7 +96,7 @@ func TestStrictBool(t *testing.T) {
 }
 
 func TestChecklistExportValidation(t *testing.T) {
-	r, _ := exportRouter(fakeExportSrc{name: "HISv3"}, &memStore{objs: map[string][]byte{}})
+	r, _ := exportRouter(fakeExportSrc{name: "SUT"}, &memStore{objs: map[string][]byte{}})
 	cases := []struct {
 		method, query string
 		code          int
@@ -156,13 +156,13 @@ func TestChecklistExportErrors(t *testing.T) {
 
 func TestChecklistExportHeaders(t *testing.T) {
 	store := &memStore{objs: map[string][]byte{}}
-	r, c := exportRouter(fakeExportSrc{name: "HIS v3 / <b>"}, store)
+	r, c := exportRouter(fakeExportSrc{name: "SUT / <b>"}, store)
 	types := map[string]string{"pdf": "application/pdf", "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "csv": "text/csv; charset=utf-8"}
 	for _, f := range []string{"pdf", "xlsx", "csv"} {
 		w := callExport(r, "GET", "?format="+f)
 		h := w.Header()
 		if w.Code != 200 || h.Get("Content-Type") != types[f] || h.Get("Cache-Control") != "no-store" ||
-			h.Get("Content-Disposition") != `attachment; filename="HIS-v3-b-MODULE-CHECKLIST.`+f+`"` ||
+			h.Get("Content-Disposition") != `attachment; filename="SUT-b-MODULE-CHECKLIST.`+f+`"` ||
 			h.Get("Content-Length") != strconv.Itoa(w.Body.Len()) || w.Body.Len() == 0 {
 			t.Fatalf("%s: %d %v", f, w.Code, h)
 		}
@@ -192,7 +192,7 @@ func TestChecklistExportHeaders(t *testing.T) {
 func TestChecklistExportDB(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	res, err := d.Exec(ctx, `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('HISv3', 'https://github.com/o/r', 'https://s', 'hisv3', 'main')`)
+	res, err := d.Exec(ctx, `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('SUT', 'https://github.com/o/r', 'https://s', 'sut', 'main')`)
 	if err != nil {
 		t.Fatal(err)
 	}

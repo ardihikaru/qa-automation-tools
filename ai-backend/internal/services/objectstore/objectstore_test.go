@@ -47,12 +47,12 @@ func TestConstructorRejectsBadPrefix(t *testing.T) {
 }
 
 func TestNewRefusesBadConfig(t *testing.T) {
-	cfg := config.ObjectStoreConfig{Endpoint: "10.10.0.5:9000", AccessKey: "ak-SECRET", SecretKey: "sk-SECRET", Bucket: "b", KeyNamespace: "Bad_NS", UseSSL: false}
+	cfg := config.ObjectStoreConfig{Endpoint: "10.8.0.5:9000", AccessKey: "ak-SECRET", SecretKey: "sk-SECRET", Bucket: "b", KeyNamespace: "Bad_NS", UseSSL: false}
 	s, err := New(cfg)
 	if s != nil || err == nil {
 		t.Fatal("invalid namespace accepted")
 	}
-	if strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "10.10.0.5") {
+	if strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "10.8.0.5") {
 		t.Errorf("error leaks a value: %v", err)
 	}
 	cfg.KeyNamespace = "dev-x"
@@ -82,7 +82,7 @@ func TestInvalidKeyMakesNoCall(t *testing.T) {
 	f := newFakeAPI()
 	s, _ := newStore(f, "b", Prefix, time.Second)
 	ctx := context.Background()
-	if _, _, err := s.Stat(ctx, "hisv3/x"); !errors.Is(err, ErrInvalidKey) {
+	if _, _, err := s.Stat(ctx, "sut/x"); !errors.Is(err, ErrInvalidKey) {
 		t.Error(err)
 	}
 	if _, _, err := s.Get(ctx, "qa-automation/../x"); !errors.Is(err, ErrInvalidKey) {
@@ -120,14 +120,14 @@ func TestStoreRoundTripAndNotFound(t *testing.T) {
 
 func TestErrorsCarryCodeOnly(t *testing.T) {
 	f := newFakeAPI()
-	f.err = minio.ErrorResponse{Code: "AccessDenied", Message: "host=10.1.1.1 bucket=hisv3-prod key=qa-automation/x request=abc"}
+	f.err = minio.ErrorResponse{Code: "AccessDenied", Message: "host=10.1.1.1 bucket=sut-prod key=qa-automation/x request=abc"}
 	s, _ := newStore(f, "b", Prefix, time.Second)
 	ctx := context.Background()
 	_, _, e1 := s.Get(ctx, "qa-automation/x")
 	_, _, e2 := s.Stat(ctx, "qa-automation/x")
 	e3 := s.Put(ctx, "qa-automation/x", "a/b", []byte("x"))
 	for i, e := range []error{e1, e2, e3} {
-		if e == nil || ErrCode(e) != "AccessDenied" || strings.Contains(e.Error(), "10.1.1.1") || strings.Contains(e.Error(), "hisv3") {
+		if e == nil || ErrCode(e) != "AccessDenied" || strings.Contains(e.Error(), "10.1.1.1") || strings.Contains(e.Error(), "sut") {
 			t.Errorf("error %d = %v", i, e)
 		}
 	}

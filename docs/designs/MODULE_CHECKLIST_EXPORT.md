@@ -5,10 +5,10 @@
 *   **Date:** 2026-11-17
 *   **Depends on:** [PRODUCT_KNOWLEDGE_SYNC.md](PRODUCT_KNOWLEDGE_SYNC.md) (implemented): the `kb_*` tables and the `Syncer`.
 *   **Code references** use function names. Line numbers are approximate.
-*   **Terms.** *Goldfish*: an EGM reviewer with no conversation history. *rnd-v3*: the host that runs the production Docker Compose stack (see the root `CLAUDE.md`). *Hard rule N*: a numbered rule in the root `CLAUDE.md`. *The plan*: the requester's approved implementation plan, which is not stored in the repo; this spec restates every decision it needs.
+*   **Terms.** *Goldfish*: an EGM reviewer with no conversation history. *app-host*: the host that runs the production Docker Compose stack (see the root `CLAUDE.md`). *Hard rule N*: a numbered rule in the root `CLAUDE.md`. *The plan*: the requester's approved implementation plan, which is not stored in the repo; this spec restates every decision it needs.
 
 ## Overview
-`HISV3-MODULE-CHECKLIST.pdf` (19 pages, A4, 440 features) was built by hand from the HISv3 module catalogue through a LaTeX file that is not in the repo. This spec lets the dashboard produce a document with the same content on demand, from data that is already in `qa_automation`:
+`SUT-MODULE-CHECKLIST.pdf` (19 pages, A4, 440 features) was built by hand from the SUT module catalogue through a LaTeX file that is not in the repo. This spec lets the dashboard produce a document with the same content on demand, from data that is already in `qa_automation`:
 
 *   the knowledge base page `/products/:id/knowledge` (Modules tab) gets a **Download checklist** button and an options dialog (format, "Add last update to Status column", "Force regenerate");
 *   the **backend** renders the file as PDF, Excel (`.xlsx`) or CSV;
@@ -29,7 +29,7 @@ The markdown catalogue is **not** read at export time. The source is the synced 
 4.  The user can bypass the cache ("Force regenerate").
 5.  Concurrent identical requests generate once.
 6.  The rest of the app is unaffected when MinIO is not configured or not reachable.
-7.  The PDF has an **approximate** layout of `HISV3-MODULE-CHECKLIST.pdf`: the same sections and columns, the colours and strings fixed in "PDF layout". Pixel parity is not a goal.
+7.  The PDF has an **approximate** layout of `SUT-MODULE-CHECKLIST.pdf`: the same sections and columns, the colours and strings fixed in "PDF layout". Pixel parity is not a goal.
 
 ## Non-Goals
 *   **Reading the markdown at export time.** The DB is the source.
@@ -40,14 +40,14 @@ The markdown catalogue is **not** read at export time. The source is the synced 
 *   **Exposing MinIO to browsers** (no presigned URLs). The backend always streams.
 *   **A history UI.** The history table is read only by the export in v1.
 *   **A new object-storage use for anything else.** The `objectstore` package is generic, but this spec authorises one caller.
-*   **`status_as_of` as a date source.** It is the date the catalogue last *confirmed* a status (fixture `testdata/hisv3-521618a/docs/modules/C-primaya-app.md`), not the date it changed, so it is not used.
+*   **`status_as_of` as a date source.** It is the date the catalogue last *confirmed* a status (fixture `testdata/sample-catalog/docs/modules/C-partner-api.md`), not the date it changed, so it is not used.
 
 ## Decisions (user, 2026-11-17)
 1.  Generation on the backend (PDF, Excel, CSV), not in the browser.
 2.  Every generated file is stored in MinIO; later downloads come from MinIO.
 3.  The dialog has "Force regenerate (ignore cached file)".
 4.  First option: "Add last update to Status column": the date each feature's status last changed.
-5.  MinIO is the **staging MinIO that HISv3 uses**; the cache key includes the latest succeeded sync id; status history is tracked on every sync.
+5.  MinIO is the **staging MinIO that SUT uses**; the cache key includes the latest succeeded sync id; status history is tracked on every sync.
 6.  **Date order:** a `sync` history row, then a `backfill` history row, then a dash. A `backfill` date is approximate: `~` in the PDF with a footnote, and the `Sumber tanggal` column (`sync` or `backfill`) in XLSX and CSV. `status_as_of` is **not** used (it is "last confirmed", not "changed").
 7.  **Bucket** = the permanent `bucketName` of the staging MinIO credentials, not `tempBucketName`.
 8.  **MinIO runtime failure** does not fail the request: the file is generated and streamed without caching, `X-Export-Cache: bypass`, and the error is logged. There is no 502.
@@ -74,7 +74,7 @@ Routed in `handleKnowledge` (`ai-backend/internal/api/knowledge.go`) as a new `c
 | `format` | Required. Exactly `pdf`, `xlsx` or `csv`. Otherwise 400 `format must be pdf, xlsx or csv`. |
 | `last_update`, `force` | Optional, default `0`. A new strict parser `strictBool(req, name) (val bool, ok bool)` accepts exactly `0`, `1`, `true`, `false` (and absent). Any other value is 400 `<name> must be 0, 1, true or false`. The existing lenient `boolParam` (which maps junk to false) is not used here. |
 | 200 body | The file bytes. `Content-Type`: `application/pdf`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, or `text/csv; charset=utf-8`. `Content-Length` is set (the file is buffered). |
-| `Content-Disposition` | `attachment; filename="<name>"`, with `<name>` = `<product>-MODULE-CHECKLIST.<ext>`, for example `HISv3-MODULE-CHECKLIST.pdf`. `<product>` is `products.name` sanitised for a header: every run of characters outside `[A-Za-z0-9._-]` becomes `-`, leading and trailing `-` are trimmed, and it is cut to 60 characters. An empty result falls back to `product-<id>`. It never contains a quote, `/`, `;`, a space or a control character. Non-ASCII letters are dropped, not percent-encoded, so no `filename*` is needed. |
+| `Content-Disposition` | `attachment; filename="<name>"`, with `<name>` = `<product>-MODULE-CHECKLIST.<ext>`, for example `SUT-MODULE-CHECKLIST.pdf`. `<product>` is `products.name` sanitised for a header: every run of characters outside `[A-Za-z0-9._-]` becomes `-`, leading and trailing `-` are trimmed, and it is cut to 60 characters. An empty result falls back to `product-<id>`. It never contains a quote, `/`, `;`, a space or a control character. Non-ASCII letters are dropped, not percent-encoded, so no `filename*` is needed. |
 | `X-Export-Cache` | `hit` (served from MinIO), `miss` (generated now and stored), `regenerated` (`force=1` honoured and stored), or `bypass` (MinIO failed at runtime; generated and streamed without caching). `Cache-Control: no-store`. |
 | 404 | Product not found. `Syncer.productExists` returns `knowledge.ErrNotFound`, so the body is `{"error":"not found"}` (existing `writeKnowledgeError` mapping). |
 | 409 | No succeeded sync yet: `{"error":"no knowledge base sync has succeeded yet"}`. New error `knowledge.ErrNoSucceededSync`. |
@@ -272,7 +272,7 @@ type Store interface {
 func New(cfg config.ObjectStoreConfig) (*MinioStore, error)     // validates; nil store + error when unconfigured or invalid
 ```
 *   MinIO implementation with `github.com/minio/minio-go/v7`; the client is an **unexported** field. A fake in-memory `Store` lives in the test files only.
-*   **Prefix enforcement is in the package, not in the callers.** The constructor takes the fixed prefix `qa-automation/` and refuses to build if it is empty or does not end in `/`. Every method rejects, before any network call, a key that: does not start with the prefix, has an empty remainder, contains an empty segment (`//`), a `.` or `..` segment, a backslash, or a control character, or begins with `/`. There is **no** `List` and **no** `Delete`, so a bug cannot list or delete objects that belong to HISv3 in the shared bucket.
+*   **Prefix enforcement is in the package, not in the callers.** The constructor takes the fixed prefix `qa-automation/` and refuses to build if it is empty or does not end in `/`. Every method rejects, before any network call, a key that: does not start with the prefix, has an empty remainder, contains an empty segment (`//`), a `.` or `..` segment, a backslash, or a control character, or begins with `/`. There is **no** `List` and **no** `Delete`, so a bug cannot list or delete objects that belong to SUT in the shared bucket.
 *   `Get` is capped (the export objects are small; cap 64 MiB) and returns an error beyond the cap.
 
 **Environment variable names** (names only; values never appear in the repo, a log, an error, a response or this spec):
@@ -288,15 +288,15 @@ func New(cfg config.ObjectStoreConfig) (*MinioStore, error)     // validates; ni
 | `MINIO_TIMEOUT_SECONDS` | per-call timeout, default 30 |
 
 *   Read in `ai-backend/internal/config/config.go` (a new `ObjectStoreConfig` next to `ProductsConfig`), built in `ai-backend/cmd/server/main.go`. **Configured** means `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_BUCKET` and a valid `MINIO_KEY_NAMESPACE` are all set. Otherwise nothing is built, nothing connects at startup, and the export answers 503. A MinIO outage at startup does not stop the server: the connection is lazy, on first use.
-*   **Transport.** `MINIO_USE_SSL=false` would send the access key in clear text. It is accepted only when the endpoint host is an IP inside `10.10.0.0/24` (the WireGuard network); otherwise the config is invalid, the export is treated as not configured, and startup logs the reason (no values).
+*   **Transport.** `MINIO_USE_SSL=false` would send the access key in clear text. It is accepted only when the endpoint host is an IP inside `10.8.0.0/24` (the WireGuard network); otherwise the config is invalid, the export is treated as not configured, and startup logs the reason (no values).
 *   **Secrets handling.** `ObjectStoreConfig` has `String()` and `GoString()` on a **value** receiver that print `***` for both secrets, so `%v`, `%+v` and `%#v` cannot leak them. Both secret values are appended to the `Secrets` list in `cmd/server/main.go` (the existing literal-secret redactor list passed to the case-automation redactor). minio-go errors are logged as **operation and error code only** (`minio.ToErrorResponse(err).Code`, or the error's Go type), never the message, which can contain the host, bucket, key and request id. Startup logs only `object storage: configured` or `not configured`. A redaction test formats the config with `%v`, `%+v` and `%#v` and asserts no secret appears.
-*   The names (no values) are added to `ai-backend/.env.example` and `deploy/his-v3-qa/.env.prod.example`. `docker-compose.prod.yml` uses `env_file: .env.prod`, so no compose change is expected; confirm at implementation that no explicit allow-list exists.
-*   The values come from the staging MinIO credentials file of HISv3 (a JSON file under `~/.config/minio/`). They are loaded **into the process environment or a secret file only**, never printed (hard rule 1). `.claude/rules/secrets.md` is extended to name `~/.config/minio/*`. `MINIO_BUCKET` is the permanent `bucketName` (decision 7). The file's other keys (`tempBucketName`, `shareDuration`, `timeout`) are not used; the temporary bucket is avoided because it may carry a lifecycle rule that empties it (not verified).
+*   The names (no values) are added to `ai-backend/.env.example` and `deploy/qa-tool/.env.prod.example`. `docker-compose.prod.yml` uses `env_file: .env.prod`, so no compose change is expected; confirm at implementation that no explicit allow-list exists.
+*   The values come from the staging MinIO credentials file of SUT (a JSON file under `~/.config/minio/`). They are loaded **into the process environment or a secret file only**, never printed (hard rule 1). `.claude/rules/secrets.md` is extended to name `~/.config/minio/*`. `MINIO_BUCKET` is the permanent `bucketName` (decision 7). The file's other keys (`tempBucketName`, `shareDuration`, `timeout`) are not used; the temporary bucket is avoided because it may carry a lifecycle rule that empties it (not verified).
 
-**Cross-environment dependency (explicit).** The **production** qa-tool (`qa-tool.sismedika.com`, rnd-v3) will read and write the **staging** MinIO that HISv3 itself uses, with the same bucket and, today, the same access key.
-*   The credential is shared with HISv3, so it can read and delete HISv3 objects. In-process protection (fixed prefix, no list, no delete, key validation) is the only layer until infra provides a scoped credential. This is why "Pre-deploy checklist" lists a scoped key or a dedicated bucket as the **requested** end state. It does not block this spec.
+**Cross-environment dependency (explicit).** The **production** qa-tool (`qa-tool.mfardiansyah.id`, app-host) will read and write the **staging** MinIO that SUT itself uses, with the same bucket and, today, the same access key.
+*   The credential is shared with SUT, so it can read and delete SUT objects. In-process protection (fixed prefix, no list, no delete, key validation) is the only layer until infra provides a scoped credential. This is why "Pre-deploy checklist" lists a scoped key or a dedicated bucket as the **requested** end state. It does not block this spec.
 *   A staging MinIO outage or reset takes the export cache down or wipes it. The export still works (`bypass`), and a wiped cache regenerates on demand.
-*   Rotating the staging keys in HISv3 breaks the cache (not the export) until `.env.prod` on rnd-v3 is updated.
+*   Rotating the staging keys in SUT breaks the cache (not the export) until `.env.prod` on app-host is updated.
 *   Only the `qa-automation/` prefix is ours. We never create buckets, never list the bucket, never write outside the prefix. `Put` and `force=1` overwrite silently, so the prefix must be unused by anyone else (checked before deploy).
 *   Bucket versioning and lifecycle rules are unknown; they are part of the checklist.
 
@@ -344,17 +344,17 @@ func New(cfg config.ObjectStoreConfig) (*MinioStore, error)     // validates; ni
 |---|---|
 | **Browser-side PDF (jsPDF) from the existing `tree` API** | Decided against by the human (Decision 1): three formats, caching and the history need the backend; layout fidelity and large catalogues are harder in the browser. |
 | **No cache** (render on every click) | Rejected by the human (Decision 2). It would also be simplest; it is kept as a fallback: `bypass` is exactly this path, so the feature degrades to it when MinIO fails. |
-| **Cache blobs in MySQL** (a table keyed like the object) | Avoids the cross-environment dependency, but grows the shared rnd-v2 schema with binary data; the human chose MinIO. Remains the fallback if the shared-bucket risk is judged too high. |
+| **Cache blobs in MySQL** (a table keyed like the object) | Avoids the cross-environment dependency, but grows the shared db-host schema with binary data; the human chose MinIO. Remains the fallback if the shared-bucket risk is judged too high. |
 | **Dedicated bucket or a prefix-scoped access key** | The right end state for the shared-credential risk, but needs infra work that this spec cannot do. Listed as a pre-deploy request, not a blocker (Decision 14). |
 | **LaTeX or headless-browser rendering on the server** | Needs a TeX toolchain or Chromium in the backend image (hard rule 9 keeps browsers out of it); `fpdf` is pure Go and `CGO_ENABLED=0` builds keep working. |
 | **A `status_changed_at` column on `kb_features` instead of a history table** | Smaller (no new table), but only records the last change, loses `prev_status` and a per-sync trail, and still needs a backfill. The human kept the history table (Decision 13). |
 | **Render only the requested format; drop `force`/cooldown; ship CSV and PDF first** | Smaller and cheaper, but contradicts Decisions 1 to 3 and 9. Kept in full by the human (Decision 13). |
-| **`status_as_of` as a date source** | It means "last confirmed" in the HISv3 catalogue, so it would label a re-confirmed status as newly changed. Dropped (Decision 6). |
+| **`status_as_of` as a date source** | It means "last confirmed" in the SUT catalogue, so it would label a re-confirmed status as newly changed. Dropped (Decision 6). |
 
 ## Risks & Mitigations
 | Risk | Mitigation |
 |---|---|
-| Production holds a credential that can delete HISv3's objects | No `List`/`Delete` in `objectstore`, fixed prefix, key validation, namespace; pre-deploy request for a scoped key or dedicated bucket. |
+| Production holds a credential that can delete SUT's objects | No `List`/`Delete` in `objectstore`, fixed prefix, key validation, namespace; pre-deploy request for a scoped key or dedicated bucket. |
 | Our prefix is already in use, so a `Put` overwrites foreign data | Pre-deploy prefix-empty check by an operator. |
 | Dev and prod backends share a bucket and collide | Mandatory `MINIO_KEY_NAMESPACE`; export refuses without it. |
 | Stale or wrong file served | Key includes sync id, template version, product-name hash and (last-update variant) history watermark; golden-hash test forces a version bump on output changes. |
@@ -371,7 +371,7 @@ func New(cfg config.ObjectStoreConfig) (*MinioStore, error)     // validates; ni
 1.  **`backfill` dates are approximate** (see "Backfill"). `sync` dates are exact to the sync that observed the change, not to the commit that made it (a sync every 6 h can merge several commits).
 2.  **Cache growth.** Each succeeded sync creates up to 6 objects per product (3 formats x 2 option variants, if both are used) under a new key, and nothing deletes the old ones (decision 11). **Future item:** retention restricted to `qa-automation/{namespace}/knowledge-exports/`, which needs `List` and `Delete` on `objectstore` and a separate amendment.
 3.  **A manual sync of an unchanged commit invalidates the cache** for the product (new succeeded sync id, identical content).
-4.  **Helvetica/cp1252 only.** Text outside cp1252 is rendered as `?` in the PDF (not in XLSX/CSV). A product with non-Latin text would need a bundled TTF font (future item). The HISv3 catalogue is Latin (Indonesian) with em dashes.
+4.  **Helvetica/cp1252 only.** Text outside cp1252 is rendered as `?` in the PDF (not in XLSX/CSV). A product with non-Latin text would need a bundled TTF font (future item). The SUT catalogue is Latin (Indonesian) with em dashes.
 5.  **Shared staging MinIO** (see "Cross-environment dependency"). While it is down, every export is generated on the fly (`bypass`).
 6.  `force=1` is ignored within 30 s of the last write of that object.
 7.  A failing MinIO is visible only in logs and in the `X-Export-Cache: bypass` header.
@@ -384,8 +384,8 @@ None. Future items: retention of old cache objects (needs `List`/`Delete`); a bu
 Deploy is a separate approval (hard rule 8). None of these items blocks approving or implementing the spec; items 1 to 3 gate the **production deploy** only.
 1.  **Ask infra** for a MinIO access key whose policy allows only get/put/stat on `<bucket>/qa-automation/*`, or a dedicated bucket. Record the answer. Until then the shared key is used and the risk above is accepted.
 2.  **Prefix-empty check.** An operator, with the credentials loaded into their own shell (never printed, never in this repo), counts objects under `qa-automation/` with an S3 client (`mc ls --recursive` or equivalent). The count must be 0 (or contain only this feature's earlier test objects). This is done outside the app, because `objectstore` has no `List`. Record bucket versioning and lifecycle rules at the same time.
-3.  Confirm the endpoint is reachable **from inside the backend container** on rnd-v3 (Docker network, not only the host), and whether it speaks TLS or only plain HTTP over the WireGuard network (`MINIO_USE_SSL`).
-4.  Choose `MINIO_KEY_NAMESPACE` (`prod` on rnd-v3; any other value in dev).
+3.  Confirm the endpoint is reachable **from inside the backend container** on app-host (Docker network, not only the host), and whether it speaks TLS or only plain HTTP over the WireGuard network (`MINIO_USE_SSL`).
+4.  Choose `MINIO_KEY_NAMESPACE` (`prod` on app-host; any other value in dev).
 5.  Apply the migration to prod `qa_automation`; set the `MINIO_*` values in `.env.prod` (never printed); deploy the binary; **run the migration a second time** (it backfills any feature whose status changed in the window and does nothing else).
 
 ## Assumptions Goldfish reviewers must challenge
@@ -397,9 +397,9 @@ Deploy is a separate approval (hard rule 8). None of these items blocks approvin
 6.  **The 30 s force cooldown and per-flight singleflight are enough** abuse protection for authenticated readers, who may all use `force=1`.
 7.  **Prefix-only isolation in the shared bucket is acceptable until a scoped credential exists.** Challenge whether a production service should hold a full-rights staging key at all, and whether the pre-deploy checklist is a strong enough control.
 8.  **A manual sync of an unchanged commit is `succeeded`** and so changes the cache key (verified in `sync.go`: the `skipped` path requires `trigger == TriggerSchedule`). Accepted.
-9.  **The PDF is an approximate layout.** The reference `HISV3-MODULE-CHECKLIST.pdf` is not in the repo and was not seen by the author; colours and widths here are proposals. go-pdf/fpdf can produce a TOC with page numbers and a repeating table header.
+9.  **The PDF is an approximate layout.** The reference `SUT-MODULE-CHECKLIST.pdf` is not in the repo and was not seen by the author; colours and widths here are proposals. go-pdf/fpdf can produce a TOC with page numbers and a repeating table header.
 10. **Production is same-origin; local dev is not.** In dev the two response headers are unreadable and the client degrades.
-11. **The MinIO endpoint is reachable from the backend container** and its TLS posture is as the checklist finds. Asserted by the requester for rnd-v3, not verified by the author.
+11. **The MinIO endpoint is reachable from the backend container** and its TLS posture is as the checklist finds. Asserted by the requester for app-host, not verified by the author.
 12. **Streaming an uncached file on any MinIO error (`bypass`) is acceptable**, including that a failing MinIO is visible only in logs and a header.
 13. **The sanitised `products.name` is safe** in `Content-Disposition` and in the PDF (cp1252 plus `?` replacement), and a rename is covered by the name hash in the key.
 14. **Deterministic output.** PDF, XLSX and CSV rendering is deterministic enough for a golden-hash test (fixed creation date, no `time.Now()`); if the PDF library proves nondeterministic, the test falls back to extracted text.
@@ -416,12 +416,12 @@ Deploy is a separate approval (hard rule 8). None of these items blocks approvin
     *   `ai-backend/internal/db/migrations.go` (new table and the backfill statement; appended only), `ai-backend/internal/db/README.md`, `ai-backend/internal/db/skipif_test.go` and `ai-backend/internal/db/migrations_test.go` (must pass; extend only if they enumerate statements)
     *   new `ai-backend/internal/api/knowledge_export.go` (handler, `strictBool`, `SetExportCache`), `ai-backend/internal/api/knowledge_export_test.go`; `ai-backend/internal/api/knowledge.go` (one `case` in `handleKnowledge`, two cases in `writeKnowledgeError`); `ai-backend/internal/api/router.go` (the `exports` field only); `ai-backend/internal/api/README.md`
     *   `ai-backend/internal/config/config.go` (`ObjectStoreConfig`, `String`/`GoString`), a config redaction test in the config package, `ai-backend/cmd/server/main.go` (build the store and cache; append both secrets to `Secrets`)
-    *   `ai-backend/README.md` (only if it lists environment variables), `ai-backend/.env.example`, `deploy/his-v3-qa/.env.prod.example` (names only)
+    *   `ai-backend/README.md` (only if it lists environment variables), `ai-backend/.env.example`, `deploy/qa-tool/.env.prod.example` (names only)
     *   `ai-backend/go.mod`, `ai-backend/go.sum`. New dependencies, pinned to versions whose own `go` directive is at most 1.23 (checked when drafting): `github.com/minio/minio-go/v7 v7.0.80` (go 1.22), `github.com/xuri/excelize/v2 v2.9.0` (go 1.18), `github.com/go-pdf/fpdf v0.9.0` (go 1.20), `golang.org/x/sync v0.10.0` (go 1.18). Their **transitive** requirements (for example `golang.org/x/crypto`, `x/net`) are not checked here; the implementer verifies the build in `golang:1.23-alpine` with `CGO_ENABLED=0` and reports any forced bump. `ai-backend/Dockerfile` changes only if a bump is unavoidable, and then only after the human approves.
 *   **Rules:** `.claude/rules/secrets.md` (add `~/.config/minio/*`).
 *   **Dashboard:** `dashboard/src/views/knowledge/KnowledgeView.tsx`, new `dashboard/src/views/knowledge/ChecklistDialog.tsx`, `dashboard/src/views/knowledge/api.ts`, `dashboard/README.md`.
 *   **E2E (optional):** `this-qa-automation-system-playwright/tests/api/knowledge.spec.ts` (extend: 400 on a bad format, 200 with the right headers when object storage is configured).
-*   **Not changed:** the executor, `docker-compose.prod.yml`, nginx, `lib/`, the sync parser (`hisv3.go`, `catalog.go`), the `Tree` JSON shape.
+*   **Not changed:** the executor, `docker-compose.prod.yml`, nginx, `lib/`, the sync parser (`testcatalog.go`, `catalog.go`), the `Tree` JSON shape.
 
 ## Phases
 Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase starts after the earlier one is merged.
@@ -437,11 +437,11 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
     *   `objectstore`: key validation (outside prefix, empty remainder, `//`, `.` and `..` segments, leading `/`, backslash, control characters); constructor rejects an empty prefix; the interface has no list/delete.
     *   **Config redaction:** `%v`, `%+v` and `%#v` of `ObjectStoreConfig` contain no secret; invalid namespace and plaintext-off-WireGuard make the config invalid.
     *   **Date order (`pickStatusDate`), table test:** a `sync` row wins over a `backfill` row; only `backfill` gives `backfill`; neither gives a dash; rows with a status other than the current one are ignored; the marks (`~` and the `Sumber tanggal` value) are right for each source in all three renderers.
-    *   **Renderers** over a small hand-built snapshot and a snapshot built from `testdata/hisv3-521618a`: non-empty output with the right magic bytes (`%PDF-`, `PK`, BOM); the row count in CSV and XLSX equals the number of active synced features whose module and part are active; with `last_update=1` the date strings are present (Jakarta time, Indonesian months) and empty or `—` for unknown; formula-injection cells are neutralised; non-cp1252 characters become `?` in the PDF; determinism (two renders give identical content).
+    *   **Renderers** over a small hand-built snapshot and a snapshot built from `testdata/sample-catalog`: non-empty output with the right magic bytes (`%PDF-`, `PK`, BOM); the row count in CSV and XLSX equals the number of active synced features whose module and part are active; with `last_update=1` the date strings are present (Jakarta time, Indonesian months) and empty or `—` for unknown; formula-injection cells are neutralised; non-cp1252 characters become `?` in the PDF; determinism (two renders give identical content).
     *   **Golden hashes:** a hash of the CSV, of a normalised XLSX cell dump and of the PDF bytes (fixed creation date) for the fixture snapshot. A change fails the test until `TEMPLATE_VERSION` is raised and the hashes are updated, so a library upgrade cannot change the output silently.
     *   **Cache logic** against the fake store and injected clock and renderer: miss then hit (the second call does not render), `force=1` then `regenerated`, force within the cooldown becomes `hit` (including a negative age), a new sync id, a changed `TEMPLATE_VERSION`, a renamed product, a new history watermark and a different namespace each give a different key; `Get`/`Stat`/`Put` errors give a `bypass` result with the generated file and the right `Put` skipping; concurrent calls render once and a forced call does not join an unforced flight (`-race`); the extra `Put`s run after the result is returned (`Wait()`).
     *   **Handler** with a fake `snapshotSource`: 405, 400 on bad `format`/`last_update`/`force` (`strictBool`: `0|1|true|false` only), 503 when the cache is nil, headers, the order 405/400/404/503/409. Cases that need real rows (404 for a missing product, 409 with no succeeded sync, a read-only role getting 200) are in the DB list.
-3.  **DB tests** (run when `QA_TEST_MYSQL_DSN` is set; helpers `testdb.New`, `sync_test.go:setupProduct`, `crud_integration_test.go:setupCRUDIntegrationRouter`), using the `testdata/hisv3-521618a` fixtures:
+3.  **DB tests** (run when `QA_TEST_MYSQL_DSN` is set; helpers `testdb.New`, `sync_test.go:setupProduct`, `crud_integration_test.go:setupCRUDIntegrationRouter`), using the `testdata/sample-catalog` fixtures:
     *   a **first** sync writes one `backfill`-source row per feature; a later new feature writes a `sync` row;
     *   a second sync of the same commit writes none;
     *   change one feature's status in a copied fixture and sync again: exactly one new `sync` row with the right `prev_status`;
@@ -454,7 +454,7 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
 4.  **Migration:** run `go run -mod=mod ./cmd/databasemigration` against a dev schema, then a second time and confirm it changes nothing; `skipif_test.go` and `migrations_test.go` pass.
 5.  `cd dashboard && npx tsc --noEmit && npm run lint && npm run build`.
 6.  **Staging-MinIO check** (needs WireGuard; credentials loaded into env only, never printed; use a test namespace such as `dev-<name>`): with `MINIO_*` set, download PDF: header `miss`, the object exists under `qa-automation/<namespace>/` (key printed; no listing outside the prefix); again: `hit`, no regeneration in the log; tick Force: `regenerated` (or `hit` inside 30 s); run a sync: a new key; rename the product: a new key; repeat for xlsx and csv. Confirm from **inside the backend container** that the endpoint is reachable. With `MINIO_*` unset: the export answers 503 and every other page works. With a wrong secret: the export still returns the file with `bypass` and a log line with an error code and no secret.
-7.  **Visual check** of the PDF against `HISV3-MODULE-CHECKLIST.pdf` (sections, columns, colours, TOC, header, footer, repeating table header; page count in the same range as 19). Open the XLSX in LibreOffice (frozen header, filter, sheet names) and the CSV in a spreadsheet (BOM, accents, em dash).
+7.  **Visual check** of the PDF against `SUT-MODULE-CHECKLIST.pdf` (sections, columns, colours, TOC, header, footer, repeating table header; page count in the same range as 19). Open the XLSX in LibreOffice (frozen header, filter, sheet names) and the CSV in a spreadsheet (BOM, accents, em dash).
 8.  **Deploy** (a separate approval): follow the "Pre-deploy checklist". After deploy, through `qa-tool-session` as `ai-service` (a `GET`, no impersonated write): request the export and check `X-Export-Cache`.
 
 ## Review resolution (rev 2 to rev 3)

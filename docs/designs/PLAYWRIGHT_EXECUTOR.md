@@ -8,7 +8,7 @@
 
 ## Overview
 
-All browser automation moves into one small service, **playwright-executor** (`playwright-executor/`). It runs on rnd-v3 as a **systemd user unit**, uses Node from **mise**, and is capped by the kernel at **2.5 GiB RAM** and **60 % of all CPUs**.
+All browser automation moves into one small service, **playwright-executor** (`playwright-executor/`). It runs on app-host as a **systemd user unit**, uses Node from **mise**, and is capped by the kernel at **2.5 GiB RAM** and **60 % of all CPUs**.
 
 ai-backend's job endpoints, which until now were simulated, dispatch real runs to it. Every LLM call stays on one path: ai-manager pinned to **claude-v3**, the Claude CLI REST that runs on the same VM.
 
@@ -16,21 +16,21 @@ ai-backend's job endpoints, which until now were simulated, dispatch real runs t
 
 - Playwright had no runtime path. `playwright-qa` didn't compile (bad `lib` import, `run.ts` signature mismatches), and every module ran `main()` on import. `playwright-docs` was a script you ran by hand on a laptop.
 - `POST /api/jobs/qa/run` and `/api/jobs/docs/generate`, which the dashboard already calls, only slept for 200 ms (`router.go` `enqueueJob`).
-- Running Chromium inside the repo's tooling, or inside the backend container, would let it compete without limit for rnd-v3's 4 vCPU and 3.8 GiB, which are shared with Docker (qa-automation, gaos) and `ai-claude-cli`.
+- Running Chromium inside the repo's tooling, or inside the backend container, would let it compete without limit for app-host's 4 vCPU and 3.8 GiB, which are shared with Docker (qa-automation, gaos) and `ai-claude-cli`.
 - Docs still presented MiniMax as a co-equal provider, although production only uses ai-manager → claude-v3.
 
 ## Goals
 
 *   One process owns all Playwright execution. It has an HTTP API, a bearer token, concurrency 1, and a per-run timeout.
-*   A hard resource budget: `MemoryMax=2560M`, `MemoryHigh=2304M`, `MemorySwapMax=0`, `CPUQuota = nproc × 60 %` (240 % on rnd-v3), `TasksMax=512`. These are enforced by the cgroup on node and every Chromium child.
-*   The service is managed like the other rnd-v3 services: a systemd user unit (linger), its toolchain from `mise.toml`, and logs in journald.
+*   A hard resource budget: `MemoryMax=2560M`, `MemoryHigh=2304M`, `MemorySwapMax=0`, `CPUQuota = nproc × 60 %` (240 % on app-host), `TasksMax=512`. These are enforced by the cgroup on node and every Chromium child.
+*   The service is managed like the other app-host services: a systemd user unit (linger), its toolchain from `mise.toml`, and logs in journald.
 *   The dashboard's **Run QA** button and docs generation produce real results: issues stored in `raw_issues`, and Markdown docs written by claude-v3 through `ai.Service`.
 *   **claude-v3 via ai-manager is the only supported LLM path.** MiniMax code stays **dormant** (the user chose not to remove it). It is a manual emergency switch that needs explicit approval.
 
 ## Non-Goals
 
 *   Porting guided or planning exploration modes and learned skills. `playwright-qa`'s versions were stubs. Only random exploration and built-in skills are ported.
-*   Serving screenshots over HTTP. Artifacts stay on rnd-v3 disk for 7 days, and their paths are in the job result.
+*   Serving screenshots over HTTP. Artifacts stay on app-host disk for 7 days, and their paths are in the job result.
 *   Durable queueing. Runs live in executor memory, and jobs orphaned by a backend restart are marked failed.
 *   Deleting `playwright-qa/` and `playwright-docs/`. They are deprecated now and will be deleted in a later PR.
 *   Removing MiniMax code (decided: keep it dormant).
@@ -52,16 +52,16 @@ ai-backend's job endpoints, which until now were simulated, dispatch real runs t
 ## Technical Plan (Architecture)
 
 ```
-browser ─TLS─▶ clino edge ─WG─▶ 10.10.0.9:8140 dashboard ──▶ backend (Docker, rnd-v3)
+browser ─TLS─▶ edge-host edge ─WG─▶ 10.8.0.9:8140 dashboard ──▶ backend (Docker, app-host)
                                                               │  POST /v1/runs, GET /v1/runs/:id (Bearer)
                                                               ▼
-                                   rnd-v3 host: playwright-executor.service (systemd --user, mise node)
-                                   10.10.0.9:8141   cgroup: MemoryMax 2.5G · CPUQuota 240% · Tasks 512
+                                   app-host host: playwright-executor.service (systemd --user, mise node)
+                                   10.8.0.9:8141   cgroup: MemoryMax 2.5G · CPUQuota 240% · Tasks 512
                                                               │  Chromium (1 at a time)
                                                               ▼
-                                                      HISv3 STAGING (UI login per role)
-backend ─WG─▶ 10.10.0.4:5306 MySQL qa_automation (job_runs, raw_issues)
-backend ─WG─▶ 10.10.0.4:8099 ai-manager ── provider claude-v3 (no_fallback) ─WG─▶ 10.10.0.9:8105 ai-claude-cli (rnd-v3)
+                                                      SUT STAGING (UI login per role)
+backend ─WG─▶ 10.8.0.4:5306 MySQL qa_automation (job_runs, raw_issues)
+backend ─WG─▶ 10.8.0.4:8099 ai-manager ── provider claude-v3 (no_fallback) ─WG─▶ 10.8.0.9:8105 ai-claude-cli (app-host)
 ```
 
 *   **Executor** (`playwright-executor/src`): a framework-free `node:http` server (`server.ts`).
@@ -75,7 +75,7 @@ backend ─WG─▶ 10.10.0.4:8099 ai-manager ── provider claude-v3 (no_fall
     *   `enqueueJob` dispatches to the executor when `PLAYWRIGHT_EXECUTOR_URL` is set, and simulates otherwise.
     *   Only whitelisted params (`roles`, `max_steps`, `interactive_skills`, `flows`) are forwarded.
     *   `/health` gains `executor: ok|degraded|unreachable|not_configured`. Existing keys are unchanged, including `minimax`.
-*   **Config** (env): `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` (30). Production values are in `deploy/his-v3-qa/.env.prod`.
+*   **Config** (env): `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` (30). Production values are in `deploy/qa-tool/.env.prod`.
 *   **Deploy** (`deploy/playwright-executor/`): `install.sh` runs mise install, npm ci/build, `playwright install chromium`, `sudo install-deps`, renders the unit with `CPUQuota = nproc × 60 %`, enables and restarts it, then runs a health gate.
 *   **Timeouts.** Executor run 900 s < backend wait 30 min, which covers queueing behind up to one other run. The docs AI call stays within the existing AI timeout chain (180 s client).
 
@@ -86,7 +86,7 @@ backend ─WG─▶ 10.10.0.4:8099 ai-manager ── provider claude-v3 (no_fall
 - the user asked for systemd and mise;
 - the Playwright image is about 1.5 GB;
 - every backend deploy would rebuild it;
-- rnd-v3 already runs its non-Docker services (`ai-claude-cli`) as systemd user units.
+- app-host already runs its non-Docker services (`ai-claude-cli`) as systemd user units.
 
 ### Wrap the existing playwright-qa / playwright-docs packages
 This would need the compile errors and the run-on-import `main()` calls fixed in place, and the hard-coded staging credentials kept. A clean port into one service was smaller and safer.
@@ -120,8 +120,8 @@ This would need a service identity in the cookie-only auth (`auth.Require`), whi
 *   **Modified:**
     *   `ai-backend/internal/api/router.go` (executor fields, `enqueueJob` dispatch, `/health.executor`)
     *   `ai-backend/internal/config/config.go`, `ai-backend/cmd/server/main.go`
-    *   `ai-backend/.env.example`, `deploy/his-v3-qa/.env.prod.example`
-    *   Docs: `README.md`, `CLAUDE.md`, `OBJECTIVES.md`, `docs/designs/SITEMAP.md`, `deploy/his-v3-qa/README.md`
+    *   `ai-backend/.env.example`, `deploy/qa-tool/.env.prod.example`
+    *   Docs: `README.md`, `CLAUDE.md`, `OBJECTIVES.md`, `docs/designs/SITEMAP.md`, `deploy/qa-tool/README.md`
     *   Package READMEs: `ai-backend/internal/api/README.md`, `ai-backend/internal/config/README.md`, `ai-backend/internal/services/ai/README.md`
     *   Deprecation notices in `playwright-qa/{README,CLAUDE}.md` and `playwright-docs/{README,CLAUDE}.md`
     *   `.claude/rules/deploy-edge.md` and `.claude/skills/{qa-automation-elephant,deploy-qa-tool,ai-manager-gateway}/SKILL.md`
@@ -131,10 +131,10 @@ This would need a service identity in the cookie-only auth (`auth.Require`), whi
 1.  **Unit tests.**
     *   `cd playwright-executor && mise exec -- npm test`: auth, validation, queue order, limits and timeout, HTTP API.
     *   `cd ai-backend && go test -mod=mod ./...`: executor client, plus job dispatch end to end against a fake executor.
-2.  **rnd-v3 limits.**
+2.  **app-host limits.**
     *   `systemctl --user show playwright-executor -p MemoryMax -p MemoryHigh -p CPUQuotaPerSecUSec -p TasksMax` gives `2684354560 / 2415919104 / 2.400000s / 512`.
     *   The cgroup's `cpu.max` reads `240000 100000`.
-    *   `ss` shows it listening on `10.10.0.9:8141` only.
+    *   `ss` shows it listening on `10.8.0.9:8141` only.
 3.  **Real runs against staging.**
     *   `qa_run` and `docs_generate` both reach `completed`.
     *   Back-to-back submissions queue (concurrency 1).

@@ -20,9 +20,9 @@ import (
 	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 	"github.com/qa-automation/ai-backend/internal/services/knowledge"
-	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/learning"
 	"github.com/qa-automation/ai-backend/internal/services/learnloop"
+	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/services/skills"
 )
 
@@ -67,8 +67,8 @@ type Router struct {
 
 	// Auth wiring — nil when the database is unavailable. When set, all /api/*
 	// routes outside the allow-list go through requireAuth.
-	authHandlers   *AuthHandlers
-	requireAuth    func(http.Handler) http.Handler
+	authHandlers    *AuthHandlers
+	requireAuth     func(http.Handler) http.Handler
 	dashboardOrigin string
 }
 
@@ -1470,4 +1470,3 @@ func (r *Router) handleLearningNavigation(w http.ResponseWriter, req *http.Reque
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
-

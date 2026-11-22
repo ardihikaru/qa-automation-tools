@@ -138,8 +138,8 @@ func newCacheEnv(t *testing.T) *cacheEnv {
 	now := func() time.Time { return time.Unix(0, e.clock.Load()).UTC() }
 	e.store = newFakeStore(now)
 	e.src = &fakeSrc{
-		info: KeyInfo{SyncID: 5, ProductName: "HISv3", HistoryMaxID: 9},
-		snap: &ChecklistSnapshot{ProductName: "HISv3", SyncID: 5, HistoryMaxID: 9},
+		info: KeyInfo{SyncID: 5, ProductName: "SUT", HistoryMaxID: 9},
+		snap: &ChecklistSnapshot{ProductName: "SUT", SyncID: 5, HistoryMaxID: 9},
 	}
 	e.c = NewExportCache(e.src, e.store, "dev-test", time.Second)
 	e.c.now = now
@@ -168,7 +168,7 @@ func TestExportMissThenHit(t *testing.T) {
 	e := newCacheEnv(t)
 	q := ExportQuery{Format: "pdf"}
 	r := mustServe(t, e, q)
-	if r.Cache != CacheMiss || string(r.Body) != "pdf|sync5|false" || r.Filename != "HISv3-MODULE-CHECKLIST.pdf" {
+	if r.Cache != CacheMiss || string(r.Body) != "pdf|sync5|false" || r.Filename != "SUT-MODULE-CHECKLIST.pdf" {
 		t.Fatalf("first: %+v", r)
 	}
 	e.c.Wait()
@@ -195,7 +195,7 @@ func TestExportMissThenHit(t *testing.T) {
 
 func TestExportKeyChanges(t *testing.T) {
 	e := newCacheEnv(t)
-	base := e.c.exportDir(1, 5, "HISv3", false, 0)
+	base := e.c.exportDir(1, 5, "SUT", false, 0)
 	if !strings.HasPrefix(base, "qa-automation/dev-test/knowledge-exports/1/modules-checklist/sync-5/v1/n") || !strings.HasSuffix(base, "/plain") {
 		t.Fatalf("key shape: %s", base)
 	}
@@ -204,12 +204,12 @@ func TestExportKeyChanges(t *testing.T) {
 	}
 	other := NewExportCache(e.src, e.store, "prod", time.Second)
 	variants := map[string]string{
-		"sync id":     e.c.exportDir(1, 6, "HISv3", false, 0),
-		"product":     e.c.exportDir(2, 5, "HISv3", false, 0),
-		"renamed":     e.c.exportDir(1, 5, "HISv3 renamed", false, 0),
-		"last-update": e.c.exportDir(1, 5, "HISv3", true, 3),
-		"watermark":   e.c.exportDir(1, 5, "HISv3", true, 4),
-		"namespace":   other.exportDir(1, 5, "HISv3", false, 0),
+		"sync id":     e.c.exportDir(1, 6, "SUT", false, 0),
+		"product":     e.c.exportDir(2, 5, "SUT", false, 0),
+		"renamed":     e.c.exportDir(1, 5, "SUT renamed", false, 0),
+		"last-update": e.c.exportDir(1, 5, "SUT", true, 3),
+		"watermark":   e.c.exportDir(1, 5, "SUT", true, 4),
+		"namespace":   other.exportDir(1, 5, "SUT", false, 0),
 	}
 	seen := map[string]string{base: "base"}
 	for n, k := range variants {
@@ -219,7 +219,7 @@ func TestExportKeyChanges(t *testing.T) {
 		seen[k] = n
 	}
 	// The plain variant ignores the watermark.
-	if e.c.exportDir(1, 5, "HISv3", false, 99) != base {
+	if e.c.exportDir(1, 5, "SUT", false, 99) != base {
 		t.Error("plain key depends on the history watermark")
 	}
 	// End to end: a new sync id and a rename each cause a new generation.
@@ -313,7 +313,7 @@ func TestExportStoreFailuresBypass(t *testing.T) {
 func TestExportExtraPutsRunAfterReturn(t *testing.T) {
 	e := newCacheEnv(t)
 	// Hold the two extra objects back: Serve must return without them.
-	dir := e.c.exportDir(1, 5, "HISv3", false, 0)
+	dir := e.c.exportDir(1, 5, "SUT", false, 0)
 	gate := make(chan struct{})
 	e.store.putGate[exportKey(dir, "xlsx")] = gate
 	e.store.putGate[exportKey(dir, "csv")] = gate
@@ -331,7 +331,7 @@ func TestExportExtraPutsRunAfterReturn(t *testing.T) {
 	}
 	// A failing extra Put is ignored.
 	e = newCacheEnv(t)
-	e.store.putGate[exportKey(e.c.exportDir(1, 5, "HISv3", false, 0), "csv")] = func() chan struct{} { c := make(chan struct{}); close(c); return c }()
+	e.store.putGate[exportKey(e.c.exportDir(1, 5, "SUT", false, 0), "csv")] = func() chan struct{} { c := make(chan struct{}); close(c); return c }()
 	mustServe(t, e, ExportQuery{Format: "pdf"})
 	e.c.Wait()
 }
@@ -431,7 +431,7 @@ func TestExportErrors(t *testing.T) {
 func TestExportBaseName(t *testing.T) {
 	long := strings.Repeat("a", 70)
 	cases := map[string]string{
-		"HISv3":           "HISv3",
+		"SUT":             "SUT",
 		"My Product / v2": "My-Product-v2",
 		"  --x--  ":       "x",
 		"日本語":             "product-7",

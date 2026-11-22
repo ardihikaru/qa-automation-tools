@@ -3,7 +3,7 @@
 GAOS is the platform that plans and tracks work (a kanban board per product, a design gate, agents). The QA tools hold a
 product's test catalog and run its scripts. For a product flagged **integrated with GAOS** the two exchange the product's
 test cases in both directions. This page is the operator's and developer's guide from the QA tools' side. The same story
-from GAOS's side is `product/qa-collaboration.html` on the GAOS docs site (`https://gaos.sismedika.com/docs/`, behind its
+from GAOS's side is `product/qa-collaboration.html` on the GAOS docs site (`https://gaos.mfardiansyah.id/docs/`, behind its
 login); the exact request shapes of GAOS's API are on its page *The QA sync API*.
 
 Specs in this repository: [GAOS_INTEGRATION.md](designs/GAOS_INTEGRATION.md) (QA tools to GAOS) and
@@ -30,7 +30,7 @@ decides is kept apart, in the table `gaos_decisions`; nothing GAOS sends ever wr
 3. If the product is flagged integrated and that sync **succeeded**, a push to GAOS starts in the background. It never
    blocks or fails the knowledge sync. A scheduled sync that was skipped because the commit did not change re-pushes only
    when the last push was not `ok`.
-4. The push sends to the GAOS product named in the flag (`gaos_product_id`, for HISv3 `p-6`), sequentially, 200 cases per
+4. The push sends to the GAOS product named in the flag (`gaos_product_id`, for SUT `p-6`), sequentially, 200 cases per
    request:
    * `POST {GAOS_API_URL}/products/{id}/qa/cases`: create-only. A new case is created `planned` in GAOS, with
      `implemented` and `spec`. A case that exists in GAOS with different planning fields comes back `exists-differs` and
@@ -71,7 +71,7 @@ running; a second request while one runs answers `409`.
 ## Direction 2: GAOS to QA tools (two endpoints)
 
 GAOS's **Pull from QA tools** and **Push to QA tools** buttons call two routes on this application's host root
-(`GAOS_QA_URL`, for HISv3 `http://10.10.0.9:8140`; the dashboard's nginx already forwards `/api`). Both need
+(`GAOS_QA_URL`, for SUT `http://10.8.0.9:8140`; the dashboard's nginx already forwards `/api`). Both need
 `Authorization: Bearer <GAOS_INBOUND_TOKEN>` and no cookie. `401` wrong or missing token, `503` token not configured
 (closed), `405` wrong method, `404` unknown product or one that is not flagged with that GAOS id.
 
@@ -159,11 +159,11 @@ object (from the 200/409, the webhook when GAOS sends `source`, or the poll). `a
    holds the value you will use as `GAOS_API_TOKEN`; a separate outbound token file holds the value you will use as
    `GAOS_INBOUND_TOKEN`. The three GAOS tokens must differ.
 2. **Here:** run the migration (`cmd/databasemigration`, see the `qa-db-ops` skill) before the new image starts. Set in
-   `deploy/his-v3-qa/.env.prod` on rnd-v3 (never print them):
+   `deploy/qa-tool/.env.prod` on app-host (never print them):
 
    | Variable | Meaning |
    |---|---|
-   | `GAOS_API_URL` | GAOS API base, `https://...` or `http://` to loopback or `10.10.0.0/24` only; no credentials, query or fragment. HISv3 on rnd-v3: `http://10.10.0.9:18301/api/v1` |
+   | `GAOS_API_URL` | GAOS API base, `https://...` or `http://` to loopback or `10.8.0.0/24` only; no credentials, query or fragment. SUT on app-host: `http://10.8.0.9:18301/api/v1` |
    | `GAOS_API_TOKEN` | the QA bearer GAOS issued (`gaos_...`, at least 37 characters) |
    | `GAOS_INBOUND_TOKEN` | the bearer GAOS must present to this side (`gaos_...`); must differ from `GAOS_API_TOKEN`, else the routes stay disabled |
 

@@ -16,11 +16,11 @@ const last = <T,>(xs: T[]): T | undefined => xs[xs.length - 1];
 const finding = {
   id: 41,
   product_id: 3,
-  product_name: 'HISv3',
+  product_name: 'SUT',
   kind: 'review_changes',
   status: 'new',
   title: 'Reviewer asked for changes: the URL doubles /api/v1',
-  detail: 'HIS_VENDOR_BACKEND_URL already ends in /api/v1; the spec appended it again.',
+  detail: 'SUT_VENDOR_BACKEND_URL already ends in /api/v1; the spec appended it again.',
   occurrences: 2,
   first_seen_at: '2026-11-20T08:00:00Z',
   last_seen_at: '2026-11-20T09:00:00Z',
@@ -33,7 +33,7 @@ const finding = {
 const proposal = {
   id: 'job-77',
   product_id: 3,
-  product_name: 'HISv3',
+  product_name: 'SUT',
   state: 'awaiting_approval',
   status: 'running',
   created_at: '2026-11-21T08:00:00Z',
@@ -60,7 +60,7 @@ const proposal = {
 async function mockLearning(page: Page) {
   const approvals: string[] = [];
   await page.route('**/api/products', (r) =>
-    r.fulfill({ json: { products: [{ id: 3, name: 'HISv3', repos: [{ is_automation: true }] }, { id: 9, name: 'Other', repos: [] }], pool_enabled: true } }),
+    r.fulfill({ json: { products: [{ id: 3, name: 'SUT', repos: [{ is_automation: true }] }, { id: 9, name: 'Other', repos: [] }], pool_enabled: true } }),
   );
   await page.route('**/api/learning/findings**', (r) =>
     r.fulfill({ json: { items: [finding], total: 1, counts: { new: 1, proposed: 0, learned: 0, covered: 0, dismissed: 0 } } }),
@@ -78,8 +78,8 @@ async function mockLearning(page: Page) {
     r.fulfill({
       json: {
         items: [
-          { at: '2026-11-21T08:00:00Z', kind: 'proposal_created', product_id: 3, product_name: 'HISv3', job_id: 'job-77', title: proposal.title, state: 'awaiting_approval' },
-          { at: '2026-11-20T08:00:00Z', kind: 'finding_new', product_id: 3, product_name: 'HISv3', finding_id: 41, finding_kind: 'review_changes', title: finding.title, case_codes: ['TC-VSYS-003'], occurrences: 2 },
+          { at: '2026-11-21T08:00:00Z', kind: 'proposal_created', product_id: 3, product_name: 'SUT', job_id: 'job-77', title: proposal.title, state: 'awaiting_approval' },
+          { at: '2026-11-20T08:00:00Z', kind: 'finding_new', product_id: 3, product_name: 'SUT', finding_id: 41, finding_kind: 'review_changes', title: finding.title, case_codes: ['TC-VSYS-003'], occurrences: 2 },
         ],
       },
     }),
@@ -117,7 +117,7 @@ test.describe('Learning page', () => {
     });
     await page.route('**/api/learning/timeline**', (r) => {
       const u = new URL(r.request().url()).searchParams;
-      const items = Array.from({ length: 12 }, (_, i) => ({ at: '2026-11-20T08:00:00Z', kind: 'finding_new', product_id: 3, product_name: 'HISv3', finding_id: i, title: `Event ${i + 1}` }));
+      const items = Array.from({ length: 12 }, (_, i) => ({ at: '2026-11-20T08:00:00Z', kind: 'finding_new', product_id: 3, product_name: 'SUT', finding_id: i, title: `Event ${i + 1}` }));
       const off = Number(u.get('offset') ?? 0);
       return r.fulfill({ json: { items: items.slice(off, off + Number(u.get('limit'))), total: items.length } });
     });

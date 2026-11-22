@@ -40,10 +40,10 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
   if (token.length < 32) {
     throw new Error('EXECUTOR_TOKEN must be set (>= 32 chars)');
   }
-  // Optional: HISV3_STAGING_URL only seeds the default allowed host list.
-  const stagingUrl = (env.HISV3_STAGING_URL ?? '').trim().replace(/\/+$/, '');
+  // Optional: TARGET_STAGING_URL only seeds the default allowed host list.
+  const stagingUrl = (env.TARGET_STAGING_URL ?? '').trim().replace(/\/+$/, '');
   if (stagingUrl && !/^https?:\/\//.test(stagingUrl)) {
-    throw new Error('HISV3_STAGING_URL must be an http(s) URL when set');
+    throw new Error('TARGET_STAGING_URL must be an http(s) URL when set');
   }
 
   const allowedHosts = (env.EXECUTOR_ALLOWED_HOSTS ?? (stagingUrl ? new URL(stagingUrl).hostname : ''))
@@ -57,8 +57,8 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     token,
     runTimeoutMs: int(env, 'RUN_TIMEOUT_SECONDS', 900, 30, 7200) * 1000,
     maxQueue: int(env, 'MAX_QUEUE', 10, 0, 100),
-    repoPool: env.EXECUTOR_REPO_POOL || '/home/sismedika/devel/projects/qa-automation-tools/repos',
-    envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/sismedika'}/.config/qa-automation`,
+    repoPool: env.EXECUTOR_REPO_POOL || `${env.HOME ?? '/home/qa'}/devel/projects/qa-automation-tools/repos`,
+    envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/qa'}/.config/qa-automation`,
     allowedHosts,
     navReporter: resolveNavReporter(env),
     brainTown: loadBrainTownConfig(env),

@@ -38,7 +38,7 @@ export function resolveBrainTownReporter(env: Env, file: string = BRAIN_TOWN_REP
   }
 }
 
-/** BRAIN_TOWN_PRODUCTS="1=sipreport,2=hisv3" */
+/** BRAIN_TOWN_PRODUCTS="1=samplereport,2=sut" */
 export function parseProductMap(raw: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (raw ?? '').split(',')) {
@@ -53,7 +53,7 @@ export function loadBrainTownConfig(env: Env, file: string = BRAIN_TOWN_REPORTER
     reporter: resolveBrainTownReporter(env, file),
     url: (env.BRAIN_TOWN_URL ?? '').trim(),
     token: (env.BRAIN_TOWN_TOKEN ?? '').trim(),
-    org: (env.BRAIN_TOWN_ORG ?? 'sismedika').trim(),
+    org: (env.BRAIN_TOWN_ORG ?? 'example-org').trim(),
     product: (env.BRAIN_TOWN_PRODUCT ?? '').trim(),
     products: parseProductMap(env.BRAIN_TOWN_PRODUCTS),
   };

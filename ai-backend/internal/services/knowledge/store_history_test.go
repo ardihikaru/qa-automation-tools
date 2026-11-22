@@ -59,7 +59,7 @@ func historySyncer(t *testing.T, d *db.DB, pid int, repo *fakeRepo) func() int64
 func TestStatusHistory(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	run := historySyncer(t, d, pid, repo)
 	files := func(mod string) map[string]string {
@@ -86,7 +86,7 @@ func TestStatusHistory(t *testing.T) {
 	}
 
 	// A new feature in a later sync is a 'sync' row.
-	modB := modA + "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | | | | |\n"
+	modB := modA + "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | | | | |\n"
 	repo.set("2222222222222222222222222222222222222222", files(modB))
 	id2 := run()
 	h = histOf(t, d, pid)
@@ -104,7 +104,7 @@ func TestStatusHistory(t *testing.T) {
 	}
 
 	// A notes-only change: no row.
-	modD := strings.Replace(modC, "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | | | | |", "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | a note | | | |", 1)
+	modD := strings.Replace(modC, "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | | | | |", "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | a note | | | |", 1)
 	repo.set("4444444444444444444444444444444444444444", files(modD))
 	run()
 	if n := histCount(t, d, pid); n != 4 {
@@ -122,7 +122,7 @@ func TestStatusHistory(t *testing.T) {
 	}
 
 	// Remove then restore with the same status: no row.
-	repo.set("5555555555555555555555555555555555555555", files(strings.Replace(modD, "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | a note | | | |\n", "", 1)))
+	repo.set("5555555555555555555555555555555555555555", files(strings.Replace(modD, "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | a note | | | |\n", "", 1)))
 	run()
 	repo.set("6666666666666666666666666666666666666666", files(modD))
 	run()
@@ -131,7 +131,7 @@ func TestStatusHistory(t *testing.T) {
 	}
 
 	// Remove, then restore with a different status: one row.
-	repo.set("7777777777777777777777777777777777777777", files(strings.Replace(modD, "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | a note | | | |\n", "", 1)))
+	repo.set("7777777777777777777777777777777777777777", files(strings.Replace(modD, "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | a note | | | |\n", "", 1)))
 	run()
 	repo.set("8888888888888888888888888888888888888888", files(strings.Replace(modD, "`DEV-DONE` | 2026-02-01", "`PROD` | 2026-04-01", 1)))
 	id8 := run()
@@ -146,7 +146,7 @@ func TestStatusHistory(t *testing.T) {
 func TestStatusHistoryBackfillMigration(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	run := historySyncer(t, d, pid, repo)
 	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic})
@@ -193,7 +193,7 @@ func TestStatusHistoryBackfillMigration(t *testing.T) {
 func TestChecklistSnapshotDB(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	s := &Syncer{DB: d, ReadTree: repo.read, syncTimeout: time.Minute, aiTimeout: time.Minute}
 	run := historySyncer(t, d, pid, repo)
@@ -215,7 +215,7 @@ func TestChecklistSnapshotDB(t *testing.T) {
 	repo.set("1111111111111111111111111111111111111111", files(modA))
 	id1 := run()
 	ki, err := s.ChecklistKeyInfo(ctx, pid, true)
-	if err != nil || ki.SyncID != id1 || ki.ProductName != "HISv3" || ki.HistoryMaxID == 0 {
+	if err != nil || ki.SyncID != id1 || ki.ProductName != "SUT" || ki.HistoryMaxID == 0 {
 		t.Fatalf("key info: %+v %v", ki, err)
 	}
 	if k0, _ := s.ChecklistKeyInfo(ctx, pid, false); k0.HistoryMaxID != 0 {
@@ -236,7 +236,7 @@ func TestChecklistSnapshotDB(t *testing.T) {
 	}
 
 	// A sync committing while snapshots are read: every snapshot is internally consistent.
-	modB := modA + "| A01.03 | Pasien | Delete | his | `DEV-DONE` | 2026-02-01 | | | | | | |\n"
+	modB := modA + "| A01.03 | Pasien | Delete | app | `DEV-DONE` | 2026-02-01 | | | | | | |\n"
 	repo.set("2222222222222222222222222222222222222222", files(modB))
 	stop := make(chan struct{})
 	bad := make(chan string, 1)

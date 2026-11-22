@@ -5,7 +5,7 @@
 *   **Date:** 2026-11-13
 
 ## Overview
-This spec adds two things to the qa-automation app at https://qa-tool.sismedika.com:
+This spec adds two things to the qa-automation app at https://qa-tool.mfardiansyah.id:
 1.  **A seeded `Service` account for AI agents.** Claude Code sessions use it to call the production API. Before this, the only option was a person's password.
 2.  **Impersonation ("log in as").** A user whose real role is `Admin` or `Service` can act as any other active user. The app then behaves as it would for that user, and a banner shows who is really acting. The user leaves with "Return".
 
@@ -38,7 +38,7 @@ This spec adds two things to the qa-automation app at https://qa-tool.sismedika.
 *   **`users`** (`migrations.go:259`): `role VARCHAR(32)`. `normalizeRole` (`seed_users.go:172`) maps taskmgr labels onto `Admin, Developer, DevOps, QA, QC, UI/UX Designer`; anything else becomes `Developer`.
 *   **Request auth.** `auth.Require` (`ai-backend/internal/auth/middleware.go:18`) calls `ValidateSession` (`auth/session.go:38`). Any error clears the cookie and returns 401 (`middleware.go:27-31`).
 *   **Routing.** `ServeHTTP` lets `OPTIONS`, `/api/auth/login` and `/health` through without auth (`ai-backend/internal/api/router.go:557-567`). The auth routes sit in the `if r.authHandlers != nil` switch in `dispatchAuthenticated` (`router.go:638-650`).
-*   **CORS.** `applyCORS` reflects the request `Origin` only when `DASHBOARD_ORIGIN` is `*` or empty (`router.go:583-590`). Production pins it to `https://qa-tool.sismedika.com`.
+*   **CORS.** `applyCORS` reflects the request `Origin` only when `DASHBOARD_ORIGIN` is `*` or empty (`router.go:583-590`). Production pins it to `https://qa-tool.mfardiansyah.id`.
 *   **Cookie.** `setSessionCookie` (`ai-backend/internal/api/auth_helpers.go:41`) sets an HttpOnly cookie with SameSite=Lax, `Path=/` and `Secure` taken from env.
 *   **Seeding.**
     *   Options come from `os.Getenv` in `ai-backend/cmd/server/main.go:99-106`.
@@ -150,7 +150,7 @@ All handlers are methods on `*AuthHandlers` in a new `ai-backend/internal/api/im
 
 **CSRF.** The new POST handlers return 415 unless `Content-Type` starts with `application/json`.
 *   Cross-origin JSON requests then need a preflight, and `applyCORS` only allows the pinned origin.
-*   This also blocks the `text/plain` no-preflight POST that a sibling `*.sismedika.com` page could send under SameSite=Lax.
+*   This also blocks the `text/plain` no-preflight POST that a sibling `*.mfardiansyah.id` page could send under SameSite=Lax.
 *   The dashboard's `authFetch` already sends that header (`dashboard/src/auth/api.ts:38`).
 *   Extending the check to all existing POST endpoints is a follow-up.
 
@@ -185,7 +185,7 @@ Existing handlers:
     4.  Otherwise it inserts the user with role `Service`, `is_lead=0` and `must_change_pw=0`.
 *   **Password rotation.** The service account calls the existing `POST /api/auth/change-password` while not impersonating, and the new value is then written to `.env.prod` and the workstation credential file.
 *   **Username.** Use one that cannot collide with taskmgr, for example `ai-service`.
-*   Document both variables (key names only) in `ai-backend/.env.example`, `deploy/his-v3-qa/.env.prod.example` and the env table of the root `README.md`.
+*   Document both variables (key names only) in `ai-backend/.env.example`, `deploy/qa-tool/.env.prod.example` and the env table of the root `README.md`.
 
 ### 6. Dashboard
 *   **`auth/api.ts`:**
@@ -231,7 +231,7 @@ Existing handlers:
 
 ## Security analysis
 *   **The Service account is equivalent to an Admin,** with write access through impersonation, by the owner's decision.
-    *   Its password must be at least 32 random characters, stored only in `.env.prod` on rnd-v3 and the owner's workstation file.
+    *   Its password must be at least 32 random characters, stored only in `.env.prod` on app-host and the owner's workstation file.
     *   The agent-side guardrail is the rule file plus the operator agent's instructions.
     *   The server-side trace is the audit row plus one `impersonated-write` log line per write.
 *   **No new privilege beyond an Admin's.** The new power is acting under another user's name, and that is always marked by the banner and audited.
@@ -248,10 +248,10 @@ Existing handlers:
 
 ## Rollout (each step needs its own approval)
 1.  Merge the implementation PR to `main`.
-2.  **Migrate first.** On rnd-v3, run `go run -mod=mod ./cmd/databasemigration` against prod *before* deploying the new backend.
+2.  **Migrate first.** On app-host, run `go run -mod=mod ./cmd/databasemigration` against prod *before* deploying the new backend.
     *   The new code queries `active_impersonations` on every request. Without the table, every request returns 401 and every user is logged out.
     *   The new tables are unused by the old code, so migrating while it runs is safe.
-3.  Generate the service password with `openssl rand -base64 36`, never echoed. Write it to the rnd-v3 `.env.prod` (`AI_SERVICE_USERNAME=ai-service` and `AI_SERVICE_PASSWORD`) and to `~/.config/qa-automation/ai-service.env` on the workstation, both mode 600.
+3.  Generate the service password with `openssl rand -base64 36`, never echoed. Write it to the app-host `.env.prod` (`AI_SERVICE_USERNAME=ai-service` and `AI_SERVICE_PASSWORD`) and to `~/.config/qa-automation/ai-service.env` on the workstation, both mode 600.
 4.  Deploy with the `deploy-qa-tool` skill. Seeding runs at startup, so the service user appears on this restart.
 5.  Run the skill's smoke sequence.
 
@@ -278,8 +278,8 @@ Existing handlers:
         *   `ai-backend/internal/seed/{seed_users,upsert}.go`
     *   Dashboard: `dashboard/src/auth/{api.ts,AuthContext.tsx,ProtectedRoute.tsx}`, `dashboard/src/components/{UserChip,Layout}.tsx`, `dashboard/src/views/ProductsView.tsx` (Modal extraction)
     *   E2E: `this-qa-automation-system-playwright/{config.ts,README.md}`
-    *   Env templates: `ai-backend/.env.example`, `deploy/his-v3-qa/.env.prod.example`
-    *   READMEs: `README.md`, `ai-backend/README.md`, `ai-backend/internal/{auth,api,db}/README.md`, `dashboard/README.md`, `deploy/his-v3-qa/README.md`
+    *   Env templates: `ai-backend/.env.example`, `deploy/qa-tool/.env.prod.example`
+    *   READMEs: `README.md`, `ai-backend/README.md`, `ai-backend/internal/{auth,api,db}/README.md`, `dashboard/README.md`, `deploy/qa-tool/README.md`
     *   Claude config: `.claude/rules/secrets.md`, `.claude/settings.json`, `CLAUDE.md`, `dashboard/CLAUDE.md` (role list note)
     *   Design docs: `docs/designs/SITEMAP.md`
 

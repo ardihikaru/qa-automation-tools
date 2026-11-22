@@ -62,7 +62,7 @@ func (db *DB) Exec(ctx context.Context, query string, args ...interface{}) (Exec
 }
 
 // NewConnection opens the MySQL pool described by cfg.GetDatabaseURL()
-// (by default the shared rnd-v2 MySQL at 10.10.0.4:5306, schema qa_automation).
+// (by default the shared db-host MySQL at 10.8.0.4:5306, schema qa_automation).
 // NormalizeDSN pins every connection to UTC, whatever the host time zone or
 // the DSN supplied (DATABASE_URL / connection_string are used verbatim):
 //   - loc=UTC: Go time.Time values are written and read as UTC;

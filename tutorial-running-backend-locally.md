@@ -1,7 +1,7 @@
 # Tutorial: Running `ai-backend` Locally (MySQL + ai-manager)
 
 This guide explains how to run the backend service locally with:
-- MySQL 8 connected (schema `qa_automation` on the shared rnd-v2 MySQL, `10.10.0.4:5306`, over WireGuard)
+- MySQL 8 connected (schema `qa_automation` on the shared db-host MySQL, `10.8.0.4:5306`, over WireGuard)
 - LLM calls going through ai-manager, pinned to upstream `claude-v3`
 - Database migrations executed explicitly via `cmd/databasemigration`
 
@@ -27,7 +27,7 @@ Required software:
 - `mysql` client (optional, for connectivity checks)
 
 Required access:
-- A WireGuard peer on `10.10.0.0/24` (for the DB and ai-manager)
+- A WireGuard peer on `10.8.0.0/24` (for the DB and ai-manager)
 - MySQL credentials for the `qa_automation` user
 - ai-manager credentials (`AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY`)
 
@@ -38,10 +38,10 @@ Required access:
 `ai-backend` loads `.env` automatically. Environment variables always beat `config.yaml`, and the YAML `backend.database.*` block is ignored, so configure the DB through env only.
 
 Database settings (one of):
-1. `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (recommended; defaults are `10.10.0.4`, `5306`, `qa_automation`)
-2. `DATABASE_URL` as a go-sql-driver/mysql DSN, e.g. `user:pass@tcp(10.10.0.4:5306)/qa_automation?parseTime=true`
+1. `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (recommended; defaults are `10.8.0.4`, `5306`, `qa_automation`)
+2. `DATABASE_URL` as a go-sql-driver/mysql DSN, e.g. `user:pass@tcp(10.8.0.4:5306)/qa_automation?parseTime=true`
 
-Legacy `MYSQL_*` variables in some local `.env` files are ignored by the code and point at the HISv3 production schema. Never use them for this app.
+Legacy `MYSQL_*` variables in some local `.env` files are ignored by the code and point at the SUT production schema. Never use them for this app.
 
 Setup:
 
@@ -58,7 +58,7 @@ Do not commit real secrets to git.
 ## 4. Optional: Pre-check the MySQL Connection
 
 ```bash
-MYSQL_PWD="$DB_PASSWORD" mysql -h 10.10.0.4 -P 5306 -u qa_automation qa_automation -e 'SELECT 1;'
+MYSQL_PWD="$DB_PASSWORD" mysql -h 10.8.0.4 -P 5306 -u qa_automation qa_automation -e 'SELECT 1;'
 ```
 
 If this fails, fix WireGuard access or credentials first.
@@ -136,7 +136,7 @@ go run -mod=mod ./cmd/verifyai "say hello"
 ## 11. Common Failure Modes
 
 1. `/health` shows `database=disconnected`
-   - Check `DB_*` (or `DATABASE_URL`) and that `10.10.0.4:5306` is reachable over WireGuard.
+   - Check `DB_*` (or `DATABASE_URL`) and that `10.8.0.4:5306` is reachable over WireGuard.
 2. Migration command fails
    - Read the failing migration index from the output, fix the SQL or permissions, and re-run.
 3. AI errors (401/502/503)

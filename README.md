@@ -1,6 +1,78 @@
-# QA Automation Tools Blueprint
+# QA Automation Tools
 
-A QA automation system with AI-powered features for testing and monitoring healthcare web applications (HIS v3).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/ardihikaru/qa-automation-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/ardihikaru/qa-automation-tools/actions/workflows/ci.yml)
+![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)
+![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright)
+
+**An AI-assisted QA automation platform for web applications.** Playwright explores and tests the
+*system under test* (SUT). A Go API stores test flows, issues, skills and run history in MySQL, and
+asks an LLM (through an OpenAI-style gateway) to write and repair Playwright specs. A React dashboard
+shows everything and lets humans approve what the AI proposes.
+
+> **SUT** in this repo means "the web application under test". The reference deployment tests a
+> hospital information system. Nothing in the code is tied to a specific product: products, repos and
+> staging URLs are configured as data.
+
+## Features
+
+- **Case automation.** Pick a manual test case, and the AI writes a Playwright spec for it (`case_create`).
+  The spec runs in an isolated executor (`case_run`), and a pull request opens on your automation repo
+  after a human approves it.
+- **Isolated Playwright executor.** A small Node service (systemd user unit, cgroup-capped RAM/CPU)
+  is the *only* place browsers run. It allows staging targets only, runs one browser at a time, and the backend polls it.
+- **Learning loop.** Failures become findings. Repeated findings become policy proposals, and
+  approved policies feed back into later spec generation.
+- **Product knowledge sync.** Parses a structured test catalog (parts → modules → features → epics →
+  stories → cases) from your automation repo, and exports module checklists (CSV / XLSX / PDF).
+- **Navigation map.** An inventory of API routes and web pages, with test coverage per route.
+- **Dashboard.** Cookie-session auth with roles, job live logs, approvals, cost tracking for every AI
+  call, and issue tracking.
+- **Optional integrations.** A task/approval inbox (GAOS) and run telemetry reporting.
+
+## Architecture at a glance
+
+```
+ Browser ──TLS──▶ edge nginx ──▶ dashboard (React + nginx) ──/api──▶ ai-backend (Go)
+                                                                     │   │    │
+                                    MySQL 8 (qa_automation) ◀────────┘   │    └──▶ LLM gateway (ai-manager)
+                                                                         ▼
+                                              playwright-executor (Node, systemd) ──Chromium──▶ SUT staging
+```
+
+The full topology of the reference deployment is in [System Overview](#system-overview). Host names
+there are generic roles (`edge-host`, `app-host`, `db-host`) and IPs are documentation placeholders.
+
+## Quick start (local)
+
+```bash
+git clone https://github.com/ardihikaru/qa-automation-tools.git && cd qa-automation-tools
+cp ai-backend/.env.example ai-backend/.env      # set DB_* (MySQL 8) and AI_MANAGER_*
+cd ai-backend && go run -mod=mod ./cmd/databasemigration && go run -mod=mod ./cmd/server
+# second terminal
+cd dashboard && cp .env.example .env && npm install && npm run dev
+```
+
+Running Playwright jobs also needs [playwright-executor](playwright-executor/README.md). See
+[Running Backend Locally](#running-backend-locally) and [Environment Variables](#environment-variables)
+for details.
+
+## Contributing, security, license
+
+- Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+- To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue for it.
+- [MIT](LICENSE) © ardihikaru.
+
+> **Maintainers:** the real host names, domains and infra notes of the reference deployment are kept
+> out of this public repo, in a gitignored `.private/` folder plus `CLAUDE.local.md`. AI agents
+> read those first when they exist. Copy them to every new VM or workstation that gets a checkout
+> (see [CONTRIBUTING.md](CONTRIBUTING.md#private-maintainer-overlay)).
+
+---
+
+# System contract
 
 ## Table of Contents
 
@@ -27,9 +99,9 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 ```
   Browser
-     │  https://qa-tool.sismedika.com   (TLS at the clino nginx edge, then WireGuard)
+     │  https://qa-tool.mfardiansyah.id   (TLS at the edge-host nginx edge, then WireGuard)
      ▼
- ┌──────────────────────── rnd-v3-vpn 10.10.0.9 (4 vCPU / 3.8 GiB) ──────────────────────────┐
+ ┌──────────────────────── app-host 10.8.0.9 (4 vCPU / 3.8 GiB) ──────────────────────────┐
  │                                                                                           │
  │  Docker Compose (qa-automation)                                                           │
  │  ┌─────────────────────┐ /api,/health ┌────────────────────────┐                          │
@@ -41,7 +113,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
  │       (Bearer, poll every 3 s)           ▼          │      │                              │
  │  systemd --user (mise node 24)  ┌───────────────────────┐  │                              │
  │  MemoryMax 2.5G · CPUQuota 60%  │ playwright-executor   │  │                              │
- │                                 │ 10.10.0.9:8141        │──┼──Chromium──▶ HISv3 STAGING  │
+ │                                 │ 10.8.0.9:8141        │──┼──Chromium──▶ SUT STAGING  │
  │                                 │ 1 browser at a time   │  │                              │
  │                                 └───────────────────────┘  │                              │
  │  systemd --user                 ┌───────────────────────┐  │                              │
@@ -50,7 +122,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
  │                                 └───────────────────────┘  │               │              │
  └────────────────────────────────────────────────────────────┼───────────────┼──────────────┘
                                                               │ WireGuard     │
- ┌──────────────── rnd-v2-vpn 10.10.0.4 ──────────────────────▼───────────────┼──────┐
+ ┌──────────────── db-host 10.8.0.4 ──────────────────────▼───────────────┼──────┐
  │  MySQL 8 :5306 (schema qa_automation)   ai-manager :8099 POST /v1/chat ─────┘      │
  │                                         provider=claude-v3, no_fallback=true       │
  └────────────────────────────────────────────────────────────────────────────────────┘
@@ -61,14 +133,14 @@ A QA automation system with AI-powered features for testing and monitoring healt
 - **ai-backend** is the Go API. It stores flows, issues, skills, learning data, cost data and jobs in MySQL 8.
   Every LLM call goes through `internal/services/ai` (`ai.Service` → ai-manager → **claude-v3**, with `no_fallback`).
   Case automation jobs (`case_run`, `case_create`) are enqueued by the case endpoints; `case_run` is dispatched to playwright-executor (`internal/api/jobs_executor.go`).
-- **playwright-executor** is the only place Playwright runs. It is a small Node/TS service on rnd-v3, run as a
+- **playwright-executor** is the only place Playwright runs. It is a small Node/TS service on app-host, run as a
   systemd user unit with Node from mise, and capped by its cgroup at 2.5 GiB RAM and 60 % of all CPUs.
-  It runs a product's automation specs (`case_run`) from the repo pool against HISv3 staging.
+  It runs a product's automation specs (`case_run`) from the repo pool against SUT staging.
   It makes no AI calls and no calls to the backend: the backend polls it.
 - **dashboard** is the React + Vite UI. Every route except `/login` is gated by a cookie-session login.
 - The old `playwright-qa`, `playwright-docs` prototypes and the dashboard-driven `qa_run` / `docs_generate` jobs were removed (legacy cleanup). Git history keeps them.
 - **this-qa-automation-system-playwright** is the E2E self-verification suite for the backend API and the dashboard.
-- **LLM policy:** ai-manager pinned to `claude-v3` (the Claude CLI REST on rnd-v3) is the only supported path.
+- **LLM policy:** ai-manager pinned to `claude-v3` (the Claude CLI REST on app-host) is the only supported path.
   The MiniMax provider code is **dormant**: it is never selected by default and must not be switched on without the owner's explicit approval.
 
 ## Subdirectories & System Boundaries
@@ -89,8 +161,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 - `deploy/playwright-executor/`: [deploy/playwright-executor/README.md](./deploy/playwright-executor/README.md). systemd user unit template, `install.sh`, and the resource budget.
 - `this-qa-automation-system-playwright/`: [this-qa-automation-system-playwright/README.md](./this-qa-automation-system-playwright/README.md). Playwright API and dashboard regression suite for this repository.
 - `lib/`: [lib/README.md](./lib/README.md). Shared TypeScript `config.yaml` loader (`lib/config.ts`); currently has no importer.
-- `deploy/his-v3-qa/`: [deploy/his-v3-qa/README.md](./deploy/his-v3-qa/README.md). **Production** Docker Compose stack on rnd-v3-vpn, behind the clino nginx edge.
-- `product-documentations/`: functional documentation source for HIS v3 modules (reference only; the backend no longer serves it).
+- `deploy/qa-tool/`: [deploy/qa-tool/README.md](./deploy/qa-tool/README.md). **Production** Docker Compose stack on app-host, behind the edge-host nginx edge.
 - Root `*.md` files: operational docs, plans, tutorials, assessments and architecture notes.
 
 ## Global Invariants
@@ -104,13 +175,13 @@ A QA automation system with AI-powered features for testing and monitoring healt
   It only runs specs from the configured repo pool against allow-listed hosts. When `PLAYWRIGHT_EXECUTOR_URL` is empty, `case_run` jobs fail with "playwright-executor is not configured".
 - **Same-origin API.** The dashboard uses relative `/api/*` paths. They go through the Vite proxy in dev and the in-container nginx in production.
   Backend CORS comes from `DASHBOARD_ORIGIN` (`router.go:applyCORS`).
-- **Secrets** live in `.env`, `config.yaml` (both gitignored) and, in production, in `.env.prod` on rnd-v3 only. Never commit them.
+- **Secrets** live in `.env`, `config.yaml` (both gitignored) and, in production, in `.env.prod` on app-host only. Never commit them.
 
 ## Global Side Effects
 
 - MySQL 8 database (`qa_automation`): see [ai-backend/internal/db](./ai-backend/internal/db/README.md) for tables.
-- Outbound LLM calls to ai-manager (`POST {AI_MANAGER_URL}/v1/chat`, default `http://10.10.0.4:8099` over WireGuard), always answered by `claude-v3`. ai-manager bills and logs these calls.
-- playwright-executor runs `npx playwright test` inside the product's repo-pool checkout on rnd-v3 for `case_run`.
+- Outbound LLM calls to ai-manager (`POST {AI_MANAGER_URL}/v1/chat`, default `http://10.8.0.4:8099` over WireGuard), always answered by `claude-v3`. ai-manager bills and logs these calls.
+- playwright-executor runs `npx playwright test` inside the product's repo-pool checkout on app-host for `case_run`.
 - Read-only user import from the taskmgr Neo4j at backend startup, when `TASKMGR_NEO4J_URI` is set.
 - The self-test suite mutates backend data: it creates and deletes learning records.
 
@@ -121,7 +192,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 - Playwright executor: `cd playwright-executor && mise exec -- npm test`
 - Self-tests (backend on :8080, dashboard on :3000): `cd this-qa-automation-system-playwright && npx playwright test`
 - AI provider smoke test: `cd ai-backend && go run ./cmd/verifyai`
-- Production health: see [deploy/his-v3-qa/README.md](./deploy/his-v3-qa/README.md#verification)
+- Production health: see [deploy/qa-tool/README.md](./deploy/qa-tool/README.md#verification)
 
 ---
 
@@ -138,7 +209,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 
 ### Required Access
 
-- A MySQL 8 database (production uses `qa_automation` on rnd-v2-vpn over WireGuard)
+- A MySQL 8 database (production uses `qa_automation` on db-host over WireGuard)
 - ai-manager credentials (`AI_MANAGER_LOGIN_ID` / `AI_MANAGER_SECRET_KEY`) and WireGuard access to it. No other LLM credentials are needed: claude-v3 via ai-manager is the only supported path.
 - For real Playwright jobs: a reachable playwright-executor (`PLAYWRIGHT_EXECUTOR_URL` and `_TOKEN`). Without it, `case_run` jobs fail.
 
@@ -149,7 +220,7 @@ A QA automation system with AI-powered features for testing and monitoring healt
 ### Option 1: Docker Compose (local)
 
 The root `docker-compose.yml` builds `backend` (:8080) and `dashboard` (:3000 -> 80) and mounts `./config.yaml` into the backend.
-For production, use [deploy/his-v3-qa](./deploy/his-v3-qa/README.md) instead.
+For production, use [deploy/qa-tool](./deploy/qa-tool/README.md) instead.
 
 ```bash
 # Start all services
@@ -222,7 +293,7 @@ DB_NAME=qa_automation
 
 # AI: ai-manager is the default provider
 AI_PROVIDER=ai-manager
-AI_MANAGER_URL=http://10.10.0.4:8099
+AI_MANAGER_URL=http://10.8.0.4:8099
 AI_MANAGER_LOGIN_ID=...
 AI_MANAGER_SECRET_KEY=...
 # (AI_PROVIDER=minimax is dormant; do not use)
@@ -340,13 +411,13 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | MySQL 8 connection parts | `DB_NAME=qa_automation` |
 | `DATABASE_URL` | Full MySQL DSN (overrides `DB_*`) | — |
 | `AI_PROVIDER` | `ai-manager` (only supported value; `minimax` is dormant) | `ai-manager` |
-| `AI_MANAGER_URL` | ai-manager base URL | `http://10.10.0.4:8099` |
+| `AI_MANAGER_URL` | ai-manager base URL | `http://10.8.0.4:8099` |
 | `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY` | ai-manager HTTP Basic credentials | — |
-| `AI_MANAGER_PROVIDER`, `AI_MANAGER_NO_FALLBACK`, `AI_MANAGER_MODEL` | Upstream pinned inside ai-manager (Claude CLI REST on rnd-v3 `10.10.0.9:8105`) | `claude-v3`, `true`, empty (`claude-opus-5`) |
+| `AI_MANAGER_PROVIDER`, `AI_MANAGER_NO_FALLBACK`, `AI_MANAGER_MODEL` | Upstream pinned inside ai-manager (Claude CLI REST on app-host `10.8.0.9:8105`) | `claude-v3`, `true`, empty (`claude-opus-5`) |
 | `AI_TIMEOUT_SECONDS` | LLM call timeout | `180` |
 | `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | **Dormant** MiniMax settings (unused) | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
 | `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | playwright-executor endpoint, bearer token, max wait per job | empty (case_run fails), —, `30` |
-| `GAOS_API_URL`, `GAOS_API_TOKEN` | GAOS REST API base URL (https, or http to loopback/`10.10.0.0/24` only) and the QA bearer (`gaos_...`, secret); both empty = the GAOS integration is off ([GAOS_INTEGRATION.md](docs/designs/GAOS_INTEGRATION.md); how the two systems work together, both ways: [GAOS_COLLABORATION.md](docs/GAOS_COLLABORATION.md)) | empty, — |
+| `GAOS_API_URL`, `GAOS_API_TOKEN` | GAOS REST API base URL (https, or http to loopback/`10.8.0.0/24` only) and the QA bearer (`gaos_...`, secret); both empty = the GAOS integration is off ([GAOS_INTEGRATION.md](docs/designs/GAOS_INTEGRATION.md); how the two systems work together, both ways: [GAOS_COLLABORATION.md](docs/GAOS_COLLABORATION.md)) | empty, — |
 | `PORT`, `BACKEND_HOST` | Listen address | `8080`, `0.0.0.0` |
 | `DASHBOARD_ORIGIN` | CORS origin when auth is on | `http://localhost:6173` |
 | `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE` | Session cookie | `qa_session`, `12`, `false` |
@@ -374,7 +445,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | Environment | URL |
 |-------------|-----|
 | Local | `http://localhost:8080` |
-| Production | `https://qa-tool.sismedika.com` (`/api`, `/health` proxied by the dashboard nginx) |
+| Production | `https://qa-tool.mfardiansyah.id` (`/api`, `/health` proxied by the dashboard nginx) |
 
 ### Endpoints
 
@@ -413,11 +484,11 @@ curl -b cookies.txt http://localhost:8080/api/jobs
 
 ## Deployment
 
-### Production: his-v3-qa (Docker Compose on rnd-v3-vpn)
+### Production: qa-tool (Docker Compose on app-host)
 
-Production runs at **https://qa-tool.sismedika.com**. A Docker Compose stack on rnd-v3-vpn runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
-It sits behind the shared clino nginx edge and reaches MySQL and ai-manager over WireGuard.
-See [deploy/his-v3-qa/README.md](./deploy/his-v3-qa/README.md) for deploy, rollback and health checks.
+Production runs at **https://qa-tool.mfardiansyah.id**. A Docker Compose stack on app-host runs `dashboard` (nginx + SPA, which proxies `/api` and `/health`) and `backend`.
+It sits behind the shared edge-host nginx edge and reaches MySQL and ai-manager over WireGuard.
+See [deploy/qa-tool/README.md](./deploy/qa-tool/README.md) for deploy, rollback and health checks.
 
 ### Legacy: Google Cloud Run
 
@@ -553,12 +624,11 @@ qa-automation-tools/
 │   ├── nginx.conf.example    # Nginx config template
 │   └── Dockerfile
 │
-├── deploy/his-v3-qa/         # Production Docker Compose stack
+├── deploy/qa-tool/         # Production Docker Compose stack
 ├── deploy/playwright-executor/ # systemd user unit + install.sh (2.5 GiB / 60 % CPU)
 ├── lib/                      # Shared TS config loader
 ├── playwright-executor/      # THE Playwright runtime (HTTP service, mise node 24)
 ├── this-qa-automation-system-playwright/ # Self-verification tests (API + dashboard)
-├── product-documentations/   # Source docs for product modules
 ├── config.yaml               # Main configuration (gitignored; see config.yaml.template)
 ├── docker-compose.yml        # Local Docker compose
 └── README.md                 # This file
@@ -571,7 +641,7 @@ qa-automation-tools/
 - [Backend Blueprint](./ai-backend/README.md)
 - [Database Migration Guide](./ai-backend/database-migration.md)
 - [Dashboard Documentation](./dashboard/README.md)
-- [Production Deployment (his-v3-qa)](./deploy/his-v3-qa/README.md)
+- [Production Deployment (qa-tool)](./deploy/qa-tool/README.md)
 - [REST API Usage](./rest-api-usage-documentation.md)
 - [Legacy Cloud Run Deployment Tutorial](./deployment-tutorial.md)
 - `MiniMax-API-Endpoint.pdf` and `Playwright-for-System-Documentation.pdf` (local reference PDFs; `*.pdf` is gitignored)
@@ -580,4 +650,4 @@ qa-automation-tools/
 
 ## License
 
-Copyright © 2025 Sismedika. All rights reserved.
+[MIT](LICENSE). Copyright © 2025 ardihikaru.

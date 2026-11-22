@@ -1,12 +1,12 @@
 # Database Migration Guide
 
-This document explains how database migration works in `ai-backend`, including local development and the self-hosted deployment (rnd-v3-vpn, see `deploy/his-v3-qa/README.md`).
+This document explains how database migration works in `ai-backend`, including local development and the self-hosted deployment (app-host, see `deploy/qa-tool/README.md`).
 
 ## Overview
 
 - Migration command: `cmd/databasemigration/main.go`
 - Migration source: `internal/db/migrations.go`
-- Database target: MySQL 8 (`qa_automation` on the shared master-compose MySQL, rnd-v2-vpn `10.10.0.4:5306`, over WireGuard)
+- Database target: MySQL 8 (`qa_automation` on the shared master-compose MySQL, db-host `10.8.0.4:5306`, over WireGuard)
 - Migration style: ordered, idempotent SQL statements (`CREATE TABLE IF NOT EXISTS`, InnoDB, utf8mb4)
 
 ## Prerequisites
@@ -134,17 +134,17 @@ Avoid destructive in-place type conversions during critical production rollouts.
    - `ai_provider=ai-manager`, `ai=ok` (if AI_MANAGER_* creds are set)
 5. Run relevant tests.
 
-## Production Deployment (rnd-v3-vpn, qa-tool.sismedika.com)
+## Production Deployment (app-host, qa-tool.mfardiansyah.id)
 
-The backend runs as a Docker Compose service on rnd-v3-vpn (`deploy/his-v3-qa/`).
+The backend runs as a Docker Compose service on app-host (`deploy/qa-tool/`).
 The image only contains `./server`, so run migrations from a Go toolchain that can
-reach `10.10.0.4:5306` over WireGuard (the dev laptop or rnd-v3 itself):
+reach `10.8.0.4:5306` over WireGuard (the dev laptop or app-host itself):
 
-1. `cd ai-backend && DB_HOST=10.10.0.4 DB_PORT=5306 DB_USER=qa_automation DB_PASSWORD=... DB_NAME=qa_automation go run -mod=mod ./cmd/databasemigration`
+1. `cd ai-backend && DB_HOST=10.8.0.4 DB_PORT=5306 DB_USER=qa_automation DB_PASSWORD=... DB_NAME=qa_automation go run -mod=mod ./cmd/databasemigration`
 2. Confirm `✅ Database migration completed`.
-3. Deploy: `deploy/his-v3-qa/deploy.sh` on rnd-v3-vpn.
+3. Deploy: `deploy/qa-tool/deploy.sh` on app-host.
 4. Post-deploy smoke test:
-   - `GET https://qa-tool.sismedika.com/health` returns `status=ok`, `database=connected`, `ai=ok`
+   - `GET https://qa-tool.mfardiansyah.id/health` returns `status=ok`, `database=connected`, `ai=ok`
    - execute one DB-backed API request (for example `/api/skills`, after login)
 
 If migration fails, do not roll forward the backend until the schema is fixed.

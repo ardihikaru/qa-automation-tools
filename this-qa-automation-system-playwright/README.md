@@ -4,7 +4,7 @@
 
 This directory contains Playwright-based tests for verifying the QA Automation System itself. The tests ensure that both the REST API backend ([../ai-backend/README.md](../ai-backend/README.md)) and the Dashboard UI are functioning correctly. The detailed test plan is in [TEST-PLAN.md](./TEST-PLAN.md).
 
-There are 72 tests in 16 spec files (counted with `npx playwright test --list`): 41 API tests under `tests/api/` (Playwright `request` fixture) and 31 dashboard tests under `tests/dashboard/` (Playwright `page` fixture). All of them target **local** services at fixed URLs from `config.ts`. They do not target the deployed QA stack ([../deploy/his-v3-qa/README.md](../deploy/his-v3-qa/README.md)).
+There are 72 tests in 16 spec files (counted with `npx playwright test --list`): 41 API tests under `tests/api/` (Playwright `request` fixture) and 31 dashboard tests under `tests/dashboard/` (Playwright `page` fixture). All of them target **local** services at fixed URLs from `config.ts`. They do not target the deployed QA stack ([../deploy/qa-tool/README.md](../deploy/qa-tool/README.md)).
 
 > **Current drift (read before running):** these tests were written before two
 > backend changes and have not been updated:
@@ -98,7 +98,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
   - `impersonator`, `impersonatorPassword`, `impersonationTarget`: `E2E_IMPERSONATOR_USERNAME`, `E2E_IMPERSONATOR_PASSWORD`, `E2E_TARGET_USERNAME`. Used only by `tests/api/impersonation.spec.ts`, which is skipped when they are unset. The impersonator must have role Admin or Service, and the target should be a QA/QC user. That spec, and `tests/dashboard/impersonation.spec.ts` (the picker, banner and Return flow in the UI), log in themselves. `E2E_SCREENSHOT_DIR` saves screenshots of each step. It keeps one `impersonation_audit` row per run, by design; this is an accepted exception to the clean-up rule.
   - `tests/api/history.spec.ts` (RUN_HISTORY.md) checks that `/api/history/*` needs a session, then logs in as the impersonator and reads the builds, runs (and one run's detail) and syncs lists and their 400/404 answers. Read-only. `tests/dashboard/run-history.spec.ts` (needs `QA_USERNAME`/`QA_PASSWORD`) checks the `/qa` redirect, the nav entry, the tabs and the URL state, that every tab asks for 10 rows a page and shows a Product column (hidden on a phone, with no sideways page scroll), that the pager moves to page 2, and that a filter change goes back to page 1; with an approval waiting it opens the Answer dialog and checks that "Needs changes" without a comment is refused before any request (HISTORY_ANSWER.md; writes nothing). `history.spec.ts` also reads `/api/history/approvals` and the builds `approval=open` filter. `tests/dashboard/learning.spec.ts` answers the learning API in the browser and checks the tabs, the approval actions, and that findings and the timeline page 10 at a time.
   - `tests/api/conversations.spec.ts` (AI_CONVERSATIONS.md) checks that `/api/conversations` needs a session, then as the impersonator reads the lists and one conversation (messages for `canVerify` roles, 403 otherwise) and checks the refusals (bad `kind`, an unknown job, prune refused unless an Admin acting as itself). It never archives or prunes. `tests/dashboard/archive.spec.ts` (needs `QA_USERNAME`/`QA_PASSWORD`) opens the Archive page from the nav (the prune button is disabled for non-Admins) and the AI conversations tab.
-  - `tests/api/knowledge.spec.ts` (PRODUCT_KNOWLEDGE_SYNC.md) also logs in as the impersonator and reads the HISv3 knowledge base. Set `E2E_KB_SYNC_AS=<write-role username>` to impersonate that user and run one sync (adds one `kb_syncs` row, kept by design).
+  - `tests/api/knowledge.spec.ts` (PRODUCT_KNOWLEDGE_SYNC.md) also logs in as the impersonator and reads the SUT knowledge base. Set `E2E_KB_SYNC_AS=<write-role username>` to impersonate that user and run one sync (adds one `kb_syncs` row, kept by design).
   - `dashboardUrl`: `QA_DASHBOARD_URL` env, default `http://localhost:3000`
   - `apiTimeout`: 10000
   - `pageTimeout`: 30000
@@ -114,7 +114,7 @@ Note: `playwright.config.ts` only configures the `list` reporter. `npm run repor
 
 ## Invariants
 
-- Specs build URLs from `config.backendUrl` / `config.dashboardUrl`, not from the Playwright `baseURL`. To change the target set `QA_BACKEND_URL` / `QA_DASHBOARD_URL` (e.g. both `https://qa-tool.sismedika.com`); note the suite does not log in, so auth-gated routes return 401 against a DB-backed backend.
+- Specs build URLs from `config.backendUrl` / `config.dashboardUrl`, not from the Playwright `baseURL`. To change the target set `QA_BACKEND_URL` / `QA_DASHBOARD_URL` (e.g. both `https://qa-tool.mfardiansyah.id`); note the suite does not log in, so auth-gated routes return 401 against a DB-backed backend.
 - Tests run serially (`workers: 1`, `fullyParallel: false`). Mutating API tests (learning) assume they run in file order against shared data.
 - Some API tests accept more than one status code because of the environment: `POST /api/learning` accepts `[201, 500]`, `DELETE /api/learning?id=1` accepts `[200, 404]`, and invalid `POST /api/issues` accepts `[201, 400]`.
 - Method-not-allowed checks expect `405` for `POST /api/cost/overview` and `POST /api/skills`.

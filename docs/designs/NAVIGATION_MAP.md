@@ -11,8 +11,8 @@
 
 Meanwhile the QA tools hold real, maintained sources of the product's surface:
 
-*   the knowledge base: 1,700 HISv3 cases, each with a scenario that usually names the route it calls first (`GET /api/v1/service-status`, `GET /kiosk-his-v2/health`), its spec files (`spec_paths`), its story and through the story its features; features whose "Repo / entry point" (`kb_features.repo_entry`) and name hold routes (``his-vendor-backend `/api/v1/swagger/*` ``, ``… (`/master-patient`)``);
-*   the automation repo, read by the sync's mirror: page objects (`protected readonly path = '/report-builder/list'`), the app object that holds them (`HisFrontendApp.loginPage`), fixtures, REST clients (``/** `POST /omnichannel/booking` … */``, `this.get('service-status')`) and the specs that use them;
+*   the knowledge base: 1,700 SUT cases, each with a scenario that usually names the route it calls first (`GET /api/v1/service-status`, `GET /kiosk-sut-v2/health`), its spec files (`spec_paths`), its story and through the story its features; features whose "Repo / entry point" (`kb_features.repo_entry`) and name hold routes (``sut-vendor-backend `/api/v1/swagger/*` ``, ``… (`/master-patient`)``);
+*   the automation repo, read by the sync's mirror: page objects (`protected readonly path = '/report-builder/list'`), the app object that holds them (`SutFrontendApp.loginPage`), fixtures, REST clients (``/** `POST /omnichannel/booking` … */``, `this.get('service-status')`) and the specs that use them;
 *   per-case results (`kb_case_results`) and case jobs (`job_runs`);
 *   the runs: every `case_run` / `case_create` run goes through playwright-executor, where a reporter sees each `page.goto` and each API request.
 
@@ -22,7 +22,7 @@ The 2026-11-20 run picked VSYS and TC-VKAUTH-007 by hand as "trivial next cases"
 
 **A route map of the product, coloured by test coverage, with a drill-down and a "next to automate" list.**
 
-1.  **Map.** Every frontend page (`surface = web`, per frontend app) and every REST route (`surface = api`, per backend service) that the catalog, the automation repo or a real run names, shown as a path tree (`/api/v1` → `kiosk-his-v2` → `health`).
+1.  **Map.** Every frontend page (`surface = web`, per frontend app) and every REST route (`surface = api`, per backend service) that the catalog, the automation repo or a real run names, shown as a path tree (`/api/v1` → `kiosk-sut-v2` → `health`).
 2.  **Coverage overlay.** Per route: its cases (automated, planned, other), the latest result of each automated case, the last case job, whether a run visited it; a status colour; gaps (routes with no case, routes with only planned cases). Cases with no route (GraphQL, message-queue, data-driven chains) are counted as `unmapped`, so the map never claims more than it knows.
 3.  **Drill-down.** Route → features → cases → latest result / last job → the job page.
 4.  **Next to automate.** Eligible planned cases on a route that already has a passing automated case, with that case and its spec as the example to copy.
@@ -31,7 +31,7 @@ The 2026-11-20 run picked VSYS and TC-VKAUTH-007 by hand as "trivial next cases"
 
 **Retired:** the crawler graph on `/navigation`. It has no data source, and a page-to-page edge graph with success rates cannot be rebuilt from the new sources (specs say which pages a test opens, not in which order a user moves between them). The new page does not call `/api/learning*`. The `learning_*`, `navigation_edges`, `action_sequences` tables and `/api/learning*` are **not** touched: they belong to the `/learning` redesign (`feat/learning-loop`). The URL `/navigation` stays (bookmarks keep working); the sidebar label becomes "Navigation map".
 
-Not chosen: crawling the live app (credentials, the staging budget, pages without coverage); parsing his-frontend's own router (not a repo of the pool; the module catalogue already names the frontend routes of features).
+Not chosen: crawling the live app (credentials, the staging budget, pages without coverage); parsing sut-frontend's own router (not a repo of the pool; the module catalogue already names the frontend routes of features).
 
 ## 3. Sources
 
@@ -72,12 +72,12 @@ A path in text ends at a backtick, whitespace, `)`, `,`, `;`, `—` or the end. 
 
 *   **Feature routes.** If `repo_entry` contains a token ending in `-frontend`, each backticked span of `name` or `repo_entry` that starts with `/` and not `/api/` is a **web** route of the first such app. Otherwise the first token of `repo_entry` (`^[a-z0-9-]+`) is the **api** app and each backticked span of `repo_entry` and `name` that, after an optional method word, starts with `/` is an api route of it. Link `feature → route`, source `catalog`.
 *   **Case routes (scenario).** Only the **first** `\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+` followed by an optional backtick and a `/…` path in the case's scenario. App: the case's epic's `service` mapped to a known app (itself, else `his-<service>`, else itself); known apps are the apps of feature routes and the service folders of 3.3. Link `case → route` with that method, source `scenario`.
-*   **Negative probes are dropped.** A route whose only sources are scenario links of cases with polarity `-` (no positive case, no feature, no repo, no observation) is removed with its links (`/api/v1/nonexistent`, `/api/v1/thisisnotaroute`, `/kiosk-his-v2/nonexistent`).
+*   **Negative probes are dropped.** A route whose only sources are scenario links of cases with polarity `-` (no positive case, no feature, no repo, no observation) is removed with its links (`/api/v1/nonexistent`, `/api/v1/thisisnotaroute`, `/kiosk-sut-v2/nonexistent`).
 *   **Case via feature.** For each feature of the case's story, a `case → route` link per feature route, source `feature`. Context only (3.6).
 
 ### 3.3 Automation repo
 
-`KeepForSync` also keeps `*.ts` files under `src/web/`, `src/api/rest/`, `src/fixtures/`, `tests/web/`, `tests/api/rest/` (about 400 KiB for HISv3 today; the 32 MiB tree cap is shared with `docs/`). `navmap` skips a file over 256 KiB with a problem. The catalog parser reads only `docs/`.
+`KeepForSync` also keeps `*.ts` files under `src/web/`, `src/api/rest/`, `src/fixtures/`, `tests/web/`, `tests/api/rest/` (about 400 KiB for SUT today; the 32 MiB tree cap is shared with `docs/`). `navmap` skips a file over 256 KiB with a problem. The catalog parser reads only `docs/`.
 
 *   **Page objects** (any `.ts` under `src/web/<app>/`): each `^\s*(export\s+)?(abstract\s+)?class\s+(\w+)` starts a class; `(?:protected|public|private)?\s*(?:override\s+)?readonly\s+path(?:\s*:\s*string)?\s*=\s*['"\x60]([^'"\x60]+)['"\x60]` belongs to the nearest preceding class → **web** route of `<app>`, page object = class name. A class without a `path` has no route.
 *   **Members** (any `.ts` under `src/web/<app>/`): `readonly\s+(\w+)\s*:\s*(\w+)\s*;` where the type is a page-object class → member name means that class (`hisFrontend.loginPage` → `LoginPage`).
@@ -90,11 +90,11 @@ A path in text ends at a backtick, whitespace, `)`, `,`, `;`, `—` or the end. 
 
 ### 3.4 Mount prefix (api)
 
-Per api app, the **mount** is the most frequent `/api/v<N>` two-segment prefix among its routes from all sources (ties: lexically smallest); none, no mount. The mount is prepended to every route of that app that does not start with `/api/` (client-relative paths, kiosk scenarios, `/kiosk-his-v2` features), then routes merge by key. For his-vendor-backend this gives `/api/v1/service-status` (GET, POST, DELETE), `/api/v1/swagger/*`, `/api/v1/swagger/:relativePath` and `/api/v1/kiosk-his-v2/…`. Observed paths already contain the mount (`HIS_VENDOR_BACKEND_URL` ends in `/api/v1`).
+Per api app, the **mount** is the most frequent `/api/v<N>` two-segment prefix among its routes from all sources (ties: lexically smallest); none, no mount. The mount is prepended to every route of that app that does not start with `/api/` (client-relative paths, kiosk scenarios, `/kiosk-sut-v2` features), then routes merge by key. For sut-vendor-backend this gives `/api/v1/service-status` (GET, POST, DELETE), `/api/v1/swagger/*`, `/api/v1/swagger/:relativePath` and `/api/v1/kiosk-sut-v2/…`. Observed paths already contain the mount (`SUT_VENDOR_BACKEND_URL` ends in `/api/v1`).
 
 ### 3.5 Real runs (observed)
 
-**Reporter.** `playwright-executor/reporters/nav-reporter.cjs` (CommonJS, no dependency, empty constructor). `onStepEnd(test, result, step)`: only `step.category === 'pw:api'`; title `Navigate` → web; title in `GET POST PUT PATCH DELETE HEAD OPTIONS {method}` → api with method `step.params?.method || title` (`{method}` → `GET`); URL `step.params?.url ?? step.subtitle`, resolved with `new URL(url, test.parent.project()?.use?.baseURL)`; a relative URL with no base, and any non-`http(s)` URL, is dropped. Kept per entry: `title` (the test title), `file` (relative to the repo, from `test.location.file`), `project`, `kind`, `method`, `host`, `path` (pathname only; the query is never kept). Aggregated by all of these with a `hits` count; at most 500 entries, then `truncated: true`. `onEnd` writes `{ "version": 1, "truncated": bool, "entries": [...] }` to `process.env.QA_NAV_OUTPUT`. Every hook is wrapped in `try/catch`. `step.params` and `step.subtitle` are not part of Playwright's documented reporter API; both were checked on 1.64.1 (the HISv3 repo) and a test runs the reporter in a real Playwright run of the executor's own pinned version.
+**Reporter.** `playwright-executor/reporters/nav-reporter.cjs` (CommonJS, no dependency, empty constructor). `onStepEnd(test, result, step)`: only `step.category === 'pw:api'`; title `Navigate` → web; title in `GET POST PUT PATCH DELETE HEAD OPTIONS {method}` → api with method `step.params?.method || title` (`{method}` → `GET`); URL `step.params?.url ?? step.subtitle`, resolved with `new URL(url, test.parent.project()?.use?.baseURL)`; a relative URL with no base, and any non-`http(s)` URL, is dropped. Kept per entry: `title` (the test title), `file` (relative to the repo, from `test.location.file`), `project`, `kind`, `method`, `host`, `path` (pathname only; the query is never kept). Aggregated by all of these with a `hits` count; at most 500 entries, then `truncated: true`. `onEnd` writes `{ "version": 1, "truncated": bool, "entries": [...] }` to `process.env.QA_NAV_OUTPUT`. Every hook is wrapped in `try/catch`. `step.params` and `step.subtitle` are not part of Playwright's documented reporter API; both were checked on 1.64.1 (the SUT repo) and a test runs the reporter in a real Playwright run of the executor's own pinned version.
 
 **Executor.** `caseRun.ts` adds the reporter (`--reporter=json,list,<abs path>`) and `QA_NAV_OUTPUT=<runDir>/nav.json` only when the reporter file exists, `require()` of it succeeded at executor start, and `EXECUTOR_NAV_REPORTER` is not `0`. It reads `nav.json` with the same `within`/`isFile` guards as `results.json`, cap 256 KiB, and returns it as `result.nav` (omitted when absent or invalid; a warn event says why).
 
@@ -185,7 +185,7 @@ Under the product router (`products.go`: `case parts[1] == "navigation"`), cooki
     ```json
     {"product_id":3,
      "build":{"status":"ok","sync_id":42,"commit":"…","built_at":"…","error":"","problems":["…"]} | null,
-     "apps":[{"surface":"api","app":"his-vendor-backend","routes":31}],
+     "apps":[{"surface":"api","app":"sut-vendor-backend","routes":31}],
      "totals":{"routes":0,"passing":0,"failing":0,"automated":0,"planned":0,"untested":0,"observed":0,"unmapped_cases":0},
      "routes":[{"key":"…","surface":"api","app":"…","path":"…","methods":[],"sources":[],"page_objects":[],
                 "status":"passing","cases":0,"automated":0,"planned":0,"pass":0,"fail":0,"features":0,"specs":0,
@@ -193,10 +193,10 @@ Under the product router (`products.go`: `case parts[1] == "navigation"`), cooki
      "next":[{"case_code":"…","priority":"P1","epic":"…","route_key":"…","path":"…","app":"…","method":"GET",
               "tier":1,"reason":"…","example_case":"…","example_spec":"…"}]}
     ```
-    *   **Case sets.** A route's cases are the active (`removed_at IS NULL`) cases with a direct link to it; a wildcard route `X/*` also has the cases of every route under `X/` of the same app, and so has a route `X` (not `/`) with no case of its own (a catalog prefix such as `/api/v1/kiosk-his-v2`).
+    *   **Case sets.** A route's cases are the active (`removed_at IS NULL`) cases with a direct link to it; a wildcard route `X/*` also has the cases of every route under `X/` of the same app, and so has a route `X` (not `/`) with no case of its own (a catalog prefix such as `/api/v1/kiosk-sut-v2`).
     *   **Status:** `failing` (an automated case's latest `kb_case_results.result` is `fail`), else `passing` (≥ 1 `pass`), else `automated` (automated cases, no result), else `planned` (cases, none automated), else `untested`. `automated` = `kb_test_cases.automated = 1`; `planned` = `status = 'planned'`.
     *   **Filters:** `surface` (`web|api`), `app` (exact), `status` (one of the five), `q` (case-insensitive substring of the path, a page object, or a case code of the route). They filter `routes`; `totals` count the filtered routes (`unmapped_cases` ignores filters); `next` honours `surface` and `app`. Unknown `surface`/`status` → 400.
-    *   **`next`** (at most 25, one entry per case). Candidates: the product's eligible cases — the predicate of `eligibleCodes` (`status = 'planned'`, `reason_category = ''`, `JSON_LENGTH(spec_paths) = 0`, active, no non-`planned` `gaos_decisions` row) shared as one SQL fragment `eligibleCaseWhere` by both, minus `jobExclusions` — that have a `scenario` link to a route R. **Tier 1:** R has a passing automated case whose direct link carries the **same method** (web: any). **Tier 2:** R has a passing automated case with another method. No other tiers. A case on several routes keeps its best tier, then the lexically smallest path. Order: tier, priority (`P0..P3`, empty last), code. `example_case`/`example_spec`: the passing case (smallest code) and its first spec; `reason`: "GET /api/v1/kiosk-his-v2/health has a passing GET case (TC-…)".
+    *   **`next`** (at most 25, one entry per case). Candidates: the product's eligible cases — the predicate of `eligibleCodes` (`status = 'planned'`, `reason_category = ''`, `JSON_LENGTH(spec_paths) = 0`, active, no non-`planned` `gaos_decisions` row) shared as one SQL fragment `eligibleCaseWhere` by both, minus `jobExclusions` — that have a `scenario` link to a route R. **Tier 1:** R has a passing automated case whose direct link carries the **same method** (web: any). **Tier 2:** R has a passing automated case with another method. No other tiers. A case on several routes keeps its best tier, then the lexically smallest path. Order: tier, priority (`P0..P3`, empty last), code. `example_case`/`example_spec`: the passing case (smallest code) and its first spec; `reason`: "GET /api/v1/kiosk-sut-v2/health has a passing GET case (TC-…)".
     *   `build` is `null` when the product has never been built: the page says "Run a knowledge sync".
 *   `GET /api/products/{id}/navigation/routes/{key}` (`key` = 40 hex) → the route object above plus `features:[{code,name,release_status}]`, `cases:[{code,scenario,status,automated,priority,epic,link_sources:[],result,run_at,run_ref,last_job:{id,type,status,completed_at,duration_ms}|null}]` (direct links), `related_cases:[{code,status,feature}]` (`feature` links, at most 100), `specs:[path]`, `observations:[{job_id,case_code,method,hits,observed_at}]` (latest 50). 404 on an unknown key. `last_job` is the case's newest `case_run`/`case_create` row in `job_runs` (one grouped query over the route's cases).
 
@@ -218,7 +218,7 @@ Read-only for users; no LLM call. The reporter sends nothing: the executor reads
 
 ## 9. Target files
 
-*   `ai-backend/internal/services/navmap/` (new): `navmap.go` (types, `Build`, `Version`), `path.go` (`NormPath`, `Match`), `catalog.go`, `repo.go`, `coverage.go` (status, wildcard roll-up, tiers; pure), `README.md`, tests and `testdata/` (trimmed copies of the HISv3 files the tests need).
+*   `ai-backend/internal/services/navmap/` (new): `navmap.go` (types, `Build`, `Version`), `path.go` (`NormPath`, `Match`), `catalog.go`, `repo.go`, `coverage.go` (status, wildcard roll-up, tiers; pure), `README.md`, tests and `testdata/` (trimmed copies of the SUT files the tests need).
 *   `ai-backend/internal/services/caseresults/parse.go` (export `CaseCodes`).
 *   `ai-backend/internal/services/knowledge/`: `assistants.go` (`KeepForSync`), `sync.go` (the two `buildNav` call sites), `nav_store.go` (new), tests, `README.md`.
 *   `ai-backend/internal/db/migrations.go` (four entries, appended).
@@ -230,11 +230,11 @@ Read-only for users; no LLM call. The reporter sends nothing: the executor reads
 
 ## 10. Verification
 
-*   `go test -mod=mod ./internal/services/navmap/`: `NormPath` table (ids, `<x>`, templates, `..`, query, host, single-param); `Match`; catalog extraction (VSYS → `/api/v1/service-status` GET/POST/DELETE, `/api/v1/swagger/*`; kiosk → `/api/v1/kiosk-his-v2/health`; negative probes dropped; first-path-only); repo extraction on `testdata` (page objects with two classes in one file; `hisFrontend.loginPage` → `/auth/login`; fixtures across lines; client JSDoc vs private `call`); mount inference; status and wildcard roll-up; tiers; determinism (shuffled input).
+*   `go test -mod=mod ./internal/services/navmap/`: `NormPath` table (ids, `<x>`, templates, `..`, query, host, single-param); `Match`; catalog extraction (VSYS → `/api/v1/service-status` GET/POST/DELETE, `/api/v1/swagger/*`; kiosk → `/api/v1/kiosk-sut-v2/health`; negative probes dropped; first-path-only); repo extraction on `testdata` (page objects with two classes in one file; `hisFrontend.loginPage` → `/auth/login`; fixtures across lines; client JSDoc vs private `call`); mount inference; status and wildcard roll-up; tiers; determinism (shuffled input).
 *   With `QA_TEST_MYSQL_DSN`: a sync over a fake tree builds the inventory and a second sync replaces it; a skipped sync builds a missing inventory and does not call `OnSucceeded`; a nav failure leaves the sync `succeeded`; observation storage (match, unmatched not stored, idempotent upsert); both handlers (filters, 400, 404, `next` excludes a case with an active job and a non-planned GAOS decision).
 *   Executor: `caseRun` passes the reporter only when allowed; reads `nav.json` with the guards; the reporter in a real Playwright run (one `request.get` against a local server).
-*   Dashboard: `npx tsc --noEmit`, `npm run lint`, `npm run build`; a local run against a DB synced from the local HISv3 automation repo (desktop and phone screenshots).
-*   After deploy (separate approval): `GET /api/products/3/navigation?surface=api&app=his-vendor-backend` lists `/api/v1/service-status`, `/api/v1/swagger/*`, `/api/v1/kiosk-his-v2/…`; `?surface=web` the his-frontend pages of the web specs; the E2E specs above.
+*   Dashboard: `npx tsc --noEmit`, `npm run lint`, `npm run build`; a local run against a DB synced from the local SUT automation repo (desktop and phone screenshots).
+*   After deploy (separate approval): `GET /api/products/3/navigation?surface=api&app=sut-vendor-backend` lists `/api/v1/service-status`, `/api/v1/swagger/*`, `/api/v1/kiosk-sut-v2/…`; `?surface=web` the sut-frontend pages of the web specs; the E2E specs above.
 
 ## 11. Review resolutions (Rev 1 → Rev 2)
 
@@ -261,9 +261,9 @@ Read-only for users; no LLM call. The reporter sends nothing: the executor reads
 
 ## 12. Implementation notes (Rev 3)
 
-1.  **Reporter titles differ by Playwright version.** The executor's own Playwright (1.59.1) names request steps `GET "<url>"` and navigations `Navigate to "<url>"`, with no `params`/`subtitle`; the HISv3 repo's 1.64.1 uses `GET`/`Navigate` with the URL in `step.params.url`. The reporter reads both; `test/navReporter.test.ts` runs it in a real 1.59.1 run, and it was checked by hand on 1.64.1 (requests and a `page.goto`). Spec files are reported relative to the config file's folder (Playwright's `rootDir` is the testDir).
-2.  **Prefix roll-up.** A route with no case of its own stands for the routes under it (section 6), so the catalog's module prefixes (`/kiosk-his-v2`, `/omnichannel`, `/vtt`) show their area's status instead of "no test case".
+1.  **Reporter titles differ by Playwright version.** The executor's own Playwright (1.59.1) names request steps `GET "<url>"` and navigations `Navigate to "<url>"`, with no `params`/`subtitle`; the SUT repo's 1.64.1 uses `GET`/`Navigate` with the URL in `step.params.url`. The reporter reads both; `test/navReporter.test.ts` runs it in a real 1.59.1 run, and it was checked by hand on 1.64.1 (requests and a `page.goto`). Spec files are reported relative to the config file's folder (Playwright's `rootDir` is the testDir).
+2.  **Prefix roll-up.** A route with no case of its own stands for the routes under it (section 6), so the catalog's module prefixes (`/kiosk-sut-v2`, `/omnichannel`, `/vtt`) show their area's status instead of "no test case".
 3.  **The OnSucceeded hook runs before the navigation build**, so the GAOS push is not delayed by it.
 4.  **Route detail shape.** In `GET …/routes/{key}`, `cases`, `features` and `specs` are lists (they replace the counts of the map's route object). `feat/run-history` was on `main` at implementation time, so each case also has `last_run: {run_id, result, duration_ms, started_at, source} | null` from `pw_run_cases`/`pw_runs`, and the panel links to `/history?tab=runs&product=<id>&case=<code>`. `feat/learning-loop` also landed: it kept `/api/learning*` as the legacy crawler API; this page no longer reads it.
 5.  **Mount from all sources** (3.4), not only features and scenarios: a REST client's JSDoc that writes `/api/v1/…` is evidence too.
-6.  **Local check.** `TestNavLocalRepo` (`NAV_LOCAL_REPO`) builds the map from a local HISv3 checkout: 231 routes (his-frontend 36 pages, his-vendor-backend 87, his-data-integration 99, his-backend 9), 1,392 of 1,809 cases with a direct route. `TestNavDevSeed` (`NAV_DEV_DSN`) fills a local database for the dashboard.
+6.  **Local check.** `TestNavLocalRepo` (`NAV_LOCAL_REPO`) builds the map from a local SUT checkout: 231 routes (sut-frontend 36 pages, sut-vendor-backend 87, sut-data-integration 99, sut-backend 9), 1,392 of 1,809 cases with a direct route. `TestNavDevSeed` (`NAV_DEV_DSN`) fills a local database for the dashboard.

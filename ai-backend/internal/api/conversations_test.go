@@ -43,13 +43,13 @@ func TestConversationRoutesDB(t *testing.T) {
 	d := testdb.New(t)
 	r := NewRouter(d, nil, nil, nil)
 	ctx := context.Background()
-	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'HIS','r1','s1','d1')`)
+	must(t, d, `INSERT INTO products (id, name, repo_url, staging_url, root_dir) VALUES (1,'SUT','r1','s1','d1')`)
 	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at, started_at) VALUES
 		('job-live','case_create','running','{"product_id":1,"case_code":"TC-AUTH-001"}',UTC_TIMESTAMP(),UTC_TIMESTAMP()),
 		('job-done','case_create','completed','{"product_id":1,"case_code":"TC-AUTH-002"}',UTC_TIMESTAMP(),UTC_TIMESTAMP())`)
 	must(t, d, `INSERT INTO kb_syncs (id, product_id, status, trigger_kind, started_at, finished_at, ai_status) VALUES (5,1,'succeeded','manual',UTC_TIMESTAMP(),UTC_TIMESTAMP(),'done')`)
 	st := &conversations.Store{DB: d, Screen: conversations.NewScreen()}
-	for _, ref := range []ai.ConvRef{{Kind: "job", Ref: "job-live", ProductID: 1, Title: "TC-AUTH-001"}, {Kind: "job", Ref: "job-done", ProductID: 1, Title: "TC-AUTH-002"}, {Kind: "sync", Ref: "5", ProductID: 1, Title: "HIS"}} {
+	for _, ref := range []ai.ConvRef{{Kind: "job", Ref: "job-live", ProductID: 1, Title: "TC-AUTH-001"}, {Kind: "job", Ref: "job-done", ProductID: 1, Title: "TC-AUTH-002"}, {Kind: "sync", Ref: "5", ProductID: 1, Title: "SUT"}} {
 		sent := []models.Message{{Role: "user", Kind: "prompt", Content: "prompt"}}
 		if err := st.SaveExchange(ctx, ai.Exchange{Ref: ref, Feature: "f", Sent: sent, Reply: "- a\n  - b\n\n`code`"}); err != nil {
 			t.Fatal(err)

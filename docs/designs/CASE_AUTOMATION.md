@@ -6,7 +6,7 @@ Status: approved by the product owner in chat on 2026-11-14 ("I approve it all")
 
 On `/products/{id}/knowledge?tab=test-cases` (and the case page):
 
-* a case **with** an automation spec gets **Run**: the spec runs on rnd-v3 against staging, and the verdict lands in `kb_case_results` and is pushed to GAOS (existing path);
+* a case **with** an automation spec gets **Run**: the spec runs on app-host against staging, and the verdict lands in `kb_case_results` and is pushed to GAOS (existing path);
 * a case **without** one gets **Create automation**: claude-v3 (via ai-manager, only) writes a spec, the spec is run and repaired up to 3 times, then a human approves (dashboard, or the GAOS Inbox) and a PR is opened on the automation repo;
 * every step of both is visible live in the dashboard.
 
@@ -14,7 +14,7 @@ On `/products/{id}/knowledge?tab=test-cases` (and the case page):
 
 1. **Reverse the CASE_RESULTS rejection**, with these answers to its objections:
    * *repo dependencies*: `npm ci` runs once per lockfile hash in the product's automation clone in the repo pool (cached `node_modules`);
-   * *secrets and targets (API, MQ)*: the automation repo's env file lives on rnd-v3 at `~/.config/qa-automation/automation-<productId>.env` (mode 600, never printed) and is loaded only into the child process. Only the Playwright projects the case needs are run (`--project` from the spec path: `tests/web/**` → `web-*`, `tests/api/rest/**` → `api-rest`; `mq` is refused);
+   * *secrets and targets (API, MQ)*: the automation repo's env file lives on app-host at `~/.config/qa-automation/automation-<productId>.env` (mode 600, never printed) and is loaded only into the child process. Only the Playwright projects the case needs are run (`--project` from the spec path: `tests/web/**` → `web-*`, `tests/api/rest/**` → `api-rest`; `mq` is refused);
    * *2.5 GiB budget*: unchanged. One run at a time (existing queue), the same unit caps; `--workers=1`;
    * *staging only*: the executor refuses a run unless the env file's base URLs are on the staging allow-list (`EXECUTOR_ALLOWED_HOSTS`).
 2. **All LLM calls stay in the backend** (`ai.Service`, claude-v3). The executor never talks to an LLM and never pushes. Orchestration of *create* is a backend state machine (`internal/services/caseauto`) that uses: repopool (git), `ai.Service` (generation), the executor (`case_run`, test execution only) and the approval gate.
@@ -65,7 +65,7 @@ New run types `case_run` (the only new one; *create* needs just this).
 
 | Param | Rule |
 |---|---|
-| `repo_dir` | absolute; `realpath` must be inside `EXECUTOR_REPO_POOL` (default `/home/sismedika/devel/projects/qa-automation-tools/repos`), contain `playwright.config.ts` |
+| `repo_dir` | absolute; `realpath` must be inside `EXECUTOR_REPO_POOL` (default `/home/qa/devel/projects/qa-automation-tools/repos`), contain `playwright.config.ts` |
 | `case_code` | `^TC-[A-Z0-9]+-[0-9]{3,4}$` |
 | `spec_paths` | 1..5 repo-relative paths, no `..`, must exist, must end `.spec.ts`, under `tests/web/` or `tests/api/rest/` |
 | `env_file` | one of the names found in `EXECUTOR_ENV_DIR`; never a path |
@@ -105,7 +105,7 @@ Orphans (backend restart or deploy): `case_run` and `case_create` jobs left `que
 
 ### Skipped runs
 
-A `case_run` whose own test(s) are all skipped is a `completed` job with `result.verdict.result = "skipped"` and `result.skip_reason`; it stores no result and pushes nothing to GAOS. The first live run (TC-VOCBOOK-007) skipped because the harness's staging DB credential file is absent on rnd-v3, so `vendor-e2e-setup` and the data-driven cases skip by design. Root cause, evidence and the full policy: [CASE_RESULTS.md, Skipped runs](CASE_RESULTS.md#skipped-runs-2026-11-15). A report with no test titled with the case code remains a failed job.
+A `case_run` whose own test(s) are all skipped is a `completed` job with `result.verdict.result = "skipped"` and `result.skip_reason`; it stores no result and pushes nothing to GAOS. The first live run (TC-VOCBOOK-007) skipped because the harness's staging DB credential file is absent on app-host, so `vendor-e2e-setup` and the data-driven cases skip by design. Root cause, evidence and the full policy: [CASE_RESULTS.md, Skipped runs](CASE_RESULTS.md#skipped-runs-2026-11-15). A report with no test titled with the case code remains a failed job.
 
 ## 6. GAOS Inbox contract (implemented in the GAOS repo)
 

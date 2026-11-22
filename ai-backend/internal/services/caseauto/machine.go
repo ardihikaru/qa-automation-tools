@@ -345,7 +345,7 @@ func render(f GeneratedFile) string {
 	return "FILE: " + f.Path + "\n```ts\n" + strings.TrimRight(f.Content, "\n") + "\n```"
 }
 
-const systemRules = `You write ONE Playwright test file (TypeScript, @playwright/test) that automates a single manual test case of HISv3, a hospital information system.
+const systemRules = `You write ONE Playwright test file (TypeScript, @playwright/test) that automates a single manual test case of SUT, a hospital information system.
 Rules:
 - Reply with exactly one line "FILE: <path>" followed by exactly one fenced code block holding the whole file. No other code blocks.
 - <path> must be tests/web/<module>/<CASE_CODE>.spec.ts (browser UI) or tests/api/rest/<module>/<CASE_CODE>.spec.ts (REST), <module> lower case.

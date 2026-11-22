@@ -19,7 +19,7 @@ func TestNormPath(t *testing.T) {
 		"/patients/{idType}/{idValue}":                  "/patients/:idType/:idValue",
 		"/chart-management/db/${chartDashboardID}/edit": "/chart-management/db/:param/edit",
 		"/x/${encodeURIComponent(a)}":                   "/x/:param",
-		"/kiosk-his-v2/patients/123":                    "/kiosk-his-v2/patients/:id",
+		"/kiosk-sut-v2/patients/123":                    "/kiosk-sut-v2/patients/:id",
 		"/a/0f8fad5b-d9cb-469f-a165-70867728950e":       "/a/:id",
 		"/a/0123456789abcdef0":                          "/a/:id",
 		"//a//b":                                        "/a/b",
@@ -62,12 +62,12 @@ func TestMatch(t *testing.T) {
 	}
 }
 
-// Files shaped like the HISv3 automation repo (NAVIGATION_MAP.md 3.3).
+// Files shaped like the SUT automation repo (NAVIGATION_MAP.md 3.3).
 var repoFiles = map[string]string{
 	"src/web/shared/base.page.ts": `export abstract class BasePage {
   protected abstract readonly path: string;
 }`,
-	"src/web/his-frontend/pages/auth/login.page.ts": `export class LoginPage extends BasePage {
+	"src/web/sut-frontend/pages/auth/login.page.ts": `export class LoginPage extends BasePage {
   protected readonly path: string = '/auth/login';
 }
 
@@ -77,30 +77,30 @@ export class ImpersonatedLoginPage extends LoginPage {
 
 export class NoPathPage extends LoginPage {
 }`,
-	"src/web/his-frontend/pages/report-builder/report-list.page.ts": `export class ReportBuilderListPage extends BasePage {
+	"src/web/sut-frontend/pages/report-builder/report-list.page.ts": `export class ReportBuilderListPage extends BasePage {
   protected readonly path = '/report-builder/list';
 }`,
-	"src/web/his-frontend/pages/chart/dashboard-builder.page.ts": `export class DashboardBuilderPage extends BasePage {
+	"src/web/sut-frontend/pages/chart/dashboard-builder.page.ts": `export class DashboardBuilderPage extends BasePage {
   protected readonly path = '/chart-management/db/new';
   async open(id: string) {
     await this.page.goto(` + "`/chart-management/db/${id}/edit`" + `);
   }
 }`,
-	"src/web/his-frontend/his-frontend.app.ts": `export class HisFrontendApp {
+	"src/web/sut-frontend/sut-frontend.app.ts": `export class SutFrontendApp {
   readonly page: Page;
   readonly loginPage: LoginPage;
   readonly impersonatedLoginPage: ImpersonatedLoginPage;
 }`,
 	"src/fixtures/web.fixtures.ts": `export const webTest = base.extend<WebFixtures>({
   hisFrontend: async ({ page }, use) => {
-    await use(new HisFrontendApp(page));
+    await use(new SutFrontendApp(page));
   },
 
   reportBuilderList: async ({ page }, use) => {
     await use(new ReportBuilderListPage(page));
   },
 });`,
-	"tests/web/his-frontend/auth/login.spec.ts": `test.describe('login', () => {
+	"tests/web/sut-frontend/auth/login.spec.ts": `test.describe('login', () => {
   test('shows a validation error', async ({ hisFrontend }) => {
     await hisFrontend.loginPage.goto();
   });
@@ -108,7 +108,7 @@ export class NoPathPage extends LoginPage {
     await hisFrontend.impersonatedLoginPage.goto();
   });
 });`,
-	"tests/web/his-frontend/report-builder/list.spec.ts": `test.describe('list', () => {
+	"tests/web/sut-frontend/report-builder/list.spec.ts": `test.describe('list', () => {
   test(
     'TC-RB-060: list page loads',
     async ({ hisFrontend, reportBuilderList }) => {
@@ -116,8 +116,8 @@ export class NoPathPage extends LoginPage {
     },
   );
 });`,
-	"src/api/rest/his-vendor-backend/his-vendor-backend.client.ts": `/** Every ` + "`POST /omnichannel/<operation>`" + ` endpoint. */
-export class HisVendorBackendClient extends BaseApiClient {
+	"src/api/rest/sut-vendor-backend/sut-vendor-backend.client.ts": `/** Every ` + "`POST /omnichannel/<operation>`" + ` endpoint. */
+export class SutVendorBackendClient extends BaseApiClient {
   constructor(request: APIRequestContext) {
     super(request, baseURL);
   }
@@ -153,11 +153,11 @@ export class HisVendorBackendClient extends BaseApiClient {
     );
   }
 }`,
-	"tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts": `test('TC-VSYS-001 the liveness probe answers 200', async ({ vendorApi }) => {
+	"tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts": `test('TC-VSYS-001 the liveness probe answers 200', async ({ vendorApi }) => {
   const response = await vendorApi.serviceStatus();
 });`,
-	"tests/api/rest/his-vendor-backend/kiosk-patient-whatsapp.spec.ts": `test('TC-PATREG-070 kiosk registers a patient', async ({ request }) => {
-  const response = await request.post(` + "`${env.HIS_VENDOR_BACKEND_URL}/kiosk-his-v2/patients`" + `, {});
+	"tests/api/rest/sut-vendor-backend/kiosk-patient-whatsapp.spec.ts": `test('TC-PATREG-070 kiosk registers a patient', async ({ request }) => {
+  const response = await request.post(` + "`${env.SUT_VENDOR_BACKEND_URL}/kiosk-sut-v2/patients`" + `, {});
 });`,
 	"docs/ignored.ts": `readonly path = '/never'`,
 }
@@ -169,26 +169,26 @@ func testInput() Input {
 	}
 	return Input{
 		Features: []Feature{
-			{Code: "B06.01", Name: "`GET /service-status` tanpa auth", RepoEntry: "his-vendor-backend `/api/v1/service-status`"},
-			{Code: "B06.02", Name: "Swagger UI `/swagger/*`", RepoEntry: "his-vendor-backend `/api/v1/swagger/*`"},
-			{Code: "B01.01", Name: "Kiosk", RepoEntry: "his-vendor-backend `/kiosk-his-v2`"},
-			{Code: "A01.01", Name: "Pencarian pasien (`/master-patient`)", RepoEntry: "his-backend + his-frontend"},
+			{Code: "B06.01", Name: "`GET /service-status` tanpa auth", RepoEntry: "sut-vendor-backend `/api/v1/service-status`"},
+			{Code: "B06.02", Name: "Swagger UI `/swagger/*`", RepoEntry: "sut-vendor-backend `/api/v1/swagger/*`"},
+			{Code: "B01.01", Name: "Kiosk", RepoEntry: "sut-vendor-backend `/kiosk-sut-v2`"},
+			{Code: "A01.01", Name: "Pencarian pasien (`/master-patient`)", RepoEntry: "sut-backend + sut-frontend"},
 			{Code: "Z01.01", Name: "No route", RepoEntry: "belum ada"},
 		},
-		Epics: []Epic{{Code: "VSYS", Service: "vendor-backend"}, {Code: "VKAUTH", Service: "vendor-backend"}, {Code: "RB", Service: "his-backend"}, {Code: "AUTH", Service: "his-backend"}},
+		Epics: []Epic{{Code: "VSYS", Service: "vendor-backend"}, {Code: "VKAUTH", Service: "vendor-backend"}, {Code: "RB", Service: "sut-backend"}, {Code: "AUTH", Service: "sut-backend"}},
 		Stories: []Story{
 			{Code: "US-VSYS-01", FeatureCodes: []string{"B06.01"}},
 			{Code: "US-PATREG-01", FeatureCodes: []string{"A01.01"}},
 		},
 		Cases: []Case{
-			{Code: "TC-VSYS-001", EpicCode: "VSYS", StoryCode: "US-VSYS-01", Polarity: "+", Scenario: "Given the service is up, when `GET /api/v1/service-status` is sent, then 200", SpecPaths: []string{"tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts"}},
+			{Code: "TC-VSYS-001", EpicCode: "VSYS", StoryCode: "US-VSYS-01", Polarity: "+", Scenario: "Given the service is up, when `GET /api/v1/service-status` is sent, then 200", SpecPaths: []string{"tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts"}},
 			{Code: "TC-VSYS-003", EpicCode: "VSYS", Polarity: "-", Scenario: "Given the route `/api/v1/service-status` exists for GET only, when `POST /api/v1/service-status` is sent, then 405"},
 			{Code: "TC-VSYS-006", EpicCode: "VSYS", Polarity: "-", Scenario: "Given an unregistered path, when `GET /api/v1/thisisnotaroute` is sent, then 404 (source lists `GET /service-status`)"},
-			{Code: "TC-VKAUTH-007", EpicCode: "VKAUTH", Polarity: "+", Scenario: "`V-KIOSK-AUTH-public-OK-01` GET /kiosk-his-v2/health — GET /health tanpa credential → 200"},
-			{Code: "TC-VKAUTH-012", EpicCode: "VKAUTH", Polarity: "-", Scenario: "GET /kiosk-his-v2/nonexistent — 404"},
-			{Code: "TC-RB-060", EpicCode: "RB", Polarity: "+", SpecPaths: []string{"tests/web/his-frontend/report-builder/list.spec.ts"}},
-			{Code: "TC-AUTH-011", EpicCode: "AUTH", Polarity: "+", SpecPaths: []string{"tests/web/his-frontend/auth/login.spec.ts"}},
-			{Code: "TC-AUTH-020", EpicCode: "AUTH", Polarity: "+", SpecPaths: []string{"tests/web/his-frontend/auth/login.spec.ts"}},
+			{Code: "TC-VKAUTH-007", EpicCode: "VKAUTH", Polarity: "+", Scenario: "`V-KIOSK-AUTH-public-OK-01` GET /kiosk-sut-v2/health — GET /health tanpa credential → 200"},
+			{Code: "TC-VKAUTH-012", EpicCode: "VKAUTH", Polarity: "-", Scenario: "GET /kiosk-sut-v2/nonexistent — 404"},
+			{Code: "TC-RB-060", EpicCode: "RB", Polarity: "+", SpecPaths: []string{"tests/web/sut-frontend/report-builder/list.spec.ts"}},
+			{Code: "TC-AUTH-011", EpicCode: "AUTH", Polarity: "+", SpecPaths: []string{"tests/web/sut-frontend/auth/login.spec.ts"}},
+			{Code: "TC-AUTH-020", EpicCode: "AUTH", Polarity: "+", SpecPaths: []string{"tests/web/sut-frontend/auth/login.spec.ts"}},
 			{Code: "TC-PATREG-001", EpicCode: "AUTH", StoryCode: "US-PATREG-01", Polarity: "+"},
 		},
 		Files: files,
@@ -223,20 +223,20 @@ func TestBuild(t *testing.T) {
 	inv := Build(testInput())
 	routes := flat(inv)
 	want := map[string]flatRoute{
-		"api his-vendor-backend /api/v1/service-status":        {methods: "DELETE,GET,POST", sources: "catalog,repo,scenario"},
-		"api his-vendor-backend /api/v1/swagger/*":             {sources: "catalog"},
-		"api his-vendor-backend /api/v1/swagger/:relativePath": {methods: "GET", sources: "repo"},
-		"api his-vendor-backend /api/v1/kiosk-his-v2":          {sources: "catalog"},
-		"api his-vendor-backend /api/v1/kiosk-his-v2/health":   {methods: "GET", sources: "scenario"},
-		"api his-vendor-backend /api/v1/kiosk-his-v2/patients": {methods: "POST", sources: "repo"},
-		"api his-vendor-backend /api/v1/omnichannel/booking":   {methods: "POST", sources: "repo"},
-		"api his-vendor-backend /api/v1/vtt/patients":          {methods: "GET", sources: "repo"},
-		"web his-frontend /auth/login":                         {sources: "repo", pages: "LoginPage"},
-		"web his-frontend /auth/impersonated-login":            {sources: "repo", pages: "ImpersonatedLoginPage"},
-		"web his-frontend /report-builder/list":                {sources: "repo", pages: "ReportBuilderListPage"},
-		"web his-frontend /chart-management/db/new":            {sources: "repo", pages: "DashboardBuilderPage"},
-		"web his-frontend /chart-management/db/:param/edit":    {sources: "repo"},
-		"web his-frontend /master-patient":                     {sources: "catalog"},
+		"api sut-vendor-backend /api/v1/service-status":        {methods: "DELETE,GET,POST", sources: "catalog,repo,scenario"},
+		"api sut-vendor-backend /api/v1/swagger/*":             {sources: "catalog"},
+		"api sut-vendor-backend /api/v1/swagger/:relativePath": {methods: "GET", sources: "repo"},
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2":          {sources: "catalog"},
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2/health":   {methods: "GET", sources: "scenario"},
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2/patients": {methods: "POST", sources: "repo"},
+		"api sut-vendor-backend /api/v1/omnichannel/booking":   {methods: "POST", sources: "repo"},
+		"api sut-vendor-backend /api/v1/vtt/patients":          {methods: "GET", sources: "repo"},
+		"web sut-frontend /auth/login":                         {sources: "repo", pages: "LoginPage"},
+		"web sut-frontend /auth/impersonated-login":            {sources: "repo", pages: "ImpersonatedLoginPage"},
+		"web sut-frontend /report-builder/list":                {sources: "repo", pages: "ReportBuilderListPage"},
+		"web sut-frontend /chart-management/db/new":            {sources: "repo", pages: "DashboardBuilderPage"},
+		"web sut-frontend /chart-management/db/:param/edit":    {sources: "repo"},
+		"web sut-frontend /master-patient":                     {sources: "catalog"},
 	}
 	for k, w := range want {
 		got, ok := routes[k]
@@ -249,12 +249,12 @@ func TestBuild(t *testing.T) {
 		}
 	}
 	for _, gone := range []string{
-		"api his-vendor-backend /api/v1/thisisnotaroute",          // negative probe
-		"api his-vendor-backend /api/v1/kiosk-his-v2/nonexistent", // negative probe
-		"api his-vendor-backend /api/v1/health",                   // a secondary mention
-		"api his-vendor-backend /api/v1/omnichannel/:operation",   // JSDoc placeholder of the class
-		"api his-vendor-backend /api/v1/omnichannel/:param",       // the private transport
-		"web shared /never", "web his-frontend /never",
+		"api sut-vendor-backend /api/v1/thisisnotaroute",          // negative probe
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2/nonexistent", // negative probe
+		"api sut-vendor-backend /api/v1/health",                   // a secondary mention
+		"api sut-vendor-backend /api/v1/omnichannel/:operation",   // JSDoc placeholder of the class
+		"api sut-vendor-backend /api/v1/omnichannel/:param",       // the private transport
+		"web shared /never", "web sut-frontend /never",
 	} {
 		if _, ok := routes[gone]; ok {
 			t.Errorf("unexpected route %s", gone)
@@ -278,7 +278,7 @@ func TestBuild(t *testing.T) {
 	check("TC-VSYS-001", "scenario:GET /api/v1/service-status", "spec:/api/v1/service-status", "feature:/api/v1/service-status")
 	check("TC-VSYS-003", "scenario:POST /api/v1/service-status")
 	check("TC-VSYS-006")
-	check("TC-VKAUTH-007", "scenario:GET /api/v1/kiosk-his-v2/health")
+	check("TC-VKAUTH-007", "scenario:GET /api/v1/kiosk-sut-v2/health")
 	check("TC-RB-060", "spec:/report-builder/list")
 	// TC-AUTH-020 is named by a block; TC-AUTH-011 is not, so it gets every route of the spec.
 	check("TC-AUTH-020", "spec:/auth/impersonated-login")
@@ -351,7 +351,7 @@ func TestCoverageAndNext(t *testing.T) {
 	sw := byPath["/api/v1/swagger/:relativePath"].Key
 	links[sw] = append(links[sw], CaseLink{Case: "TC-VSYS-004", Method: "GET", Source: SourceScenario})
 	facts := map[string]CaseFact{
-		"TC-VSYS-001":   {Code: "TC-VSYS-001", Status: "automated", Automated: true, Result: "pass", SpecPaths: []string{"tests/api/rest/his-vendor-backend/TC-VSYS-001.spec.ts"}},
+		"TC-VSYS-001":   {Code: "TC-VSYS-001", Status: "automated", Automated: true, Result: "pass", SpecPaths: []string{"tests/api/rest/sut-vendor-backend/TC-VSYS-001.spec.ts"}},
 		"TC-VSYS-003":   {Code: "TC-VSYS-003", Status: "automated", Automated: true, Result: "fail"},
 		"TC-VSYS-004":   {Code: "TC-VSYS-004", Status: "automated", Automated: true, Result: "pass"},
 		"TC-VSYS-009":   {Code: "TC-VSYS-009", Status: "planned", Priority: "P2"},
@@ -363,8 +363,8 @@ func TestCoverageAndNext(t *testing.T) {
 	want := map[string]string{
 		"/api/v1/service-status":      StatusFailing,
 		"/api/v1/swagger/*":           StatusPassing, // rolled up from /api/v1/swagger/:relativePath
-		"/api/v1/kiosk-his-v2/health": StatusPlanned,
-		"/api/v1/kiosk-his-v2":        StatusPlanned, // a catalog prefix with no case of its own
+		"/api/v1/kiosk-sut-v2/health": StatusPlanned,
+		"/api/v1/kiosk-sut-v2":        StatusPlanned, // a catalog prefix with no case of its own
 		"/report-builder/list":        StatusAutomated,
 		"/api/v1/omnichannel/booking": StatusUntested,
 	}

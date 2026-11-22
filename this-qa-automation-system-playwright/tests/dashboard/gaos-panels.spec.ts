@@ -3,16 +3,16 @@
  * the "GAOS decisions" panel and the "Test results" upload card in the product detail.
  *
  * Read-only against production: logs in as the service account, impersonates E2E_TARGET_USERNAME
- * (a QA user), opens the HISv3 product, and checks both panels. The upload POST is answered by the
+ * (a QA user), opens the SUT product, and checks both panels. The upload POST is answered by the
  * browser (page.route), so nothing is written. Env as tests/dashboard/impersonation.spec.ts, plus
- * QA_PRODUCT_NAME (default "HISv3"). Skipped when unset.
+ * QA_PRODUCT_NAME (default "SUT"). Skipped when unset.
  */
 
 import { test, expect, Page } from '@playwright/test';
 import { config } from '../../config';
 
 const { impersonator, impersonatorPassword, impersonationTarget } = config;
-const productName = process.env.QA_PRODUCT_NAME || 'HISv3';
+const productName = process.env.QA_PRODUCT_NAME || 'SUT';
 const shots = process.env.E2E_SCREENSHOT_DIR;
 
 test.describe('GAOS panels in the product detail', () => {

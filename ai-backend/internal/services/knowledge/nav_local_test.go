@@ -40,8 +40,8 @@ func TestNavDevSeed(t *testing.T) {
 	d := &db.DB{SQL: sqlDB}
 	ctx := context.Background()
 	var pid int
-	if err := d.QueryRow(ctx, `SELECT id FROM products WHERE name = 'HISv3'`).Scan(&pid); err != nil {
-		pid = setupProduct(t, d, HISv3FormatName)
+	if err := d.QueryRow(ctx, `SELECT id FROM products WHERE name = 'SUT'`).Scan(&pid); err != nil {
+		pid = setupProduct(t, d, TestCatalogFormatName)
 	}
 	files := readLocalTree(t, root)
 	s := &Syncer{DB: d, ReadTree: func(context.Context, int, string, string, func(string) bool, int64) (string, map[string][]byte, error) {
@@ -97,8 +97,8 @@ func readLocalTree(t *testing.T, root string) map[string][]byte {
 	return files
 }
 
-// TestNavLocalRepo builds the map from a local checkout of the HISv3 automation repo
-// (NAV_LOCAL_REPO=/path/to/automation-test-hisv3). It checks the routes NAVIGATION_MAP.md
+// TestNavLocalRepo builds the map from a local checkout of the SUT automation repo
+// (NAV_LOCAL_REPO=/path/to/automation-test-sut). It checks the routes NAVIGATION_MAP.md
 // section 10 names; skipped without the variable.
 func TestNavLocalRepo(t *testing.T) {
 	root := os.Getenv("NAV_LOCAL_REPO")
@@ -106,7 +106,7 @@ func TestNavLocalRepo(t *testing.T) {
 		t.Skip("NAV_LOCAL_REPO not set")
 	}
 	files := readLocalTree(t, root)
-	f, _ := Lookup("hisv3-test-catalog-v1")
+	f, _ := Lookup("test-catalog-v1")
 	snap, _, err := f.Parse(files)
 	if err != nil {
 		t.Fatal(err)
@@ -144,11 +144,11 @@ func TestNavLocalRepo(t *testing.T) {
 	}
 	t.Logf("cases with a direct route: %d of %d; links by source %v", len(direct), len(snap.TestCases), bySource)
 	for _, want := range []string{
-		"api his-vendor-backend /api/v1/service-status",
-		"api his-vendor-backend /api/v1/swagger/*",
-		"api his-vendor-backend /api/v1/kiosk-his-v2/health",
-		"web his-frontend /auth/login",
-		"web his-frontend /report-builder/list",
+		"api sut-vendor-backend /api/v1/service-status",
+		"api sut-vendor-backend /api/v1/swagger/*",
+		"api sut-vendor-backend /api/v1/kiosk-sut-v2/health",
+		"web sut-frontend /auth/login",
+		"web sut-frontend /report-builder/list",
 	} {
 		if _, ok := byPath[want]; !ok {
 			t.Errorf("missing route %q", want)

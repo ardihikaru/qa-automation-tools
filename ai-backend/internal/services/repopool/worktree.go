@@ -255,7 +255,7 @@ func (p *Pool) Commit(ctx context.Context, wt, message string, paths []string) e
 		return err
 	}
 	_, err := run(ctx, wt, sd, 30*time.Second, "git",
-		"-c", "core.hooksPath=/dev/null", "-c", "user.name=qa-automation", "-c", "user.email=qa-automation@sismedika.com",
+		"-c", "core.hooksPath=/dev/null", "-c", "user.name=qa-automation", "-c", "user.email=qa-automation@mfardiansyah.id",
 		"commit", "--no-verify", "-m", message)
 	return err
 }

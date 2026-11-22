@@ -122,7 +122,7 @@ func exec(t *testing.T, d *db.DB, q string, args ...any) {
 
 func seedProduct(t *testing.T, d *db.DB, integrated bool) int {
 	t.Helper()
-	res, err := d.Exec(context.Background(), `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('HISv3','https://github.com/o/r','https://s','hisv3','main')`)
+	res, err := d.Exec(context.Background(), `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('SUT','https://github.com/o/r','https://s','sut','main')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func seedProduct(t *testing.T, d *db.DB, integrated bool) int {
 
 func seedEpic(t *testing.T, d *db.DB, pid int, code, title string) {
 	t.Helper()
-	exec(t, d, `INSERT INTO kb_epics (product_id, code, title, service, content_hash) VALUES (?, ?, ?, 'his-svc', 'h')`, pid, code, title)
+	exec(t, d, `INSERT INTO kb_epics (product_id, code, title, service, content_hash) VALUES (?, ?, ?, 'sut-svc', 'h')`, pid, code, title)
 }
 
 func seedCase(t *testing.T, d *db.DB, pid int, code, epic, story, status string, specs ...string) {
@@ -202,7 +202,7 @@ func TestPushSendsMappedCasesThenResults(t *testing.T) {
 	}
 	epics := reqs[0].body["epics"].([]any)
 	e := epics[0].(map[string]any)
-	if len(epics) != 1 || e["code"] != "AUTH" || e["title"] != "Authentication" || e["service"] != "his-svc" || e["source"] != "qa-automation-tools" || e["module"] != "A01" {
+	if len(epics) != 1 || e["code"] != "AUTH" || e["title"] != "Authentication" || e["service"] != "sut-svc" || e["source"] != "qa-automation-tools" || e["module"] != "A01" {
 		t.Fatalf("epics: %+v", epics)
 	}
 	cs := reqs[0].cases()

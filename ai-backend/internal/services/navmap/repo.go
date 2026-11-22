@@ -299,7 +299,7 @@ func scanRepo(files map[string][]byte, b *builder) *repoScan {
 	return rs
 }
 
-// folderApp returns the folder right under prefix ("src/web/his-frontend/x.ts" -> "his-frontend").
+// folderApp returns the folder right under prefix ("src/web/sut-frontend/x.ts" -> "sut-frontend").
 func folderApp(p, prefix string) (string, bool) {
 	if !strings.HasPrefix(p, prefix) {
 		return "", false

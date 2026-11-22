@@ -1,6 +1,6 @@
 ---
 name: qa-tool-session
-description: Log in to the production qa-automation app (https://qa-tool.sismedika.com) as the AI service account and act as any user or role through impersonation. Use when an agent must call the qa-tool API, check what a given user/role sees or may do, smoke-test prod after a deploy, or reproduce a role-specific bug — never with a human's password.
+description: Log in to the production qa-automation app (https://qa-tool.mfardiansyah.id) as the AI service account and act as any user or role through impersonation. Use when an agent must call the qa-tool API, check what a given user/role sees or may do, smoke-test prod after a deploy, or reproduce a role-specific bug — never with a human's password.
 ---
 
 # qa-tool session (AI service account + impersonation)
@@ -9,7 +9,7 @@ description: Log in to the production qa-automation app (https://qa-tool.sismedi
 
 ## Account
 - **Username:** `ai-service`, role **`Service`**. On its own it has no product rights. It may impersonate **any** active user, Admins included, with that user's full rights (the owner's decision). Treat it as an admin credential.
-- **Credentials** live in `~/.config/qa-automation/ai-service.env` on the workstation (mode 600) with the keys `QA_TOOL_URL`, `QA_TOOL_USERNAME`, `QA_TOOL_PASSWORD`. Production has the same values in `.env.prod` on rnd-v3 (`AI_SERVICE_USERNAME`, `AI_SERVICE_PASSWORD`).
+- **Credentials** live in `~/.config/qa-automation/ai-service.env` on the workstation (mode 600) with the keys `QA_TOOL_URL`, `QA_TOOL_USERNAME`, `QA_TOOL_PASSWORD`. Production has the same values in `.env.prod` on app-host (`AI_SERVICE_USERNAME`, `AI_SERVICE_PASSWORD`).
 - **Never** `cat`, `Read`, grep or echo the credential file or the password. The helper loads it with `set -a; . file` and passes the password to curl through stdin only.
 
 ## Helper: `.claude/skills/qa-tool-session/qa-tool.sh`
@@ -34,7 +34,7 @@ To act as a **role** rather than a named person, run `$S users`, pick an active 
 2. **Always clean up.** Run `stop`, then `logout`, even after a failure; wrap the work in a `trap '$S logout' EXIT`.
 3. **One impersonation per session.** A second `as` while impersonating returns 403. Run `stop` first.
 4. **Never change passwords or users.** `change-password` returns 403 while impersonating anyway. Rotating the service password itself is an owner task (see the deploy README).
-5. **Browser automation** of this app isn't covered here. Playwright runs only in playwright-executor against HISv3 staging.
+5. **Browser automation** of this app isn't covered here. Playwright runs only in playwright-executor against SUT staging.
 
 ## Post-deploy smoke (`$S smoke <qa-username>`)
 The steps and the status each should return:
@@ -62,7 +62,7 @@ An impersonation lasts at most 1 hour. When it expires, the session silently bec
 ## Setup (owner, once)
 ```bash
 umask 077; mkdir -p ~/.config/qa-automation
-# write QA_TOOL_URL=https://qa-tool.sismedika.com, QA_TOOL_USERNAME=ai-service and
-# QA_TOOL_PASSWORD=<same value as AI_SERVICE_PASSWORD in rnd-v3 .env.prod> without echoing it
+# write QA_TOOL_URL=https://qa-tool.mfardiansyah.id, QA_TOOL_USERNAME=ai-service and
+# QA_TOOL_PASSWORD=<same value as AI_SERVICE_PASSWORD in app-host .env.prod> without echoing it
 chmod 600 ~/.config/qa-automation/ai-service.env
 ```

@@ -64,23 +64,23 @@ backend:
   host: "0.0.0.0"
   port: 8080
   
-  # Database (MySQL 8 - shared master-compose MySQL on rnd-v2-vpn, over WireGuard)
+  # Database (MySQL 8 - shared master-compose MySQL on db-host, over WireGuard)
   # NOTE: the Go backend reads DB_* env ONLY (this block is informational / used by TS tools).
   database:
-    host: "10.10.0.4"
+    host: "10.8.0.4"
     port: 5306
     username: "qa_automation"
     password: ""          # use DB_PASSWORD env instead
     name: "qa_automation"
     # OR full DSN:
-    # connection_string: "user:pass@tcp(10.10.0.4:5306)/qa_automation?parseTime=true"
+    # connection_string: "user:pass@tcp(10.8.0.4:5306)/qa_automation?parseTime=true"
 
   # AI gateway. Default: production ai-manager over WireGuard (POST /v1/chat, Basic auth).
   # Credentials come from env: AI_MANAGER_LOGIN_ID / AI_MANAGER_SECRET_KEY.
   ai:
     provider: "ai-manager"            # ai-manager | minimax
-    manager_url: "http://10.10.0.4:8099"
-    manager_provider: "claude-v3"     # pinned: Claude CLI REST on rnd-v3 (10.10.0.9:8105) via ai-manager
+    manager_url: "http://10.8.0.4:8099"
+    manager_provider: "claude-v3"     # pinned: Claude CLI REST on app-host (10.8.0.9:8105) via ai-manager
     # MiniMax direct (only when provider: minimax; key via MINIMAX_API_KEY)
     api_key: ""
     model: "MiniMax-M2.5"

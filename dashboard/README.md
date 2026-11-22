@@ -12,9 +12,9 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
   Extra reverse-proxy hostnames go in `VITE_ALLOWED_HOSTS` (comma-separated).
 - **Production**: `Dockerfile` builds `dist/` with `npm run build` and serves it from
   `nginx:alpine`. The current production deployment is the Docker Compose stack in
-  [deploy/his-v3-qa](../deploy/his-v3-qa/README.md) on `rnd-v3-vpn`, behind the clino
-  nginx edge at https://qa-tool.sismedika.com. That stack builds with
-  `NGINX_CONF=nginx.conf.example` and mounts `deploy/his-v3-qa/nginx.dashboard.conf`
+  [deploy/qa-tool](../deploy/qa-tool/README.md) on `app-host`, behind the edge-host
+  nginx edge at https://qa-tool.mfardiansyah.id. That stack builds with
+  `NGINX_CONF=nginx.conf.example` and mounts `deploy/qa-tool/nginx.dashboard.conf`
   over it, which serves the SPA and proxies `/api` and `/health` to the `backend`
   service.
 - **Legacy**: `cloudbuild.yaml` (Cloud Run deploy of `qa-dashboard`) and the Cloud Run
@@ -196,7 +196,7 @@ The product views share `views/products/api.ts` (fetch helper, types, form valid
   calls `GET /api/auth/me`.
 - Container image: nginx serves `/health` (in `nginx.conf.example`) used by the
   `Dockerfile` `HEALTHCHECK`; the production compose healthcheck uses `/nginx-health`
-  from `deploy/his-v3-qa/nginx.dashboard.conf`.
+  from `deploy/qa-tool/nginx.dashboard.conf`.
 
 ## Verification
 

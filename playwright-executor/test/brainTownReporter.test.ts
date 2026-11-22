@@ -24,10 +24,10 @@ test('resolveBrainTownReporter: needs BRAIN_TOWN_URL, honours the off flag, bad 
 });
 
 test('product mapping: map entry, default, then product-<id>', () => {
-  assert.deepEqual(parseProductMap('1=sipreport, 2 = hisv3,bad,3=has space'), { 1: 'sipreport', 2: 'hisv3' });
-  const cfg = loadBrainTownConfig({ BRAIN_TOWN_URL: 'http://x', BRAIN_TOWN_PRODUCTS: '1=sipreport', BRAIN_TOWN_PRODUCT: 'dflt' });
-  assert.equal(cfg.org, 'sismedika');
-  assert.equal(productFor(cfg, 'automation-1.env'), 'sipreport');
+  assert.deepEqual(parseProductMap('1=samplereport, 2 = sut,bad,3=has space'), { 1: 'samplereport', 2: 'sut' });
+  const cfg = loadBrainTownConfig({ BRAIN_TOWN_URL: 'http://x', BRAIN_TOWN_PRODUCTS: '1=samplereport', BRAIN_TOWN_PRODUCT: 'dflt' });
+  assert.equal(cfg.org, 'example-org');
+  assert.equal(productFor(cfg, 'automation-1.env'), 'samplereport');
   assert.equal(productFor(cfg, 'automation-7.env'), 'dflt');
   assert.equal(productFor({ ...cfg, product: '' }, 'automation-7.env'), 'product-7');
 });
@@ -80,13 +80,13 @@ test('real run: started, one step per test.step, finished; bearer token; no erro
   if (!fs.existsSync(path.resolve(__dirname, '..', '..', 'node_modules', 'playwright', 'cli.js'))) return t.skip('playwright is not installed');
   const rx = await receiver();
   try {
-    const base = { BRAIN_TOWN_URL: rx.url, BRAIN_TOWN_TOKEN: 'bt_live_test', BRAIN_TOWN_PRODUCT: 'sipreport', BRAIN_TOWN_ORG: 'sismedika', VENDOR_E2E_RUN: 'qaabc123' };
+    const base = { BRAIN_TOWN_URL: rx.url, BRAIN_TOWN_TOKEN: 'bt_live_test', BRAIN_TOWN_PRODUCT: 'samplereport', BRAIN_TOWN_ORG: 'example-org', VENDOR_E2E_RUN: 'qaabc123' };
     const ok = await playwrightRun(base, PASS);
     assert.equal(ok.status, 0, ok.output);
     assert.deepEqual(rx.events.map((e) => e.type), ['qa.run.started', 'qa.step', 'qa.step', 'qa.step', 'qa.run.finished']);
     assert.deepEqual(rx.events[0].data.steps, ['Open page', 'Sign in', 'inner', 'Check result']);
     assert.deepEqual(rx.events.slice(1, 4).map((e) => [e.data.index, e.data.step, e.data.status]), [[1, 'Open page', 'passed'], [2, 'Sign in', 'passed'], [3, 'Check result', 'passed']]);
-    assert.ok(rx.events.every((e) => e.run === 'qaabc123' && e.product === 'sipreport' && e.org === 'sismedika'));
+    assert.ok(rx.events.every((e) => e.run === 'qaabc123' && e.product === 'samplereport' && e.org === 'example-org'));
     assert.deepEqual(rx.events[4].data, { ...rx.events[4].data, passed: 1, failed: 0, total: 1 });
     assert.ok(rx.auth.every((a) => a === 'Bearer bt_live_test'));
 

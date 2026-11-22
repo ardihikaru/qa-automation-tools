@@ -61,7 +61,7 @@ func (r *fakeRepo) set(sha string, files map[string]string) {
 }
 
 const (
-	modA = "# Part A\n### A01 — Reg\n| <a id=\"f-a01-01\"></a>A01.01 | Pasien | Search | his | `PROD` | 2026-01-01 | | | | | | |\n| A01.02 | Pasien | Edit | his | `UNKNOWN` | — | | | | | | |\n"
+	modA = "# Part A\n### A01 — Reg\n| <a id=\"f-a01-01\"></a>A01.01 | Pasien | Search | app | `PROD` | 2026-01-01 | | | | | | |\n| A01.02 | Pasien | Edit | app | `UNKNOWN` | — | | | | | | |\n"
 	epic = "# Out\n- **US-OUT-01** (A01.01) — search\n- **US-OUT-02** (A01.02) — edit\n" +
 		"| ☑ | TC-OUT-001 | US-OUT-01 | G1 | + | API | P0 | automated | `t.spec.ts` | |\n" +
 		"| ☐ | TC-OUT-002 | US-OUT-02 | G2 | - | WEB | P1 | planned | | |\n"
@@ -70,12 +70,12 @@ const (
 func setupProduct(t *testing.T, d *db.DB, format string) int {
 	t.Helper()
 	ctx := context.Background()
-	res, err := d.Exec(ctx, `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('HISv3', 'https://github.com/o/r', 'https://s', 'hisv3', 'main')`)
+	res, err := d.Exec(ctx, `INSERT INTO products (name, repo_url, staging_url, root_dir, branch) VALUES ('SUT', 'https://github.com/o/r', 'https://s', 'sut', 'main')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pid := int(res.LastInsertId())
-	if _, err := d.Exec(ctx, `INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_automation) VALUES (?, 'auto', 'https://github.com/o/r', 'hisv3', 1, 1)`, pid); err != nil {
+	if _, err := d.Exec(ctx, `INSERT INTO product_repos (product_id, name, repo_url, root_dir, is_main, is_automation) VALUES (?, 'auto', 'https://github.com/o/r', 'sut', 1, 1)`, pid); err != nil {
 		t.Fatal(err)
 	}
 	if format != "" {
@@ -120,7 +120,7 @@ func waitSync(t *testing.T, d *db.DB, id int64) syncRow {
 func TestSyncLifecycle(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic, ".claude/agents/x.md": "---\nname: x\n---\nhi\n", "CLAUDE.md": "# P\n"})
 	fai := &fakeAI{}
@@ -224,7 +224,7 @@ func TestSyncLifecycle(t *testing.T) {
 func TestSyncConcurrencyAndOrphans(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{gate: make(chan struct{})}
 	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA})
 	s := &Syncer{DB: d, ReadTree: repo.read, syncTimeout: time.Minute, aiTimeout: time.Minute}
@@ -287,14 +287,14 @@ func setupProductNamed(t *testing.T, d *db.DB, name, format string) int {
 func TestSeedMigration(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	// testdb already ran migrations once on an empty schema: the seed found no HISv3.
+	// testdb already ran migrations once on an empty schema: the seed found no SUT.
 	pid := setupProduct(t, d, "")
 	if err := db.RunMigrations(d.SQL); err != nil {
 		t.Fatal(err)
 	}
 	var f *string
 	_ = d.QueryRow(ctx, `SELECT knowledge_format FROM product_settings WHERE product_id = ?`, pid).Scan(&f)
-	if f == nil || *f != HISv3FormatName {
+	if f == nil || *f != TestCatalogFormatName {
 		t.Fatalf("seed: %v", f)
 	}
 	// An admin turns it off; re-running migrations must not turn it back on.
@@ -315,7 +315,7 @@ func TestSeedMigration(t *testing.T) {
 func TestSyncHooks(t *testing.T) {
 	d := testdb.New(t)
 	ctx := context.Background()
-	pid := setupProduct(t, d, HISv3FormatName)
+	pid := setupProduct(t, d, TestCatalogFormatName)
 	repo := &fakeRepo{}
 	repo.set("1111111111111111111111111111111111111111", map[string]string{"docs/modules/A-core.md": modA, "docs/test-catalog/svc/out.md": epic})
 	var mu sync.Mutex

@@ -13,7 +13,7 @@ const learnedFile = `# Learned policy: Build vendor URLs from the registry base 
 
 <!-- qa-learning: product=3 job=job-9 findings=4,7 -->
 
-Build REST URLs from restServices['his-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again.
+Build REST URLs from restServices['sut-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again.
 
 ## Why
 
@@ -97,7 +97,7 @@ func TestFailureExcerptInTheRunWarn(t *testing.T) {
 
 func TestLearnedPolicyPart(t *testing.T) {
 	got := LearnedPolicyPart(learnedFile)
-	want := "Learned policy: Build vendor URLs from the registry base URL\nBuild REST URLs from restServices['his-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again."
+	want := "Learned policy: Build vendor URLs from the registry base URL\nBuild REST URLs from restServices['sut-vendor-backend'].baseURL. It already ends in /api/v1: never append /api/v1 again."
 	if got != want {
 		t.Errorf("got %q", got)
 	}
