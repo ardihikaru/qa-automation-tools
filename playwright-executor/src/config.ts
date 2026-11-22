@@ -16,8 +16,11 @@ export interface ExecutorConfig {
   allowedHosts: string[];
   /** case_run: absolute path of the navigation reporter, or '' (off, missing or not loadable). */
   navReporter?: string;
+  /** case_run: Brain Town reporting (docs/designs/BRAIN_TOWN.md); off unless BRAIN_TOWN_URL is set. */
+  brainTown?: BrainTownConfig;
 }
 
+import { BrainTownConfig, loadBrainTownConfig } from './brainTownReporter';
 import { resolveNavReporter } from './navReporter';
 
 type Env = Record<string, string | undefined>;
@@ -58,5 +61,6 @@ export function loadConfig(env: Env = process.env): ExecutorConfig {
     envDir: env.EXECUTOR_ENV_DIR || `${env.HOME ?? '/home/sismedika'}/.config/qa-automation`,
     allowedHosts,
     navReporter: resolveNavReporter(env),
+    brainTown: loadBrainTownConfig(env),
   };
 }
