@@ -11,6 +11,7 @@ import { ChildProcess, spawn as nodeSpawn, SpawnOptions } from 'child_process';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { productFor } from '../brainTownReporter';
 import { CaseError, checkEnvHosts, loadEnvFile, resolveRepoDir, resolveSpecs, within } from '../caseFs';
 import { ExecutorConfig } from '../config';
 import { EmitEvent } from '../queue';
@@ -213,7 +214,8 @@ export async function caseRun(
     if (e instanceof CaseError) emit('error', 'validate', e.message);
     throw e;
   }
-  const secrets = secretValues(envVars);
+  const bt = cfg.brainTown && cfg.brainTown.reporter ? cfg.brainTown : undefined;
+  const secrets = secretValues(envVars).concat(bt && bt.token.length >= 4 ? [bt.token] : []);
   emit('info', 'validate', `case ${params.case_code}${params.repair !== undefined ? ` (repair attempt ${params.repair})` : ''}: ${params.spec_paths.length} spec(s), env ${params.env_file}`);
 
   // npm ci only when the lockfile changed since the last install.
@@ -273,7 +275,7 @@ export async function caseRun(
     params.case_code,
     '--workers=1',
     '--retries=0',
-    cfg.navReporter ? `--reporter=json,list,${cfg.navReporter}` : '--reporter=json,list',
+    `--reporter=${['json', 'list', cfg.navReporter, bt?.reporter].filter(Boolean).join(',')}`,
   ];
   const navFile = path.join(runDir, 'nav.json');
   fs.rmSync(navFile, { force: true });
@@ -285,6 +287,8 @@ export async function caseRun(
     VENDOR_E2E_RUN: key,
     TEST_ENV: 'staging',
     ...(cfg.navReporter ? { QA_NAV_OUTPUT: navFile } : {}),
+    // Last, like the others: an env file cannot redirect or silence the reporting.
+    ...(bt ? { BRAIN_TOWN_URL: bt.url, BRAIN_TOWN_TOKEN: bt.token, BRAIN_TOWN_ORG: bt.org, BRAIN_TOWN_PRODUCT: productFor(bt, params.env_file) } : {}),
   };
   emit('info', 'run', `npx playwright test ${params.spec_paths.join(' ')} -g ${params.case_code}`);
   const r = await runProc(deps, ctx, 'run', 'npx', args, { cwd: repo, env, secrets });
