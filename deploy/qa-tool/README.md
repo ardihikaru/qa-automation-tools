@@ -9,7 +9,7 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 | Hop | Host | Address | What |
 |---|---|---|---|
 | Edge | `edge-host` | 203.0.113.10 / 10.8.0.1 | nginx, TLS (Let's Encrypt lineage `qa-tool-mfardiansyah`), `/etc/nginx/conf.d/qa-tool.conf` |
-| App | `app-host` | 10.8.0.9:8140 | Docker Compose: `dashboard` (nginx + SPA, proxies `/api`, `/health`) and `backend` (Go, :8080 internal) |
+| App | `app-host` | 10.8.0.9:8140 (default instance), 10.8.0.9:8150 (`personal`, the public domain) | Docker Compose: `dashboard` (nginx + SPA, proxies `/api`, `/health`) and `backend` (Go, :8080 internal) |
 | DB | `db-host` | 10.8.0.4:5306 | MySQL 8 `master-compose-ai-mysqldb-master-1`, database `qa_automation`, user `qa_automation` |
 | AI | `db-host` | 10.8.0.4:8099 | ai-manager (`POST /v1/chat`, Basic auth), always with `provider: claude-v3`, `no_fallback` |
 | LLM | `app-host` | 10.8.0.9:8105 | ai-claude-cli, ai-manager's `claude-v3` upstream (`claude-opus-5`). Same host as the app, but it is only ever called *through* ai-manager. **The only LLM path** (MiniMax is dormant) |
