@@ -14,15 +14,16 @@ services:
   backend:
     build:
       context: ../../ai-backend
-    image: qa-automation/backend:latest
-    env_file: .env.prod
+    image: qa-automation/backend:${QATOOL_IMAGE_TAG:-latest}
+    # One instance per env file; deploy.sh sets these for QATOOL_INSTANCE=<name> (see README).
+    env_file: ${QATOOL_ENV_FILE:-.env.prod}
     environment:
       PORT: "8080"
       REPO_POOL_DIR: /data/repos
     volumes:
       # Product repo pool: the ONLY host path mounted into the backend (read-write so it can
       # clone/switch branches). playwright-executor on the host reads the same directory.
-      - ../../repos:/data/repos
+      - ${QATOOL_REPOS_DIR:-../../repos}:/data/repos
     expose:
       - "8080"
     restart: unless-stopped
@@ -41,7 +42,7 @@ services:
       context: ../../dashboard
       args:
         NGINX_CONF: nginx.conf.example
-    image: qa-automation/dashboard:latest
+    image: qa-automation/dashboard:${QATOOL_IMAGE_TAG:-latest}
     depends_on:
       backend:
         condition: service_started

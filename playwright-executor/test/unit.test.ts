@@ -5,13 +5,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { checkBearer } from '../src/auth';
-import { ExecutorConfig } from '../src/config';
+import { ExecutorConfig, loadConfig } from '../src/config';
 import { RunQueue } from '../src/queue';
 import { createServer } from '../src/server';
 import { RunRecord } from '../src/types';
 import { parseRunRequest, RunRequest } from '../src/validate';
 
 const TOKEN = 'x'.repeat(40);
+const EXTRA = 'y'.repeat(40);
 const req = (over: Partial<RunRequest> = {}): RunRequest => ({
   job_id: 'job-1',
   type: 'case_run',
@@ -110,6 +111,7 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     bind: '127.0.0.1',
     port: 0,
     token: TOKEN,
+    tokens: [TOKEN, EXTRA],
     runTimeoutMs: 1000,
     maxQueue: 1,
     repoPool: pool,
@@ -143,8 +145,17 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     assert.equal(run!.status, 'completed');
     assert.deepEqual(run!.result, { done: true });
     assert.equal((await fetch(`${base}/v1/runs/run-missing`, { headers: auth })).status, 404);
+    // A second instance's token (EXECUTOR_EXTRA_TOKENS) is accepted too.
+    assert.equal((await fetch(`${base}/v1/runs/${id}`, { headers: { Authorization: `Bearer ${EXTRA}` } })).status, 200);
   } finally {
     server.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('loadConfig: EXECUTOR_EXTRA_TOKENS adds tokens and rejects short ones', () => {
+  const base = { EXECUTOR_TOKEN: TOKEN, HOME: '/home/x' };
+  assert.deepEqual(loadConfig(base).tokens, [TOKEN]);
+  assert.deepEqual(loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: ` ${EXTRA} ,, ${TOKEN}` }).tokens, [TOKEN, EXTRA]);
+  assert.throws(() => loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: 'short' }), /EXECUTOR_EXTRA_TOKENS/);
 });

@@ -57,6 +57,10 @@ automation-*.env.*
 # Claude Code personal settings
 .claude/settings.local.json
 deploy/qa-tool/deploys.log
+deploy/qa-tool/deploys.*.log
+# Per-instance env files (QATOOL_INSTANCE=<name> -> .env.<name>); only the example is tracked.
+deploy/qa-tool/.env.*
+!deploy/qa-tool/.env.prod.example
 
 # Product repo pool (cloned by the backend; only the placeholder is tracked)
 repos/*

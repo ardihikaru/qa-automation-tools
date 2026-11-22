@@ -99,7 +99,7 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
       }
 
       if (!url.pathname.startsWith('/v1/')) return send(res, 404, { error: 'not found' });
-      if (!checkBearer(req.headers.authorization, cfg.token)) return send(res, 401, { error: 'unauthorized' });
+      if (!cfg.tokens.some((t) => checkBearer(req.headers.authorization, t))) return send(res, 401, { error: 'unauthorized' });
 
       if (url.pathname === '/v1/runs' && req.method === 'POST') {
         let body: unknown;
