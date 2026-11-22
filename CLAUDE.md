@@ -38,7 +38,7 @@ EGM artifact directory: .dev/docs
 | 10.8.0.1 / 203.0.113.10 | `edge-host` | Shared nginx TLS edge: `/etc/nginx/conf.d/qa-tool.conf`, cert lineage `qa-tool-mfardiansyah` |
 | 10.8.0.4 | `db-host` | MySQL `:5306` (container `master-compose-ai-mysqldb-master-1`, DB/user `qa_automation`); **ai-manager `:8099`** |
 | 10.8.0.7 | `taskmgr-host` | taskmgr Neo4j (optional one-shot user seed; port not reachable from app-host) |
-| 10.8.0.9 | `app-host` | This app (Docker Compose, `10.8.0.9:8140`); **playwright-executor `:8141`** (systemd `--user`, 2.5 GiB / 60 % CPU cap); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |
+| 10.8.0.9 | `app-host` | This app, two instances from one checkout (`deploy/qa-tool/README.md`, Multiple instances): the default one on `10.8.0.9:8140` (work, own domain) and `personal` on `10.8.0.9:8150` (`qa-tool.mfardiansyah.id`), each with its own DB schema; **playwright-executor `:8141`** (systemd `--user`, 2.5 GiB / 60 % CPU cap); **ai-claude-cli `:8105`**, which is ai-manager's `claude-v3` upstream for every LLM call in this repo |
 
 ## Environment variable canon
 - DB: `DB_HOST DB_PORT DB_USER DB_PASSWORD DB_NAME` (or a MySQL `DATABASE_URL`). The local `.env` files also contain `MYSQL_*`. **The code ignores those**; they point at the SUT *production* schema. Never use them for this app.
