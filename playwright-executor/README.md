@@ -44,6 +44,8 @@ Every route except `/health` requires `Authorization: Bearer $EXECUTOR_TOKEN`, c
 
 Navigation (NAVIGATION_MAP.md 3.5): when `reporters/nav-reporter.cjs` exists, loads with `require()` at start and `EXECUTOR_NAV_REPORTER` is not `0`, the run uses `--reporter=json,list,<abs path>` and `QA_NAV_OUTPUT=<repo>/.runs/<run key>/nav.json` (a stale file is removed first). The reporter records each `page.goto` and each API request step per test (URL resolved against the project's `baseURL`, origin and pathname only, never the query; at most 500 aggregated entries) for Playwright 1.5x (`GET "<url>"`) and 1.6x (`step.params`). The result then has `nav: {version: 1, truncated, entries: [{title, file, project, kind: web|api, method, host, path, hits}]}` (read with the `results.json` guards, at most 256 KiB; absent or invalid: no `nav` and a `warn` event). The reporter never throws.
 
+Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): when `BRAIN_TOWN_URL` is set, the file loads and `EXECUTOR_BRAIN_TOWN_REPORTER` is not `0`, the reporter is appended to `--reporter`, and the child gets `BRAIN_TOWN_URL`, `BRAIN_TOWN_TOKEN`, `BRAIN_TOWN_ORG` and `BRAIN_TOWN_PRODUCT` (set last, so an env file cannot override them). Per run (one spec file executed once, `run` = `VENDOR_E2E_RUN`) it POSTs `qa.run.started` (`spec`, `steps` read from the spec source), one `qa.step` per top-level `test.step` (`index`, `step`, `status` passed|failed, `duration_ms`) and `qa.run.finished` (`spec`, `passed`, `failed`, `total`, `duration_ms`) with `Authorization: Bearer <token>`. Contract: 2 s timeout per request, errors swallowed, no retries, events sent in order and dropped after the first failure, `onEnd` waits for the queue; titles, statuses and counts only (no error text, page content or screenshots). The product key is `BRAIN_TOWN_PRODUCTS` (`<id>=<key>` for `automation-<id>.env`), else `BRAIN_TOWN_PRODUCT`, else `product-<id>`. Only steps written as `await test.step('name', …)` are reported. The token is masked in events and logs.
+
 ### Configuration (env only, `src/config.ts`)
 
 `.env.example` lists every key:
@@ -58,6 +60,9 @@ Navigation (NAVIGATION_MAP.md 3.5): when `reporters/nav-reporter.cjs` exists, lo
 | `EXECUTOR_REPO_POOL` | `case_run`: directory of automation repo clones (default `/home/sismedika/devel/projects/qa-automation-tools/repos`). |
 | `EXECUTOR_ENV_DIR` | `case_run`: directory of `automation-<productId>.env` files, mode 600 (default `~/.config/qa-automation`). |
 | `EXECUTOR_NAV_REPORTER` | `0` turns the navigation reporter off (default on when the file loads). |
+| `BRAIN_TOWN_URL`, `BRAIN_TOWN_TOKEN` | Brain Town ingest URL and bearer token (secrets, env file only). Unset URL: reporter off. |
+| `BRAIN_TOWN_ORG`, `BRAIN_TOWN_PRODUCTS`, `BRAIN_TOWN_PRODUCT` | Org (default `sismedika`) and product key mapping (see above). |
+| `EXECUTOR_BRAIN_TOWN_REPORTER` | `0` turns the Brain Town reporter off. |
 | `EXECUTOR_ALLOWED_HOSTS` | `case_run`: comma-separated hostnames (`*.suffix` allowed) that the env file's http(s) URL values may point at. Default: the `HISV3_STAGING_URL` host, else none. |
 
 ## Invariants
