@@ -78,8 +78,8 @@ type ObjectStoreConfig struct {
 
 var objectStoreNamespaceRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
-// wireGuardNet is the only network where a plaintext (non-TLS) object store is accepted.
-var wireGuardNet = &net.IPNet{IP: net.IPv4(10, 10, 0, 0), Mask: net.CIDRMask(24, 32)}
+// A plaintext (non-TLS) object store is accepted only on a private (RFC 1918) address,
+// e.g. a WireGuard peer.
 
 // String and GoString use a value receiver so %v, %+v and %#v of a value or a pointer never print a secret.
 func (c ObjectStoreConfig) String() string {
@@ -119,8 +119,8 @@ func (c ObjectStoreConfig) Check() error {
 		if h, _, err := net.SplitHostPort(c.Endpoint); err == nil {
 			host = h
 		}
-		if ip := net.ParseIP(host); ip == nil || !wireGuardNet.Contains(ip) {
-			return fmt.Errorf("MINIO_USE_SSL=false is accepted only for an endpoint inside 10.8.0.0/24")
+		if ip := net.ParseIP(host); ip == nil || !ip.IsPrivate() {
+			return fmt.Errorf("MINIO_USE_SSL=false is accepted only for an endpoint on a private (RFC 1918) IP address")
 		}
 	}
 	return nil
@@ -379,7 +379,7 @@ func LoadConfig() *Config {
 			Host: getEnvString("BACKEND_HOST", "0.0.0.0"),
 			Port: getEnvInt("PORT", 8080),
 			Database: DatabaseConfig{
-				Host:     getEnvString("DB_HOST", "10.8.0.4"),
+				Host:     getEnvString("DB_HOST", "127.0.0.1"),
 				Port:     getEnvInt("DB_PORT", 5306),
 				Username: getEnvString("DB_USER", "qa_automation"),
 				Password: getEnvString("DB_PASSWORD", ""),
@@ -388,7 +388,7 @@ func LoadConfig() *Config {
 			AI: AIConfig{
 				Provider:          getEnvString("AI_PROVIDER", "ai-manager"),
 				TimeoutSeconds:    getEnvInt("AI_TIMEOUT_SECONDS", 180),
-				ManagerURL:        getEnvString("AI_MANAGER_URL", "http://10.8.0.4:8099"),
+				ManagerURL:        getEnvString("AI_MANAGER_URL", "http://127.0.0.1:8099"),
 				ManagerLoginID:    getEnvString("AI_MANAGER_LOGIN_ID", ""),
 				ManagerSecretKey:  getEnvString("AI_MANAGER_SECRET_KEY", ""),
 				ManagerProvider:   getEnvString("AI_MANAGER_PROVIDER", "claude-v3"),

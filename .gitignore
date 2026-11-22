@@ -60,3 +60,7 @@ deploy/qa-tool/deploys.log
 # Product repo pool (cloned by the backend; only the placeholder is tracked)
 repos/*
 !repos/.gitkeep
+
+# Maintainer private overlay (real infra names; see CONTRIBUTING.md)
+/.private/
+/CLAUDE.local.md

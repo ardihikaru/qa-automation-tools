@@ -44,7 +44,7 @@ func TestObjectStoreConfigCheck(t *testing.T) {
 		"scheme in endpoint":   func(c *ObjectStoreConfig) { c.Endpoint = "https://minio:9000" },
 		"plaintext public ip":  func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "8.8.8.8:9000" },
 		"plaintext hostname":   func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "minio.local:9000" },
-		"plaintext 10.10.1.x":  func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "10.10.1.4:9000" },
+		"plaintext CGNAT ip":   func(c *ObjectStoreConfig) { c.UseSSL, c.Endpoint = false, "100.64.1.4:9000" },
 	}
 	for name, mut := range cases {
 		c := ok

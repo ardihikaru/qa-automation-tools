@@ -322,7 +322,7 @@ export function getAI(): AIConfig {
   // Environment always wins over config.yaml (secrets should live in env only).
   const env = process.env;
   ai.provider = (env.AI_PROVIDER as AIConfig['provider']) || ai.provider || 'ai-manager';
-  ai.manager_url = env.AI_MANAGER_URL || ai.manager_url || 'http://10.8.0.4:8099';
+  ai.manager_url = env.AI_MANAGER_URL || ai.manager_url || 'http://127.0.0.1:8099';
   ai.manager_login_id = env.AI_MANAGER_LOGIN_ID || ai.manager_login_id || '';
   ai.manager_secret_key = env.AI_MANAGER_SECRET_KEY || ai.manager_secret_key || '';
   ai.manager_provider = env.AI_MANAGER_PROVIDER || ai.manager_provider || 'claude-v3';

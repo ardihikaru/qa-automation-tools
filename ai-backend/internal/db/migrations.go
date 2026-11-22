@@ -1003,6 +1003,10 @@ ALTER TABLE case_approvals
   ADD COLUMN answer_source VARCHAR(32) NULL,
   ADD COLUMN answer_actor VARCHAR(120) NULL,
   ADD COLUMN answer_source_detail JSON NULL;`,
+	// The test-catalog knowledge format lost its product prefix ("<product>-test-catalog-v1" is now
+	// "test-catalog-v1"). Idempotent: a second run matches no rows.
+	`UPDATE product_settings SET knowledge_format = 'test-catalog-v1'
+WHERE knowledge_format LIKE '%-test-catalog-v1';`,
 }
 
 const skipIfPrefix = "-- skip-if:"

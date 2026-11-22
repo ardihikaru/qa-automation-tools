@@ -19,7 +19,7 @@ import (
 
 func loadGolden(t *testing.T) map[string][]byte {
 	t.Helper()
-	root := "../services/knowledge/testdata/sut-521618a"
+	root := "../services/knowledge/testdata/sample-catalog"
 	files := map[string][]byte{}
 	if err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -70,7 +70,7 @@ func TestKnowledgeAPI(t *testing.T) {
 		for k, v := range golden {
 			files[k] = v
 		}
-		return "521618a000000000000000000000000000000000", files, nil
+		return "5a3c1e0000000000000000000000000000000000", files, nil
 	}
 	r.SetKnowledge(sy)
 	p := createSUT(t, r)
@@ -94,7 +94,7 @@ func TestKnowledgeAPI(t *testing.T) {
 		t.Fatalf("sync: %v", s)
 	}
 	counts := s["counts"].(map[string]any)
-	if counts["features"] != float64(444) || counts["test_cases"] != float64(1659) || counts["automated"] != float64(456) || counts["stories"] != float64(246) {
+	if counts["features"] != float64(26) || counts["test_cases"] != float64(31) || counts["automated"] != float64(14) || counts["stories"] != float64(17) {
 		t.Fatalf("counts: %v", counts)
 	}
 
@@ -112,13 +112,13 @@ func TestKnowledgeAPI(t *testing.T) {
 	}
 
 	tree := kcall(t, r, "Viewer", http.MethodGet, base+"/tree", nil, http.StatusOK)
-	if parts := tree["parts"].([]any); len(parts) != 4 {
+	if parts := tree["parts"].([]any); len(parts) != 3 {
 		t.Fatalf("tree parts: %d", len(parts))
 	}
 
 	// Lists and filters.
 	tcs := kcall(t, r, "Viewer", http.MethodGet, base+"/test-cases?status=automated&page_size=10", nil, http.StatusOK)
-	if tcs["total"] != float64(456) || len(tcs["items"].([]any)) != 10 {
+	if tcs["total"] != float64(14) || len(tcs["items"].([]any)) != 10 {
 		t.Fatalf("test-cases: total %v", tcs["total"])
 	}
 	first := tcs["items"].([]any)[0].(map[string]any)
@@ -127,7 +127,7 @@ func TestKnowledgeAPI(t *testing.T) {
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/test-cases?level=BOGUS", nil, http.StatusBadRequest)
 	st := kcall(t, r, "Viewer", http.MethodGet, base+"/stories?feature=A01.07", nil, http.StatusOK)
-	if st["total"].(float64) < 1 {
+	if st["total"] != float64(3) {
 		t.Fatalf("stories of A01.07: %v", st["total"])
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/epics", nil, http.StatusOK)
@@ -137,14 +137,14 @@ func TestKnowledgeAPI(t *testing.T) {
 	if len(f["stories"].([]any)) == 0 {
 		t.Fatalf("feature detail: %v", f)
 	}
-	story := kcall(t, r, "Viewer", http.MethodGet, base+"/stories/US-OUTREG-05", nil, http.StatusOK)
+	story := kcall(t, r, "Viewer", http.MethodGet, base+"/stories/US-APPT-05", nil, http.StatusOK)
 	if len(story["features"].([]any)) == 0 || len(story["test_cases"].([]any)) == 0 {
 		t.Fatalf("story detail: %v", story)
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/stories/US-NOPE-01", nil, http.StatusNotFound)
 	kcall(t, r, "Viewer", http.MethodGet, base+"/modules/A01", nil, http.StatusOK)
 	kcall(t, r, "Viewer", http.MethodGet, base+"/parts/A", nil, http.StatusOK)
-	kcall(t, r, "Viewer", http.MethodGet, base+"/epics/OUTREG", nil, http.StatusOK)
+	kcall(t, r, "Viewer", http.MethodGet, base+"/epics/APPT", nil, http.StatusOK)
 
 	// Coverage at every level.
 	cov := kcall(t, r, "Viewer", http.MethodGet, base+"/coverage?by=module", nil, http.StatusOK)["coverage"].(map[string]any)
@@ -154,12 +154,12 @@ func TestKnowledgeAPI(t *testing.T) {
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/coverage?by=bogus", nil, http.StatusBadRequest)
 	mods := kcall(t, r, "Viewer", http.MethodGet, base+"/modules", nil, http.StatusOK)["modules"].([]any)
-	if len(mods) != 39 || mods[0].(map[string]any)["coverage"] == nil {
+	if len(mods) != 7 || mods[0].(map[string]any)["coverage"] == nil {
 		t.Fatalf("modules: %d", len(mods))
 	}
 	feats := kcall(t, r, "Viewer", http.MethodGet, base+"/features?module=A01&page_size=500", nil, http.StatusOK)
 	untested := kcall(t, r, "Viewer", http.MethodGet, base+"/features?coverage=untested&page_size=500", nil, http.StatusOK)
-	if feats["total"].(float64) < 1 || untested["total"].(float64) < 300 {
+	if feats["total"] != float64(8) || untested["total"] != float64(13) {
 		t.Fatalf("features: module A01 %v, untested %v", feats["total"], untested["total"])
 	}
 	kcall(t, r, "Viewer", http.MethodGet, base+"/features?coverage=meh", nil, http.StatusBadRequest)
@@ -216,25 +216,25 @@ func TestKnowledgeAPI(t *testing.T) {
 	}
 
 	// Annotations.
-	kcall(t, r, "Viewer", http.MethodPut, base+"/annotations/story/US-OUTREG-05", map[string]any{"note": "x"}, http.StatusForbidden)
-	kcall(t, r, "QA", http.MethodPut, base+"/annotations/story/US-OUTREG-05", map[string]any{"note": "flaky on staging", "tags": []string{"flaky"}}, http.StatusOK)
+	kcall(t, r, "Viewer", http.MethodPut, base+"/annotations/story/US-APPT-05", map[string]any{"note": "x"}, http.StatusForbidden)
+	kcall(t, r, "QA", http.MethodPut, base+"/annotations/story/US-APPT-05", map[string]any{"note": "flaky on staging", "tags": []string{"flaky"}}, http.StatusOK)
 	kcall(t, r, "QA", http.MethodPut, base+"/annotations/story/US-NOPE-01", map[string]any{"note": "x"}, http.StatusNotFound)
-	kcall(t, r, "QA", http.MethodPut, base+"/annotations/bogus/US-OUTREG-05", map[string]any{"note": "x"}, http.StatusBadRequest)
+	kcall(t, r, "QA", http.MethodPut, base+"/annotations/bogus/US-APPT-05", map[string]any{"note": "x"}, http.StatusBadRequest)
 	tagged := kcall(t, r, "Viewer", http.MethodGet, base+"/stories?tag=flaky", nil, http.StatusOK)
 	if tagged["total"] != float64(1) {
 		t.Fatalf("tag filter: %v", tagged["total"])
 	}
 
 	// Drafts: synced rows are read-only, local drafts are editable.
-	kcall(t, r, "QA", http.MethodPut, base+"/stories/US-OUTREG-05", map[string]any{"epic_code": "OUTREG", "text": "x"}, http.StatusConflict)
-	kcall(t, r, "QA", http.MethodDelete, base+"/test-cases/TC-OUTREG-001", nil, http.StatusConflict)
-	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "US-X-01", "epic_code": "OUTREG", "text": "x"}, http.StatusBadRequest)
-	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "L-OUT-1", "epic_code": "OUTREG", "text": "Draft story", "feature_codes": []string{"A01.07"}}, http.StatusCreated)
-	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "L-OUT-1", "epic_code": "OUTREG", "text": "dup"}, http.StatusConflict)
-	kcall(t, r, "QA", http.MethodPost, base+"/test-cases", map[string]any{"code": "L-TC-1", "epic_code": "OUTREG", "story_code": "L-OUT-1", "scenario": "Given…", "polarity": "+", "level": "API", "priority": "P1", "status": "blocked"}, http.StatusBadRequest)
-	kcall(t, r, "QA", http.MethodPost, base+"/test-cases", map[string]any{"code": "L-TC-1", "epic_code": "OUTREG", "story_code": "L-OUT-1", "scenario": "Given…", "polarity": "+", "level": "API", "priority": "P1", "status": "planned"}, http.StatusCreated)
+	kcall(t, r, "QA", http.MethodPut, base+"/stories/US-APPT-05", map[string]any{"epic_code": "APPT", "text": "x"}, http.StatusConflict)
+	kcall(t, r, "QA", http.MethodDelete, base+"/test-cases/TC-APPT-001", nil, http.StatusConflict)
+	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "US-X-01", "epic_code": "APPT", "text": "x"}, http.StatusBadRequest)
+	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "L-OUT-1", "epic_code": "APPT", "text": "Draft story", "feature_codes": []string{"A01.07"}}, http.StatusCreated)
+	kcall(t, r, "QA", http.MethodPost, base+"/stories", map[string]any{"code": "L-OUT-1", "epic_code": "APPT", "text": "dup"}, http.StatusConflict)
+	kcall(t, r, "QA", http.MethodPost, base+"/test-cases", map[string]any{"code": "L-TC-1", "epic_code": "APPT", "story_code": "L-OUT-1", "scenario": "Given…", "polarity": "+", "level": "API", "priority": "P1", "status": "blocked"}, http.StatusBadRequest)
+	kcall(t, r, "QA", http.MethodPost, base+"/test-cases", map[string]any{"code": "L-TC-1", "epic_code": "APPT", "story_code": "L-OUT-1", "scenario": "Given…", "polarity": "+", "level": "API", "priority": "P1", "status": "planned"}, http.StatusCreated)
 	kcall(t, r, "QA", http.MethodDelete, base+"/stories/L-OUT-1", nil, http.StatusConflict)
-	kcall(t, r, "QA", http.MethodPut, base+"/test-cases/L-TC-1", map[string]any{"epic_code": "OUTREG", "scenario": "Changed", "polarity": "-", "level": "WEB", "priority": "P2", "status": "planned"}, http.StatusOK)
+	kcall(t, r, "QA", http.MethodPut, base+"/test-cases/L-TC-1", map[string]any{"epic_code": "APPT", "scenario": "Changed", "polarity": "-", "level": "WEB", "priority": "P2", "status": "planned"}, http.StatusOK)
 	kcall(t, r, "QA", http.MethodDelete, base+"/test-cases/L-TC-1", nil, http.StatusNoContent)
 	kcall(t, r, "QA", http.MethodDelete, base+"/stories/L-OUT-1", nil, http.StatusNoContent)
 

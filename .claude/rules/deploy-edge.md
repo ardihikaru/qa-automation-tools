@@ -15,3 +15,5 @@ paths:
 - Executor runs (900 s) must finish within the backend's wait (`PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES`, 30), which also covers queueing behind one other run.
 - Timeouts along the AI path must be strictly ordered: ai-manager single-provider worst case (~150s) < client `AI_TIMEOUT_SECONDS` (180) < dashboard nginx `proxy_read_timeout` (300) < edge (330). Never raise `AI_TIMEOUT_SECONDS` above 290. If ai-manager falls back between providers, the call may exceed 180 s; if so, the backend returns an error and the categorisation code uses its heuristic.
 - Follow the `deploy-qa-tool` skill for every deploy and rollback.
+
+- Host names, IPs and domains in this repo are generic placeholders. Resolve them through the gitignored `.private/name-map.md` before touching the edge or a VM, and never write the real names into tracked files.

@@ -5,6 +5,8 @@ description: Operate the qa-automation MySQL database (schema qa_automation on t
 
 # qa_automation database ops
 
+> Host names and IPs here are generic placeholders. Resolve `edge-host`, `db-host`, `app-host`, `10.8.0.x` and the domains through the gitignored `.private/name-map.md` (see `CLAUDE.local.md`) before running anything.
+
 - **Server:** MySQL 8.0.33, container `master-compose-ai-mysqldb-master-1` on **db-host**, published at `10.8.0.4:5306` (reachable only over WireGuard).
 - **This app owns only** the schema `qa_automation`, used by user `qa_automation@%`. The server is shared with other projects (ai-manager's `ai_manager`, ...), so never touch other schemas.
 - **App credentials:** `DB_PASSWORD` in `deploy/qa-tool/.env.prod` on app-host.

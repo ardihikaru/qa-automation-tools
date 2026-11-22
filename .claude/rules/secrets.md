@@ -14,3 +14,5 @@ paths:
 - Generated secrets go to the session scratchpad with `umask 077` and are deleted after use.
 - `*.example` / `*.template` files hold names and safe defaults only. Never put real values in them.
 - If a secret leaks into output or a commit, say so right away and propose rotating it (`qa-db-ops` shows how to rotate the DB password).
+
+- `.private/` and `CLAUDE.local.md` (gitignored) hold real infra *names* only, never secrets. Never commit them or copy their content into tracked files.

@@ -58,11 +58,11 @@ test.describe('Learning loop API', () => {
 
   test('the product filter scopes findings', async () => {
     const { products } = await (await api.get('/api/products')).json();
-    const his = (products ?? []).find((x: { name: string }) => x.name === 'SUT');
-    test.skip(!his, 'no SUT product');
-    const res = await api.get(`/api/learning/findings?product_id=${his.id}&limit=50`);
+    const sut = (products ?? []).find((x: { name: string }) => x.name === (process.env.QA_PRODUCT_NAME || 'SUT'));
+    test.skip(!sut, 'no SUT product');
+    const res = await api.get(`/api/learning/findings?product_id=${sut.id}&limit=50`);
     expect(res.status()).toBe(200);
-    for (const it of (await res.json()).items) expect(it.product_id).toBe(his.id);
+    for (const it of (await res.json()).items) expect(it.product_id).toBe(sut.id);
   });
 
   test('bad filters are refused, legacy routes still answer', async () => {

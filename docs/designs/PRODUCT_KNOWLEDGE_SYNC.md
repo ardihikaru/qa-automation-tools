@@ -77,7 +77,7 @@ The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. SUT's 
     *   `type Format interface { Name() string; Version() int; Parse(files map[string][]byte) (*Snapshot, []Problem, error) }`.
     *   `var formats = map[string]Format{…}`, with `Lookup(name)` and `Names()`.
     *   The `Snapshot` and `Problem{File, Line, Msg}` types, plus `Enums()` (see below).
-*   **`sut.go`** is named `test-catalog-v1` and has `Version() = 1`. Raise the version on any change that alters parse output. It ports the parse half of `scripts/test-catalog.mjs` at `521618a`. Where that script uses `Map.set`, duplicates resolve as **last wins**, which matches the script, and every duplicate is also recorded as a Problem. Lines are split on `\n`, and a trailing `\r` is stripped from each line.
+*   **`testcatalog.go`** is named `test-catalog-v1` and has `Version() = 1`. Raise the version on any change that alters parse output. It ports the parse half of `scripts/test-catalog.mjs` at `521618a`. Where that script uses `Map.set`, duplicates resolve as **last wins**, which matches the script, and every duplicate is also recorded as a Problem. Lines are split on `\n`, and a trailing `\r` is stripped from each line.
     *   **Parts and modules.**
         *   Files: `^docs/modules/[A-D]-[^/]+\.md$`, top level only.
         *   Part: `{code: first letter, name: text of the first "# " line, or the base name if there is none}`.
@@ -146,8 +146,8 @@ The sync calls `ReadTree` with `prefix = "docs"` and `maxBytes = 32 MiB`. SUT's 
 
     Statuses `blocked`, `manual-only` and `wont` need a reason. An `automated` case needs at least one spec path. These two rules are enforced for local drafts (400) and are only Problems for synced rows.
 *   **Tests:**
-    *   `sut_test.go` has a table-driven test for every rule above, including CRLF input and each duplicate and last-wins case.
-    *   It also has a **golden test** over `testdata/sut-521618a/` (the `.md` files of `docs/` copied verbatim). It asserts 4 parts, 39 modules, 444 features, 46 epics, 246 stories (9 of them unmapped), and 1659 test cases (456 automated). The sub-module count is recorded at copy time.
+    *   `testcatalog_test.go` has a table-driven test for every rule above, including CRLF input and each duplicate and last-wins case.
+    *   It also has a **golden test** over `testdata/sample-catalog/`, a small synthetic catalog of a fictional app that covers every parser branch. It asserts 3 parts, 7 modules, 26 features, 14 sub-modules, 5 epics, 17 stories (2 of them unmapped), and 31 test cases (14 automated). See `testdata/README.md`.
     *   `testdata/README.md` records the source SHA and how to refresh the copy.
 
 ### Schema (appended to `ai-backend/internal/db/migrations.go`)
@@ -505,7 +505,7 @@ Everything here is additive. The previous binary ignores the new tables and the 
 *   **Spec PR:** `docs/designs/PRODUCT_KNOWLEDGE_SYNC.md`, `docs/designs/SITEMAP.md` (this row added; `PRODUCT_REPOS_AUTOMATION_ROLE.md` flipped to Implemented, PR #17).
 *   **Backend:**
     *   `ai-backend/internal/services/repopool/repopool.go` (`ReadTree`, `runBytes`) and `repopool_test.go`, `README.md`
-    *   new `ai-backend/internal/services/knowledge/` (`catalog.go`, `sut.go`, `sync.go`, `store.go`, `query.go`, `text.go`, `*_test.go`, `testdata/**`, `README.md`)
+    *   new `ai-backend/internal/services/knowledge/` (`catalog.go`, `testcatalog.go`, `sync.go`, `store.go`, `query.go`, `text.go`, `*_test.go`, `testdata/**`, `README.md`)
     *   `ai-backend/internal/db/migrations.go`, `ai-backend/internal/db/README.md`
     *   new `ai-backend/internal/api/knowledge.go`, `knowledge_test.go`
     *   `ai-backend/internal/api/products.go`, `ai-backend/internal/api/router.go` (the field and setter only), `ai-backend/internal/api/README.md`

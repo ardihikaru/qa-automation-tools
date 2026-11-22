@@ -1,10 +1,12 @@
 # qa-automation-tools — agent instructions
 
-This is an AI-assisted QA automation system for **SUT**, the hospital information system under test. Playwright explores and tests SUT. A Go backend stores flows, issues and skills in MySQL and calls an LLM through **ai-manager**. A React dashboard shows the results.
+This is an AI-assisted QA automation system. **SUT** means the web application under test (in the reference deployment, a hospital information system). Playwright explores and tests the SUT. A Go backend stores flows, issues and skills in MySQL and calls an LLM through **ai-manager**. A React dashboard shows the results.
 
 - Production: **https://qa-tool.mfardiansyah.id**, running on app-host. See [deploy/qa-tool/README.md](deploy/qa-tool/README.md).
 - System contract: [README.md](README.md). The per-directory README files are EGM (Elephant-Goldfish Model, see below) contracts: read the one for the directory you are about to change.
 - Goals: [OBJECTIVES.md](OBJECTIVES.md). Design specs: [docs/designs/SITEMAP.md](docs/designs/SITEMAP.md).
+
+**Private overlay (read first when present).** This repo is public. Every host, IP, domain and product name in it is a generic placeholder (`edge-host`, `db-host`, `app-host`, `10.8.0.x`, `*.mfardiansyah.id`, SUT). The real names live in the gitignored `.private/` (`README.md`, `name-map.md`, `infra.md`, `originals/`) and in `CLAUDE.local.md`. Before any deploy, DB, ssh or infra task, read `.private/README.md` and translate names through `.private/name-map.md`. **Never write a real name into a tracked file.** If `.private/` is missing on a machine (for example a new VM), say so and suggest copying it from the maintainer's workstation.
 
 EGM artifact directory: .dev/docs
 

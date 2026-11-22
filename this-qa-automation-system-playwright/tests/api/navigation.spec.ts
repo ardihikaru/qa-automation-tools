@@ -21,9 +21,9 @@ test.describe('Navigation map API', () => {
     const login = await api.post('/api/auth/login', { headers: json, data: { username: impersonator, password: impersonatorPassword } });
     expect(login.status()).toBe(200);
     const { products } = await (await api.get('/api/products')).json();
-    const his = products.find((p: { name: string }) => p.name === 'SUT');
-    test.skip(!his, 'no SUT product');
-    base = `/api/products/${his.id}/navigation`;
+    const sut = products.find((p: { name: string }) => p.name === (process.env.QA_PRODUCT_NAME || 'SUT'));
+    test.skip(!sut, 'no SUT product');
+    base = `/api/products/${sut.id}/navigation`;
   });
 
   test.afterEach(async () => {

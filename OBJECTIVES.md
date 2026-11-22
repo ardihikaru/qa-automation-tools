@@ -278,7 +278,6 @@ Sections 6 and 7 below describe the deprecated packages. Their run paths now liv
 - `pdf-instruction-summary.md` - Full system design from PDF
 - `system_analysis.md` - System analysis document
 - `database-admin.md` - Database schema design
-- `staging-sut-docs.md` - SUT testing summary
 - `tutorial-playwright-docs.md` - How to run Playwright Docs
 
 ---

@@ -1,6 +1,78 @@
-# QA Automation Tools Blueprint
+# QA Automation Tools
 
-A QA automation system with AI-powered features for testing and monitoring healthcare web applications (SUT).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/ardihikaru/qa-automation-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/ardihikaru/qa-automation-tools/actions/workflows/ci.yml)
+![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8?logo=go)
+![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?logo=playwright)
+
+**An AI-assisted QA automation platform for web applications.** Playwright explores and tests the
+*system under test* (SUT). A Go API stores test flows, issues, skills and run history in MySQL, and
+asks an LLM (through an OpenAI-style gateway) to write and repair Playwright specs. A React dashboard
+shows everything and lets humans approve what the AI proposes.
+
+> **SUT** in this repo means "the web application under test". The reference deployment tests a
+> hospital information system. Nothing in the code is tied to a specific product: products, repos and
+> staging URLs are configured as data.
+
+## Features
+
+- **Case automation.** Pick a manual test case, and the AI writes a Playwright spec for it (`case_create`).
+  The spec runs in an isolated executor (`case_run`), and a pull request opens on your automation repo
+  after a human approves it.
+- **Isolated Playwright executor.** A small Node service (systemd user unit, cgroup-capped RAM/CPU)
+  is the *only* place browsers run. It allows staging targets only, runs one browser at a time, and the backend polls it.
+- **Learning loop.** Failures become findings. Repeated findings become policy proposals, and
+  approved policies feed back into later spec generation.
+- **Product knowledge sync.** Parses a structured test catalog (parts → modules → features → epics →
+  stories → cases) from your automation repo, and exports module checklists (CSV / XLSX / PDF).
+- **Navigation map.** An inventory of API routes and web pages, with test coverage per route.
+- **Dashboard.** Cookie-session auth with roles, job live logs, approvals, cost tracking for every AI
+  call, and issue tracking.
+- **Optional integrations.** A task/approval inbox (GAOS) and run telemetry reporting.
+
+## Architecture at a glance
+
+```
+ Browser ──TLS──▶ edge nginx ──▶ dashboard (React + nginx) ──/api──▶ ai-backend (Go)
+                                                                     │   │    │
+                                    MySQL 8 (qa_automation) ◀────────┘   │    └──▶ LLM gateway (ai-manager)
+                                                                         ▼
+                                              playwright-executor (Node, systemd) ──Chromium──▶ SUT staging
+```
+
+The full topology of the reference deployment is in [System Overview](#system-overview). Host names
+there are generic roles (`edge-host`, `app-host`, `db-host`) and IPs are documentation placeholders.
+
+## Quick start (local)
+
+```bash
+git clone https://github.com/ardihikaru/qa-automation-tools.git && cd qa-automation-tools
+cp ai-backend/.env.example ai-backend/.env      # set DB_* (MySQL 8) and AI_MANAGER_*
+cd ai-backend && go run -mod=mod ./cmd/databasemigration && go run -mod=mod ./cmd/server
+# second terminal
+cd dashboard && cp .env.example .env && npm install && npm run dev
+```
+
+Running Playwright jobs also needs [playwright-executor](playwright-executor/README.md). See
+[Running Backend Locally](#running-backend-locally) and [Environment Variables](#environment-variables)
+for details.
+
+## Contributing, security, license
+
+- Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+- To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a public issue for it.
+- [MIT](LICENSE) © ardihikaru.
+
+> **Maintainers:** the real host names, domains and infra notes of the reference deployment are kept
+> out of this public repo, in a gitignored `.private/` folder plus `CLAUDE.local.md`. AI agents
+> read those first when they exist. Copy them to every new VM or workstation that gets a checkout
+> (see [CONTRIBUTING.md](CONTRIBUTING.md#private-maintainer-overlay)).
+
+---
+
+# System contract
 
 ## Table of Contents
 
@@ -90,7 +162,6 @@ A QA automation system with AI-powered features for testing and monitoring healt
 - `this-qa-automation-system-playwright/`: [this-qa-automation-system-playwright/README.md](./this-qa-automation-system-playwright/README.md). Playwright API and dashboard regression suite for this repository.
 - `lib/`: [lib/README.md](./lib/README.md). Shared TypeScript `config.yaml` loader (`lib/config.ts`); currently has no importer.
 - `deploy/qa-tool/`: [deploy/qa-tool/README.md](./deploy/qa-tool/README.md). **Production** Docker Compose stack on app-host, behind the edge-host nginx edge.
-- `product-documentations/`: functional documentation source for SUT modules (reference only; the backend no longer serves it).
 - Root `*.md` files: operational docs, plans, tutorials, assessments and architecture notes.
 
 ## Global Invariants
@@ -558,7 +629,6 @@ qa-automation-tools/
 ├── lib/                      # Shared TS config loader
 ├── playwright-executor/      # THE Playwright runtime (HTTP service, mise node 24)
 ├── this-qa-automation-system-playwright/ # Self-verification tests (API + dashboard)
-├── product-documentations/   # Source docs for product modules
 ├── config.yaml               # Main configuration (gitignored; see config.yaml.template)
 ├── docker-compose.yml        # Local Docker compose
 └── README.md                 # This file
@@ -580,4 +650,4 @@ qa-automation-tools/
 
 ## License
 
-Copyright © 2025 ardihikaru. Licensed under the MIT License.
+[MIT](LICENSE). Copyright © 2025 ardihikaru.

@@ -12,16 +12,16 @@ import (
 
 // TestResult represents a single test result
 type TestResult struct {
-	Model     string `json:"model"`
-	BaseURL   string `json:"base_url"`
-	Endpoint  string `json:"endpoint"`
-	Success   bool   `json:"success"`
-	Status    int    `json:"status"`
-	Response  string `json:"response,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Tokens    int    `json:"tokens,omitempty"`
-	Duration  int64  `json:"duration_ms"`
-	Retry     int    `json:"retry_count"`
+	Model    string `json:"model"`
+	BaseURL  string `json:"base_url"`
+	Endpoint string `json:"endpoint"`
+	Success  bool   `json:"success"`
+	Status   int    `json:"status"`
+	Response string `json:"response,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Tokens   int    `json:"tokens,omitempty"`
+	Duration int64  `json:"duration_ms"`
+	Retry    int    `json:"retry_count"`
 }
 
 // TestConfig holds test configuration
@@ -143,8 +143,8 @@ func main() {
 
 	// Write results to JSON
 	output := map[string]interface{}{
-		"config":        config,
-		"results":       results,
+		"config":  config,
+		"results": results,
 		"summary": map[string]interface{}{
 			"total_tests":   len(results),
 			"successful":    successCount,

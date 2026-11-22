@@ -48,7 +48,7 @@ docker image prune -f >/dev/null
 
 # shellcheck disable=SC1090
 source <(grep -E '^QATOOL_(BIND_IP|PORT)=' "$HERE/.env.prod")
-BASE="http://${QATOOL_BIND_IP:-10.8.0.9}:${QATOOL_PORT:-8140}"
+BASE="http://${QATOOL_BIND_IP:-127.0.0.1}:${QATOOL_PORT:-8140}"
 
 # Health gate: liveness is not enough. The DB must be connected (otherwise cookie auth
 # is DISABLED and the API is open) and an anonymous /api call must be rejected.
