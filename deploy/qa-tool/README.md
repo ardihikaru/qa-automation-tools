@@ -38,6 +38,19 @@ Everything private travels over the WireGuard mesh `10.8.0.0/24` (hub: `edge-hos
 - Writes to MySQL `qa_automation` on db-host.
 - AI calls are billed and logged by ai-manager (`caller: qa-automation`), and are visible in ai-manager `/admin/usage/recent`.
 
+## Multiple instances
+
+One checkout can run several independent instances, each with its own env file, database, port and domain:
+
+```bash
+QATOOL_INSTANCE=personal deploy/qa-tool/deploy.sh   # uses .env.personal
+```
+
+- `QATOOL_INSTANCE=<name>` selects `.env.<name>`, the compose project `qa-automation-<name>`, the images `:<name>` and the log `deploys.<name>.log`. Unset means the default instance (`.env.prod`, `qa-automation`, `:latest`).
+- Each instance needs its own `DB_NAME`/`DB_USER`, `QATOOL_PORT`, `DASHBOARD_ORIGIN`, `PLAYWRIGHT_EXECUTOR_TOKEN` (listed in the executor's `EXECUTOR_EXTRA_TOKENS`) and GAOS settings.
+- The instances share the one playwright-executor (runs are queued one at a time). An extra instance keeps its repo pool *inside* the executor's pool root: set `QATOOL_REPOS_DIR=../../repos/<name>` and `REPO_POOL_HOST_DIR=<checkout>/repos/<name>`.
+- Each instance gets its own edge vhost and certificate, proxying to its port.
+
 ## Verification
 - Deploy: `ssh app-host '~/devel/projects/qa-automation-tools/deploy/qa-tool/deploy.sh'`
 - Health from WG: `curl -s http://10.8.0.9:8140/health` should show `database: connected`, `ai_provider: ai-manager`, `ai_upstream: claude-v3`, `ai: ok`, `executor: ok`.

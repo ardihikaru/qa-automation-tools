@@ -18,7 +18,7 @@ dashboard ──POST case run──▶ ai-backend ──POST /v1/runs──▶ p
 
 ### HTTP API
 
-Every route except `/health` requires `Authorization: Bearer $EXECUTOR_TOKEN`, compared in constant time.
+Every route except `/health` requires `Authorization: Bearer <token>`, where the token is `EXECUTOR_TOKEN` or one of `EXECUTOR_EXTRA_TOKENS`, compared in constant time.
 
 | Route | Purpose |
 |---|---|
@@ -54,6 +54,7 @@ Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): wh
 |---|---|
 | `EXECUTOR_BIND`, `EXECUTOR_PORT` | Listen address. Production uses `10.8.0.9:8141`. |
 | `EXECUTOR_TOKEN` | Bearer token, at least 32 chars. Also set in the backend's `PLAYWRIGHT_EXECUTOR_TOKEN`. |
+| `EXECUTOR_EXTRA_TOKENS` | Optional comma list of more tokens (each at least 32 chars), so several qa-tool instances can share one executor and be revoked separately. |
 | `TARGET_STAGING_URL` | Optional. Only seeds the default `EXECUTOR_ALLOWED_HOSTS` (its host). |
 | `RUN_TIMEOUT_SECONDS` | Per-run limit (900). |
 | `MAX_QUEUE` | Maximum waiting runs (10). |

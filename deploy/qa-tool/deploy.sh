@@ -4,16 +4,29 @@
 #   deploy.sh <sha|tag>    # ROLLBACK / pin: deploy exactly that commit (detached HEAD)
 #   deploy.sh --branch b   # roll forward: return to branch b, pull, deploy
 #   NO_PULL=1 deploy.sh    # deploy the checked-out branch as-is (code shipped via git bundle)
+#   QATOOL_INSTANCE=<name> deploy.sh ...   # a second, independent instance from the same checkout:
+#       env file .env.<name>, compose project qa-automation-<name>, images :<name>,
+#       log deploys.<name>.log. Unset = the default instance (.env.prod, qa-automation, :latest).
 # Every deploy is appended to deploy/qa-tool/deploys.log (find the previous sha there).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-COMPOSE=(docker compose -f "$HERE/docker-compose.prod.yml" --env-file "$HERE/.env.prod")
-LOG="$HERE/deploys.log"
+INSTANCE="${QATOOL_INSTANCE:-}"
+if [[ -n "$INSTANCE" ]]; then
+  [[ "$INSTANCE" =~ ^[a-z][a-z0-9-]{0,20}$ ]] || { echo "QATOOL_INSTANCE must match ^[a-z][a-z0-9-]{0,20}$"; exit 1; }
+  ENV_FILE="$HERE/.env.$INSTANCE"
+  export QATOOL_ENV_FILE=".env.$INSTANCE" QATOOL_IMAGE_TAG="$INSTANCE"
+  COMPOSE=(docker compose -p "qa-automation-$INSTANCE" -f "$HERE/docker-compose.prod.yml" --env-file "$ENV_FILE")
+  LOG="$HERE/deploys.$INSTANCE.log"
+else
+  ENV_FILE="$HERE/.env.prod"
+  COMPOSE=(docker compose -f "$HERE/docker-compose.prod.yml" --env-file "$ENV_FILE")
+  LOG="$HERE/deploys.log"
+fi
 
-[[ -f "$HERE/.env.prod" ]] || { echo "missing $HERE/.env.prod (copy .env.prod.example)"; exit 1; }
-[[ "$(stat -c %a "$HERE/.env.prod")" == "600" ]] || chmod 600 "$HERE/.env.prod"
+[[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE (copy .env.prod.example)"; exit 1; }
+[[ "$(stat -c %a "$ENV_FILE")" == "600" ]] || chmod 600 "$ENV_FILE"
 
 cd "$REPO"
 case "${1:-}" in
@@ -47,7 +60,7 @@ echo "deploying $SHA ($REF)"
 docker image prune -f >/dev/null
 
 # shellcheck disable=SC1090
-source <(grep -E '^QATOOL_(BIND_IP|PORT)=' "$HERE/.env.prod")
+source <(grep -E '^QATOOL_(BIND_IP|PORT)=' "$ENV_FILE")
 BASE="http://${QATOOL_BIND_IP:-127.0.0.1}:${QATOOL_PORT:-8140}"
 
 # Health gate: liveness is not enough. The DB must be connected (otherwise cookie auth
