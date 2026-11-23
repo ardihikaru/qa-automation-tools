@@ -241,3 +241,17 @@ func TestCaseRunJobDispatch(t *testing.T) {
 		t.Errorf("summary %+v", rec.Result["summary"])
 	}
 }
+
+func TestExecutorEnvFileName(t *testing.T) {
+	if got := executorEnvFile("", 7); got != "automation-7.env" {
+		t.Errorf("default: %q", got)
+	}
+	if got := executorEnvFile("personal", 7); got != "automation-personal-7.env" {
+		t.Errorf("personal: %q", got)
+	}
+	r := NewRouter(nil, nil, nil, nil)
+	r.SetExecutorEnvPrefix("personal")
+	if got := executorEnvFile(r.executorEnvPrefix, 1); got != "automation-personal-1.env" {
+		t.Errorf("router: %q", got)
+	}
+}

@@ -17,7 +17,7 @@ export interface BrainTownConfig {
   org: string;
   /** Default product key when the env file has no entry in `products`. */
   product: string;
-  /** automation-<id>.env id -> Brain Town product key. */
+  /** automation-<id>.env id -> Brain Town product key. An instance with EXECUTOR_ENV_PREFIX keys by `<prefix>-<id>`. */
   products: Record<string, string>;
 }
 

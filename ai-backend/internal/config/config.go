@@ -145,6 +145,20 @@ type ExecutorConfig struct {
 	URL            string // PLAYWRIGHT_EXECUTOR_URL, e.g. http://10.8.0.9:8141
 	Token          string // PLAYWRIGHT_EXECUTOR_TOKEN (shared bearer secret)
 	TimeoutMinutes int    // PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES: max wait per job, incl. queueing
+	// EnvPrefix is EXECUTOR_ENV_PREFIX: instance prefix of the executor env file name. Empty gives
+	// automation-<productId>.env; `personal` gives automation-personal-<productId>.env. Needed when
+	// several instances share one executor (product ids collide across their databases).
+	EnvPrefix string
+}
+
+var executorEnvPrefixRe = regexp.MustCompile(`^[a-z][a-z0-9-]{0,20}$`)
+
+// Check returns nil when EnvPrefix is empty or matches ^[a-z][a-z0-9-]{0,20}$.
+func (c ExecutorConfig) Check() error {
+	if c.EnvPrefix != "" && !executorEnvPrefixRe.MatchString(c.EnvPrefix) {
+		return fmt.Errorf("EXECUTOR_ENV_PREFIX must be empty or match ^[a-z][a-z0-9-]{0,20}$")
+	}
+	return nil
 }
 
 // ProductsConfig configures the products repo pool. Env only.
@@ -432,6 +446,7 @@ func LoadConfig() *Config {
 				URL:            getEnvString("PLAYWRIGHT_EXECUTOR_URL", ""),
 				Token:          getEnvString("PLAYWRIGHT_EXECUTOR_TOKEN", ""),
 				TimeoutMinutes: getEnvInt("PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES", 30),
+				EnvPrefix:      strings.TrimSpace(getEnvString("EXECUTOR_ENV_PREFIX", "")),
 			},
 		},
 		Staging: StagingConfig{

@@ -46,6 +46,7 @@ The result is cached in a package-level singleton. Consumers include
 | `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (`case_run` jobs fail). Prod: `http://10.8.0.9:8141` |
 | `PLAYWRIGHT_EXECUTOR_TOKEN` | `Backend.Executor.Token` | empty (secret) |
 | `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |
+| `EXECUTOR_ENV_PREFIX` | `Backend.Executor.EnvPrefix` | empty. Instance prefix of the executor env file: empty gives `automation-<productId>.env`, `personal` gives `automation-personal-<productId>.env`. Must match `^[a-z][a-z0-9-]{0,20}$` (the server refuses to start otherwise). Set it on every instance that shares an executor with another |
 | `GAOS_API_URL` | `Backend.GAOS.APIURL` | empty = GAOS integration off. https, or http only to a loopback / `10.8.0.0/24` IP literal; no userinfo, query or fragment (validated by `gaossync.ValidateConfig`) |
 | `GAOS_API_TOKEN` | `Backend.GAOS.APIToken` | empty (secret, never logged). Starts with `gaos_`, at least 37 characters |
 | `REPO_POOL_DIR` | `Backend.Products.PoolDir` | empty (clone/verify disabled). Prod: `/data/repos` |

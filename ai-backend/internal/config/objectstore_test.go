@@ -59,3 +59,16 @@ func TestObjectStoreConfigCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestExecutorConfigCheck(t *testing.T) {
+	for _, ok := range []string{"", "personal", "a", "team-2", "abcdefghijklmnopqrstu"} {
+		if err := (ExecutorConfig{EnvPrefix: ok}).Check(); err != nil {
+			t.Errorf("prefix %q should be valid: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"Personal", "1abc", "-a", "a_b", "a b", "a/b", "../x", "abcdefghijklmnopqrstuv", "a.env"} {
+		if err := (ExecutorConfig{EnvPrefix: bad}).Check(); err == nil {
+			t.Errorf("prefix %q should be rejected", bad)
+		}
+	}
+}
