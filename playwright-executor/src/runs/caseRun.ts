@@ -60,6 +60,8 @@ export interface CaseRunContext {
   signal: AbortSignal;
   runId: string;
   emit: EmitEvent;
+  /** qa-tool instance that submitted the run ('' = default); picks the Brain Town config. */
+  instance?: string;
 }
 
 interface ProcResult {
@@ -214,7 +216,8 @@ export async function caseRun(
     if (e instanceof CaseError) emit('error', 'validate', e.message);
     throw e;
   }
-  const bt = cfg.brainTown && cfg.brainTown.reporter ? cfg.brainTown : undefined;
+  const btCfg = cfg.brainTownFor?.(ctx.instance ?? '');
+  const bt = btCfg && btCfg.reporter ? btCfg : undefined;
   const secrets = secretValues(envVars).concat(bt && bt.token.length >= 4 ? [bt.token] : []);
   emit('info', 'validate', `case ${params.case_code}${params.repair !== undefined ? ` (repair attempt ${params.repair})` : ''}: ${params.spec_paths.length} spec(s), env ${params.env_file}`);
 

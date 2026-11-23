@@ -23,9 +23,14 @@ export interface BrainTownConfig {
 
 type Env = Record<string, string | undefined>;
 
-export function resolveBrainTownReporter(env: Env, file: string = BRAIN_TOWN_REPORTER_PATH): string {
+/** Env var name for an instance: '' keeps the base name, `personal` -> `BRAIN_TOWN_URL__PERSONAL`. */
+export function btVar(base: string, instance: string): string {
+  return instance ? `${base}__${instance.toUpperCase().replace(/-/g, '_')}` : base;
+}
+
+export function resolveBrainTownReporter(env: Env, file: string = BRAIN_TOWN_REPORTER_PATH, instance = ''): string {
   if (env.EXECUTOR_BRAIN_TOWN_REPORTER === '0') return '';
-  if (!(env.BRAIN_TOWN_URL ?? '').trim()) return '';
+  if (!(env[btVar('BRAIN_TOWN_URL', instance)] ?? '').trim()) return '';
   // The path goes into a comma-separated --reporter list.
   if (file.includes(',')) return '';
   try {
@@ -48,14 +53,19 @@ export function parseProductMap(raw: string | undefined): Record<string, string>
   return out;
 }
 
-export function loadBrainTownConfig(env: Env, file: string = BRAIN_TOWN_REPORTER_PATH): BrainTownConfig {
+/**
+ * One instance's config. '' is the default instance (unsuffixed BRAIN_TOWN_* vars); a named instance
+ * reads only its own BRAIN_TOWN_*__<NAME> vars and never falls back to the default's URL or token.
+ */
+export function loadBrainTownConfig(env: Env, file: string = BRAIN_TOWN_REPORTER_PATH, instance = ''): BrainTownConfig {
+  const v = (base: string) => env[btVar(base, instance)];
   return {
-    reporter: resolveBrainTownReporter(env, file),
-    url: (env.BRAIN_TOWN_URL ?? '').trim(),
-    token: (env.BRAIN_TOWN_TOKEN ?? '').trim(),
-    org: (env.BRAIN_TOWN_ORG ?? 'example-org').trim(),
-    product: (env.BRAIN_TOWN_PRODUCT ?? '').trim(),
-    products: parseProductMap(env.BRAIN_TOWN_PRODUCTS),
+    reporter: resolveBrainTownReporter(env, file, instance),
+    url: (v('BRAIN_TOWN_URL') ?? '').trim(),
+    token: (v('BRAIN_TOWN_TOKEN') ?? '').trim(),
+    org: (v('BRAIN_TOWN_ORG') ?? 'example-org').trim(),
+    product: (v('BRAIN_TOWN_PRODUCT') ?? '').trim(),
+    products: parseProductMap(v('BRAIN_TOWN_PRODUCTS')),
   };
 }
 

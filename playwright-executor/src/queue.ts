@@ -27,7 +27,7 @@ export class RunQueue {
   constructor(private handler: RunHandler, private opts: QueueOptions) {}
 
   /** Returns the queued record, or null when the queue is full or stopped. */
-  submit(req: RunRequest): RunRecord | null {
+  submit(req: RunRequest, instance = ''): RunRecord | null {
     if (this.stopped) return null;
     const waiting = this.pending.length;
     if (this.active && waiting >= this.opts.maxQueue) return null;
@@ -37,6 +37,7 @@ export class RunQueue {
       job_id: req.job_id,
       type: req.type,
       params: req.params,
+      instance,
       status: 'queued',
       events: [],
       created_at: new Date().toISOString(),

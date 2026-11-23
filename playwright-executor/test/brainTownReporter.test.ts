@@ -9,7 +9,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { BRAIN_TOWN_REPORTER_PATH, loadBrainTownConfig, parseProductMap, productFor, resolveBrainTownReporter } from '../src/brainTownReporter';
+import { BRAIN_TOWN_REPORTER_PATH, btVar, loadBrainTownConfig, parseProductMap, productFor, resolveBrainTownReporter } from '../src/brainTownReporter';
 
 test('resolveBrainTownReporter: needs BRAIN_TOWN_URL, honours the off flag, bad files are off', () => {
   assert.ok(fs.existsSync(BRAIN_TOWN_REPORTER_PATH));
@@ -30,6 +30,27 @@ test('product mapping: map entry, default, then product-<id>', () => {
   assert.equal(productFor(cfg, 'automation-1.env'), 'samplereport');
   assert.equal(productFor(cfg, 'automation-7.env'), 'dflt');
   assert.equal(productFor({ ...cfg, product: '' }, 'automation-7.env'), 'product-7');
+});
+
+test('per-instance vars: NAME upper-cased, - becomes _, named instance never uses the default', () => {
+  assert.equal(btVar('BRAIN_TOWN_URL', ''), 'BRAIN_TOWN_URL');
+  assert.equal(btVar('BRAIN_TOWN_URL', 'personal'), 'BRAIN_TOWN_URL__PERSONAL');
+  assert.equal(btVar('BRAIN_TOWN_TOKEN', 'my-site'), 'BRAIN_TOWN_TOKEN__MY_SITE');
+  const env = {
+    BRAIN_TOWN_URL: 'http://x/default', BRAIN_TOWN_TOKEN: 'bt_live_d', BRAIN_TOWN_ORG: 'dflt-org', BRAIN_TOWN_PRODUCT: 'dp',
+    BRAIN_TOWN_URL__MY_SITE: 'http://x/site', BRAIN_TOWN_TOKEN__MY_SITE: ' bt_live_s ', BRAIN_TOWN_PRODUCT__MY_SITE: 'sp', BRAIN_TOWN_PRODUCTS__MY_SITE: '2=other',
+  };
+  const site = loadBrainTownConfig(env, BRAIN_TOWN_REPORTER_PATH, 'my-site');
+  assert.deepEqual([site.url, site.token, site.org, site.product, site.products, site.reporter], ['http://x/site', 'bt_live_s', 'example-org', 'sp', { 2: 'other' }, BRAIN_TOWN_REPORTER_PATH]);
+  assert.equal(productFor(site, 'automation-2.env'), 'other');
+  // Default unchanged.
+  const d = loadBrainTownConfig(env);
+  assert.deepEqual([d.url, d.token, d.org, d.product], ['http://x/default', 'bt_live_d', 'dflt-org', 'dp']);
+  // A named instance without its own URL is off, even with a default URL, token and kill switch unset.
+  const none = loadBrainTownConfig(env, BRAIN_TOWN_REPORTER_PATH, 'personal');
+  assert.deepEqual([none.reporter, none.url, none.token, none.product], ['', '', '', '']);
+  assert.equal(resolveBrainTownReporter(env, BRAIN_TOWN_REPORTER_PATH, 'personal'), '');
+  assert.equal(resolveBrainTownReporter({ ...env, EXECUTOR_BRAIN_TOWN_REPORTER: '0' }, BRAIN_TOWN_REPORTER_PATH, 'my-site'), '');
 });
 
 interface Ev { id: string; type: string; run: string; product?: string; org?: string; data: Record<string, unknown> }
