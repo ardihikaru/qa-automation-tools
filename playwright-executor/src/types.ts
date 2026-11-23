@@ -28,6 +28,8 @@ export interface RunRecord {
   job_id: string;
   type: RunType;
   params: CaseRunParams;
+  /** Name of the qa-tool instance whose token submitted the run ('' = default). Never the token. */
+  instance?: string;
   status: RunStatus;
   /** Ring of the last {@link EVENT_RING} events. GET ?since=n returns only n > since. */
   events: RunEvent[];

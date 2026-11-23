@@ -366,3 +366,39 @@ test('case_run through the queue records events and result', async () => {
   assert.ok(rec.events.some((e) => e.step === 'run' && e.message === 'hello'));
   assert.equal((rec.result as { exit_code: number }).exit_code, 0);
 });
+
+test('caseRun: each instance reports to its own Brain Town and masks only its own token', async () => {
+  const fx = fixture();
+  fs.mkdirSync(path.join(fx.repo, 'node_modules'));
+  const { createHash } = await import('node:crypto');
+  fs.writeFileSync(path.join(fx.repo, 'package-lock.json'), '{}');
+  const stamp = createHash('sha256').update(fs.readFileSync(path.join(fx.repo, 'package-lock.json'))).digest('hex');
+  fs.writeFileSync(path.join(fx.repo, 'node_modules/.qa-lock'), stamp);
+  fs.writeFileSync(path.join(fx.repo, 'node_modules/.qa-browsers'), stamp);
+  const mk = (url: string, token: string, org: string) => ({ reporter: '/r/brain-town-reporter.cjs', url, token, org, product: 'p', products: {} });
+  const cfg = {
+    ...fx.cfg,
+    brainTownFor: (i: string) => (i === 'personal' ? mk('http://bt/personal', 'bt_live_personal', 'ardihikaru') : i === '' ? mk('http://bt/default', 'bt_live_default', 'work') : { ...mk('', '', 'x'), reporter: '' }),
+  } as ExecutorConfig;
+  const run = async (instance: string | undefined) => {
+    const calls: Call[] = [];
+    const events: string[] = [];
+    const deps = fakeDeps(fx, (call, c) => {
+      if (call.cmd === 'npx') c.out.write('tokens bt_live_personal bt_live_default\n');
+      return 0;
+    }, calls);
+    await caseRun({ cfg, signal: new AbortController().signal, runId: 'r', emit: (_l, _s, m) => events.push(m), instance }, params(fx), deps);
+    const pw = calls.find((c) => c.cmd === 'npx' && c.args[0] === 'playwright' && c.args[1] === 'test')!;
+    return { env: pw.opts.env, args: pw.args, events };
+  };
+  const personal = await run('personal');
+  assert.deepEqual([personal.env.BRAIN_TOWN_URL, personal.env.BRAIN_TOWN_TOKEN, personal.env.BRAIN_TOWN_ORG], ['http://bt/personal', 'bt_live_personal', 'ardihikaru']);
+  assert.ok(personal.args.some((a) => a.includes('/r/brain-town-reporter.cjs')));
+  assert.ok(!personal.events.join('\n').includes('bt_live_personal'));
+  const dflt = await run(undefined);
+  assert.deepEqual([dflt.env.BRAIN_TOWN_URL, dflt.env.BRAIN_TOWN_TOKEN, dflt.env.BRAIN_TOWN_ORG], ['http://bt/default', 'bt_live_default', 'work']);
+  // An instance with no Brain Town config: reporter not added, no BRAIN_TOWN_* in the child env.
+  const none = await run('other');
+  assert.equal(none.env.BRAIN_TOWN_URL, undefined);
+  assert.ok(!none.args.some((a) => a.includes('brain-town-reporter')));
+});

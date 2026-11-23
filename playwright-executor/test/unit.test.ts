@@ -112,13 +112,15 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     port: 0,
     token: TOKEN,
     tokens: [TOKEN, EXTRA],
+    tokenInstances: { [EXTRA]: 'personal' },
     runTimeoutMs: 1000,
     maxQueue: 1,
     repoPool: pool,
     envDir,
     allowedHosts: ['staging.invalid'],
   };
-  const q = new RunQueue(async () => ({ done: true }), { maxQueue: 1, timeoutMs: 1000, ttlMs: 60_000 });
+  const seen: Array<string | undefined> = [];
+  const q = new RunQueue(async (run) => (seen.push(run.instance), { done: true }), { maxQueue: 1, timeoutMs: 1000, ttlMs: 60_000 });
   const server = createServer(cfg, q);
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -147,6 +149,20 @@ test('HTTP API: health is public, runs need the bearer token', async () => {
     assert.equal((await fetch(`${base}/v1/runs/run-missing`, { headers: auth })).status, 404);
     // A second instance's token (EXECUTOR_EXTRA_TOKENS) is accepted too.
     assert.equal((await fetch(`${base}/v1/runs/${id}`, { headers: { Authorization: `Bearer ${EXTRA}` } })).status, 200);
+    // The run carries the instance of the token that submitted it (never the token itself).
+    assert.equal(run!.instance, '');
+    const second = await fetch(`${base}/v1/runs`, { method: 'POST', headers: { ...auth, Authorization: `Bearer ${EXTRA}` }, body: JSON.stringify({ type: 'case_run', job_id: 'j2', params: caseParams }) });
+    assert.equal(second.status, 202);
+    const { id: id2 } = await second.json();
+    let run2: RunRecord | undefined;
+    for (let i = 0; i < 100; i++) {
+      run2 = await (await fetch(`${base}/v1/runs/${id2}`, { headers: auth })).json();
+      if (run2!.status === 'completed') break;
+      await sleep(10);
+    }
+    assert.equal(run2!.instance, 'personal');
+    assert.deepEqual(seen, ['', 'personal']);
+    assert.ok(!JSON.stringify(run2).includes(EXTRA) && !JSON.stringify(run2).includes(TOKEN));
   } finally {
     server.close();
     fs.rmSync(root, { recursive: true, force: true });
@@ -158,4 +174,53 @@ test('loadConfig: EXECUTOR_EXTRA_TOKENS adds tokens and rejects short ones', () 
   assert.deepEqual(loadConfig(base).tokens, [TOKEN]);
   assert.deepEqual(loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: ` ${EXTRA} ,, ${TOKEN}` }).tokens, [TOKEN, EXTRA]);
   assert.throws(() => loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: 'short' }), /EXECUTOR_EXTRA_TOKENS/);
+});
+
+test('loadConfig: EXECUTOR_EXTRA_TOKENS accepts name:token and bare tokens', () => {
+  const base = { EXECUTOR_TOKEN: TOKEN, HOME: '/home/x' };
+  const named = loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: `Personal:${EXTRA}` });
+  assert.deepEqual(named.tokens, [TOKEN, EXTRA]);
+  assert.deepEqual(named.tokenInstances, { [EXTRA]: 'personal' });
+  // A bare token is the default instance (no mapping).
+  assert.deepEqual(loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: EXTRA }).tokenInstances, {});
+  // The token part carries the length check, not the name.
+  assert.throws(() => loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: 'personal:short' }), /EXECUTOR_EXTRA_TOKENS/);
+  for (const bad of ['1abc', '-x', 'a b', 'a'.repeat(33), '']) {
+    assert.throws(() => loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: `${bad}:${EXTRA}` }), /instance names/, bad);
+  }
+  // EXECUTOR_TOKEN stays the default even if repeated under a name.
+  const dup = loadConfig({ ...base, EXECUTOR_EXTRA_TOKENS: `personal:${TOKEN}` });
+  assert.deepEqual(dup.tokens, [TOKEN]);
+  assert.deepEqual(dup.tokenInstances, {});
+});
+
+test('loadConfig: Brain Town config is per instance and never falls back to the default', () => {
+  const base = {
+    EXECUTOR_TOKEN: TOKEN,
+    HOME: '/home/x',
+    EXECUTOR_EXTRA_TOKENS: `personal:${EXTRA},work-2:${'z'.repeat(40)}`,
+    BRAIN_TOWN_URL: 'http://bt/default',
+    BRAIN_TOWN_TOKEN: 'bt_live_default',
+    BRAIN_TOWN_URL__PERSONAL: 'http://bt/personal',
+    BRAIN_TOWN_TOKEN__PERSONAL: 'bt_live_personal',
+    BRAIN_TOWN_ORG__PERSONAL: 'ardihikaru',
+    BRAIN_TOWN_PRODUCTS__PERSONAL: '1=site',
+  };
+  const cfg = loadConfig(base);
+  assert.equal(cfg.brainTownFor!('').url, 'http://bt/default');
+  assert.equal(cfg.brainTownFor!('').token, 'bt_live_default');
+  const p = cfg.brainTownFor!('personal');
+  assert.deepEqual([p.url, p.token, p.org, p.products], ['http://bt/personal', 'bt_live_personal', 'ardihikaru', { 1: 'site' }]);
+  // work-2 has no URL: off, and nothing of the default (or personal) leaks in.
+  const w = cfg.brainTownFor!('work-2');
+  assert.deepEqual([w.reporter, w.url, w.token], ['', '', '']);
+  // Only a default URL: a named instance stays off.
+  const only = loadConfig({ EXECUTOR_TOKEN: TOKEN, HOME: '/h', EXECUTOR_EXTRA_TOKENS: `personal:${EXTRA}`, BRAIN_TOWN_URL: 'http://bt/default' });
+  assert.equal(only.brainTownFor!('personal').url, '');
+  assert.equal(only.brainTownFor!('personal').reporter, '');
+  assert.notEqual(only.brainTownFor!('').reporter, '');
+  // The kill switch disables every instance.
+  const off = loadConfig({ ...base, EXECUTOR_BRAIN_TOWN_REPORTER: '0' });
+  assert.equal(off.brainTownFor!('').reporter, '');
+  assert.equal(off.brainTownFor!('personal').reporter, '');
 });

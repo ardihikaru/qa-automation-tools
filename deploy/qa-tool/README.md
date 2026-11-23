@@ -47,7 +47,7 @@ QATOOL_INSTANCE=personal deploy/qa-tool/deploy.sh   # uses .env.personal
 ```
 
 - `QATOOL_INSTANCE=<name>` selects `.env.<name>`, the compose project `qa-automation-<name>`, the images `:<name>` and the log `deploys.<name>.log`. Unset means the default instance (`.env.prod`, `qa-automation`, `:latest`).
-- Each instance needs its own `DB_NAME`/`DB_USER`, `QATOOL_PORT`, `DASHBOARD_ORIGIN`, `PLAYWRIGHT_EXECUTOR_TOKEN` (listed in the executor's `EXECUTOR_EXTRA_TOKENS`) and GAOS settings.
+- Each instance needs its own `DB_NAME`/`DB_USER`, `QATOOL_PORT`, `DASHBOARD_ORIGIN`, `PLAYWRIGHT_EXECUTOR_TOKEN` (listed in the executor's `EXECUTOR_EXTRA_TOKENS`, named after the instance: `personal:<token>`; the executor then reads that instance's Brain Town settings from `BRAIN_TOWN_URL__PERSONAL`, `BRAIN_TOWN_TOKEN__PERSONAL`, `BRAIN_TOWN_ORG__PERSONAL`, `BRAIN_TOWN_PRODUCT__PERSONAL` and `BRAIN_TOWN_PRODUCTS__PERSONAL` in its own env file; without a URL that instance does not report) and GAOS settings.
 - The instances share the one playwright-executor (runs are queued one at a time). An extra instance keeps its repo pool *inside* the executor's pool root: set `QATOOL_REPOS_DIR=../../repos/<name>` and `REPO_POOL_HOST_DIR=<checkout>/repos/<name>`.
 - Each instance gets its own edge vhost and certificate, proxying to its port.
 

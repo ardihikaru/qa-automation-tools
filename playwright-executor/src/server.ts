@@ -47,7 +47,7 @@ function cgroupMemory(): { current_mb?: number; max_mb?: number; peak_mb?: numbe
 
 function makeHandler(cfg: ExecutorConfig) {
   // case_run drives child processes in the repo pool, not an executor-owned browser.
-  return (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => caseRun({ cfg, signal, runId: run.id, emit }, run.params);
+  return (run: RunRecord, signal: AbortSignal, emit: EmitEvent) => caseRun({ cfg, signal, runId: run.id, emit, instance: run.instance ?? '' }, run.params);
 }
 
 function send(res: http.ServerResponse, status: number, body: unknown): void {
@@ -99,7 +99,9 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
       }
 
       if (!url.pathname.startsWith('/v1/')) return send(res, 404, { error: 'not found' });
-      if (!cfg.tokens.some((t) => checkBearer(req.headers.authorization, t))) return send(res, 401, { error: 'unauthorized' });
+      const matched = cfg.tokens.find((t) => checkBearer(req.headers.authorization, t));
+      if (matched === undefined) return send(res, 401, { error: 'unauthorized' });
+      const instance = cfg.tokenInstances?.[matched] ?? '';
 
       if (url.pathname === '/v1/runs' && req.method === 'POST') {
         let body: unknown;
@@ -110,9 +112,9 @@ export function createServer(cfg: ExecutorConfig, queue: RunQueue): http.Server 
         }
         const parsed = parseRunRequest(body, { repoPool: cfg.repoPool, envDir: cfg.envDir });
         if (!parsed.ok) return send(res, 400, { error: parsed.error });
-        const run = queue.submit(parsed.value);
+        const run = queue.submit(parsed.value, instance);
         if (!run) return send(res, 429, { error: 'queue full', ...queue.stats() });
-        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, case_code: run.params.case_code });
+        log('run queued', { id: run.id, type: run.type, job_id: run.job_id, case_code: run.params.case_code, instance });
         return send(res, 202, { id: run.id, status: run.status, job_id: run.job_id });
       }
 

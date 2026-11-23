@@ -46,6 +46,8 @@ Navigation (NAVIGATION_MAP.md 3.5): when `reporters/nav-reporter.cjs` exists, lo
 
 Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): when `BRAIN_TOWN_URL` is set, the file loads and `EXECUTOR_BRAIN_TOWN_REPORTER` is not `0`, the reporter is appended to `--reporter`, and the child gets `BRAIN_TOWN_URL`, `BRAIN_TOWN_TOKEN`, `BRAIN_TOWN_ORG` and `BRAIN_TOWN_PRODUCT` (set last, so an env file cannot override them). Per run (one spec file executed once, `run` = `VENDOR_E2E_RUN`) it POSTs `qa.run.started` (`spec`, `steps` read from the spec source), one `qa.step` per top-level `test.step` (`index`, `step`, `status` passed|failed, `duration_ms`) and `qa.run.finished` (`spec`, `passed`, `failed`, `total`, `duration_ms`) with `Authorization: Bearer <token>`. Contract: 2 s timeout per request, errors swallowed, no retries, events sent in order and dropped after the first failure, `onEnd` waits for the queue; titles, statuses and counts only (no error text, page content or screenshots). The product key is `BRAIN_TOWN_PRODUCTS` (`<id>=<key>` for `automation-<id>.env`), else `BRAIN_TOWN_PRODUCT`, else `product-<id>`. Only steps written as `await test.step('name', …)` are reported. The token is masked in events and logs.
 
+Per instance: each qa-tool instance reports to its own Brain Town integration. Name its token in `EXECUTOR_EXTRA_TOKENS` as `<name>:<token>` (for example `personal:<token>`; `EXECUTOR_TOKEN` and bare tokens are the default instance) and set `BRAIN_TOWN_URL__<NAME>`, `BRAIN_TOWN_TOKEN__<NAME>`, `BRAIN_TOWN_ORG__<NAME>`, `BRAIN_TOWN_PRODUCT__<NAME>` and `BRAIN_TOWN_PRODUCTS__<NAME>` (`NAME` upper-cased, `-` becomes `_`). The executor picks the instance from the bearer token of the request that queued the run. A named instance without its own `BRAIN_TOWN_URL__<NAME>` has the reporter off; it never falls back to the default instance's URL or token. `EXECUTOR_BRAIN_TOWN_REPORTER=0` turns off every instance. These values are secrets: they live in the executor's env file on the host (`~/.config/qa-automation/playwright-executor.env`), never in CI or the repo.
+
 ### Configuration (env only, `src/config.ts`)
 
 `.env.example` lists every key:
@@ -54,7 +56,7 @@ Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): wh
 |---|---|
 | `EXECUTOR_BIND`, `EXECUTOR_PORT` | Listen address. Production uses `10.8.0.9:8141`. |
 | `EXECUTOR_TOKEN` | Bearer token, at least 32 chars. Also set in the backend's `PLAYWRIGHT_EXECUTOR_TOKEN`. |
-| `EXECUTOR_EXTRA_TOKENS` | Optional comma list of more tokens (each at least 32 chars), so several qa-tool instances can share one executor and be revoked separately. |
+| `EXECUTOR_EXTRA_TOKENS` | Optional comma list of more tokens (each at least 32 chars), so several qa-tool instances can share one executor and be revoked separately. An entry may be `name:token` (name matches `[a-z][a-z0-9_-]{0,31}`, lower-cased) to name the instance for per-instance Brain Town config; a bare token is the default instance. |
 | `TARGET_STAGING_URL` | Optional. Only seeds the default `EXECUTOR_ALLOWED_HOSTS` (its host). |
 | `RUN_TIMEOUT_SECONDS` | Per-run limit (900). |
 | `MAX_QUEUE` | Maximum waiting runs (10). |
@@ -63,6 +65,7 @@ Brain Town (`reporters/brain-town-reporter.cjs`, `src/brainTownReporter.ts`): wh
 | `EXECUTOR_NAV_REPORTER` | `0` turns the navigation reporter off (default on when the file loads). |
 | `BRAIN_TOWN_URL`, `BRAIN_TOWN_TOKEN` | Brain Town ingest URL and bearer token (secrets, env file only). Unset URL: reporter off. |
 | `BRAIN_TOWN_ORG`, `BRAIN_TOWN_PRODUCTS`, `BRAIN_TOWN_PRODUCT` | Org (default `example-org`) and product key mapping (see above). |
+| `BRAIN_TOWN_*__<NAME>` | The same five variables for the named instance `<NAME>` (see "Per instance" above). |
 | `EXECUTOR_BRAIN_TOWN_REPORTER` | `0` turns the Brain Town reporter off. |
 | `EXECUTOR_ALLOWED_HOSTS` | `case_run`: comma-separated hostnames (`*.suffix` allowed) that the env file's http(s) URL values may point at. Default: the `TARGET_STAGING_URL` host, else none. |
 
