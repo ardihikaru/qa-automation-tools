@@ -29,6 +29,9 @@ test('product mapping: map entry, default, then product-<id>', () => {
   assert.equal(cfg.org, 'example-org');
   assert.equal(productFor(cfg, 'automation-1.env'), 'samplereport');
   assert.equal(productFor(cfg, 'automation-7.env'), 'dflt');
+  // EXECUTOR_ENV_PREFIX=personal: the id is `personal-<n>`.
+  assert.equal(productFor({ ...cfg, products: { 'personal-1': 'site' } }, 'automation-personal-1.env'), 'site');
+  assert.equal(productFor({ ...cfg, product: '' }, 'automation-personal-9.env'), 'product-personal-9');
   assert.equal(productFor({ ...cfg, product: '' }, 'automation-7.env'), 'product-7');
 });
 

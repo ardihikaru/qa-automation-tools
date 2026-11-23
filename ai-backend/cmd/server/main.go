@@ -79,6 +79,10 @@ func main() {
 
 	// Playwright jobs run in playwright-executor (systemd service on app-host).
 	// Without PLAYWRIGHT_EXECUTOR_URL, case_run jobs fail fast (no executor).
+	if err := cfg.Backend.Executor.Check(); err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	router.SetExecutorEnvPrefix(cfg.Backend.Executor.EnvPrefix)
 	if exe := executor.New(executor.Config{URL: cfg.Backend.Executor.URL, Token: cfg.Backend.Executor.Token}); exe != nil {
 		router.SetExecutor(exe, time.Duration(cfg.Backend.Executor.TimeoutMinutes)*time.Minute)
 	}

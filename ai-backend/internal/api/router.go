@@ -37,6 +37,8 @@ type Router struct {
 	// Playwright execution (nil = case_run jobs fail). See jobs_executor.go.
 	executor        *executor.Client
 	executorTimeout time.Duration
+	// executorEnvPrefix names this instance's env files on the shared executor (see executorEnvFile).
+	executorEnvPrefix string
 
 	// Product repo pool (nil = clone/verify disabled). See products.go.
 	repoPool *repopool.Pool

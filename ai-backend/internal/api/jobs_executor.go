@@ -23,6 +23,10 @@ func (r *Router) SetExecutor(c *executor.Client, timeout time.Duration) {
 	r.executorTimeout = timeout
 }
 
+// SetExecutorEnvPrefix sets the instance prefix of the executor env file name (EXECUTOR_ENV_PREFIX,
+// already validated by config.ExecutorConfig.Check). Empty keeps automation-<id>.env.
+func (r *Router) SetExecutorEnvPrefix(prefix string) { r.executorEnvPrefix = prefix }
+
 // FailOrphanedJobs marks jobs left queued/running by a previous backend
 // process as failed: their polling goroutine died with that process.
 func (r *Router) FailOrphanedJobs(ctx context.Context) {

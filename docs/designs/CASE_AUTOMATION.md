@@ -14,7 +14,7 @@ On `/products/{id}/knowledge?tab=test-cases` (and the case page):
 
 1. **Reverse the CASE_RESULTS rejection**, with these answers to its objections:
    * *repo dependencies*: `npm ci` runs once per lockfile hash in the product's automation clone in the repo pool (cached `node_modules`);
-   * *secrets and targets (API, MQ)*: the automation repo's env file lives on app-host at `~/.config/qa-automation/automation-<productId>.env` (mode 600, never printed) and is loaded only into the child process. Only the Playwright projects the case needs are run (`--project` from the spec path: `tests/web/**` → `web-*`, `tests/api/rest/**` → `api-rest`; `mq` is refused);
+   * *secrets and targets (API, MQ)*: the automation repo's env file lives on app-host at `~/.config/qa-automation/automation-<productId>.env` (`automation-<prefix>-<productId>.env` when the backend sets `EXECUTOR_ENV_PREFIX`, for instances sharing one executor; mode 600, never printed) and is loaded only into the child process. Only the Playwright projects the case needs are run (`--project` from the spec path: `tests/web/**` → `web-*`, `tests/api/rest/**` → `api-rest`; `mq` is refused);
    * *2.5 GiB budget*: unchanged. One run at a time (existing queue), the same unit caps; `--workers=1`;
    * *staging only*: the executor refuses a run unless the env file's base URLs are on the staging allow-list (`EXECUTOR_ALLOWED_HOSTS`).
 2. **All LLM calls stay in the backend** (`ai.Service`, claude-v3). The executor never talks to an LLM and never pushes. Orchestration of *create* is a backend state machine (`internal/services/caseauto`) that uses: repopool (git), `ai.Service` (generation), the executor (`case_run`, test execution only) and the approval gate.

@@ -264,7 +264,7 @@ func (r *Router) enqueueCaseAction(ctx context.Context, d *db.DB, in caseEnqueue
 		}
 		payload["spec_paths"] = c.SpecPaths
 		payload["repo_dir"] = hostDir
-		payload["env_file"] = executorEnvFile(pid)
+		payload["env_file"] = executorEnvFile(r.executorEnvPrefix, pid)
 	} else {
 		jobType = "case_create"
 		payload["spec_paths"] = []string{}
@@ -300,7 +300,15 @@ func (r *Router) enqueueCaseAction(ctx context.Context, d *db.DB, in caseEnqueue
 	return caseEnqueue{JobID: job.ID}
 }
 
-func executorEnvFile(pid int) string { return fmt.Sprintf("automation-%d.env", pid) }
+// executorEnvFile is the executor env file for a product: automation-<id>.env, or
+// automation-<prefix>-<id>.env when EXECUTOR_ENV_PREFIX is set, so instances sharing one executor
+// (and one EXECUTOR_ENV_DIR) never load each other's file when product ids collide.
+func executorEnvFile(prefix string, pid int) string {
+	if prefix == "" {
+		return fmt.Sprintf("automation-%d.env", pid)
+	}
+	return fmt.Sprintf("automation-%s-%d.env", prefix, pid)
+}
 
 func (r *Router) listCaseJobs(w http.ResponseWriter, req *http.Request, d *db.DB, pid int, code string) {
 	rows, err := d.Query(req.Context(), `SELECT id, type, status, COALESCE(error, ''), created_at, started_at, completed_at,
@@ -842,7 +850,7 @@ func (e *executorRunner) RunCase(ctx context.Context, req caseauto.RunRequest, e
 	}
 	params := map[string]interface{}{
 		"repo_dir": hostDir, "case_code": req.CaseCode, "spec_paths": []string{req.SpecPath},
-		"env_file": executorEnvFile(e.pid), "repair": req.Repair,
+		"env_file": executorEnvFile(e.r.executorEnvPrefix, e.pid), "repair": req.Repair,
 	}
 	rctx, cancel := context.WithTimeout(ctx, e.r.executorTimeout)
 	defer cancel()
