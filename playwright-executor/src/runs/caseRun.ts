@@ -147,10 +147,10 @@ function lockHash(file: string): string {
   return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
-/** Maps spec paths to Playwright project globs: web -> web-*, api/rest -> api-rest. */
+/** Maps spec paths to Playwright project globs: web -> web-*, api/graphql -> api-graphql, api/rest -> api-rest. */
 export function projectsFor(specs: string[]): string[] {
   const p = new Set<string>();
-  for (const s of specs) p.add(s.startsWith('tests/web/') ? 'web-*' : 'api-rest');
+  for (const s of specs) p.add(s.startsWith('tests/web/') ? 'web-*' : s.startsWith('tests/api/graphql/') ? 'api-graphql' : 'api-rest');
   return [...p];
 }
 
