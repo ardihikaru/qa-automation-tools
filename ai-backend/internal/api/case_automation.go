@@ -59,7 +59,7 @@ func (r *Router) SetCaseAutomation(c CaseAutomationConfig) {
 	r.caseAuto.redact = caseauto.NewRedactor(c.Secrets...)
 }
 
-var specPathPrefixes = []string{"tests/web/", "tests/api/rest/"}
+var specPathPrefixes = []string{"tests/web/", "tests/api/rest/", "tests/api/graphql/"}
 
 // runnableSpec reports whether p is a spec the executor will accept (mq and anything else is refused).
 func runnableSpec(p string) bool {
@@ -248,7 +248,7 @@ func (r *Router) enqueueCaseAction(ctx context.Context, d *db.DB, in caseEnqueue
 	if action == "run" {
 		for _, p := range c.SpecPaths {
 			if !runnableSpec(p) {
-				return refuse(http.StatusConflict, "bad_spec", "the case's spec cannot be run here (only tests/web and tests/api/rest specs are supported)")
+				return refuse(http.StatusConflict, "bad_spec", "the case's spec cannot be run here (only tests/web, tests/api/rest and tests/api/graphql specs are supported)")
 			}
 		}
 		if len(c.SpecPaths) > 5 {

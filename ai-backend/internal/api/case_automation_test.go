@@ -19,14 +19,16 @@ import (
 
 func TestRunnableSpec(t *testing.T) {
 	for p, want := range map[string]bool{
-		"tests/web/patreg/TC-PATREG-020.spec.ts":  true,
-		"tests/api/rest/auth/TC-AUTH-001.spec.ts": true,
-		"tests/mq/queue/TC-MQ-001.spec.ts":        false,
-		"tests/web/../mq/x.spec.ts":               false,
-		"tests/web/x.ts":                          false,
-		"/etc/passwd":                             false,
-		"tests/web//x.spec.ts":                    false,
-		"other/tests/web/x.spec.ts":               false,
+		"tests/web/patreg/TC-PATREG-020.spec.ts":            true,
+		"tests/api/rest/auth/TC-AUTH-001.spec.ts":           true,
+		"tests/api/graphql/sut-backend/encounter/a.spec.ts": true,
+		"tests/api/graphql/../mq/x.spec.ts":                 false,
+		"tests/mq/queue/TC-MQ-001.spec.ts":                  false,
+		"tests/web/../mq/x.spec.ts":                         false,
+		"tests/web/x.ts":                                    false,
+		"/etc/passwd":                                       false,
+		"tests/web//x.spec.ts":                              false,
+		"other/tests/web/x.spec.ts":                         false,
 	} {
 		if got := runnableSpec(p); got != want {
 			t.Errorf("runnableSpec(%q) = %v, want %v", p, got, want)

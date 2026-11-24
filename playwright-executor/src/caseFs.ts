@@ -9,7 +9,7 @@ import * as path from 'path';
 export const CASE_CODE_RE = /^TC-[A-Z0-9]+-[0-9]{3,4}$/;
 /** Only automation env files are selectable: the dir also holds the executor's own secrets. */
 export const ENV_FILE_RE = /^automation-[A-Za-z0-9_-]+\.env$/;
-export const SPEC_ROOTS = ['tests/web/', 'tests/api/rest/'] as const;
+export const SPEC_ROOTS = ['tests/web/', 'tests/api/rest/', 'tests/api/graphql/'] as const;
 export const MAX_SPECS = 5;
 
 export class CaseError extends Error {}

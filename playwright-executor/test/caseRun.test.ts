@@ -161,7 +161,9 @@ test('env file parsing: quoted multi-line and \\n-escaped PEM values', () => {
 test('projectsFor maps spec roots to Playwright projects', () => {
   assert.deepEqual(projectsFor(['tests/web/a.spec.ts']), ['web-*']);
   assert.deepEqual(projectsFor(['tests/api/rest/b.spec.ts']), ['api-rest']);
+  assert.deepEqual(projectsFor(['tests/api/graphql/svc/d.spec.ts']), ['api-graphql']);
   assert.deepEqual(projectsFor(['tests/web/a.spec.ts', 'tests/api/rest/b.spec.ts']), ['web-*', 'api-rest']);
+  assert.deepEqual(projectsFor(['tests/api/rest/b.spec.ts', 'tests/api/graphql/svc/d.spec.ts']), ['api-rest', 'api-graphql']);
 });
 
 test('events ring keeps the last 500 and ?since filters by n', async () => {
