@@ -29,7 +29,7 @@ Body `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"|"run"}`.
 
 `200 {job_id, status, phase, job_type, error, report:{passed,failed,skipped}}`, `404` for an unknown id.
 
-* `status`: `queued`, `running`, `succeeded`, `failed`. The job page's `completed` is `succeeded` here. A run whose tests fail is still `succeeded`; the failures are in `report`.
+* `status`: `queued`, `running`, `awaiting_approval`, `succeeded`, `failed`. The job page's `completed` is `succeeded` here. `awaiting_approval` is a `running` job whose newest `case_approvals` row is `open`; the answer then also carries `waiting_s`, the approval's age in seconds. Answered, the status is `running` again. A run whose tests fail is still `succeeded`; the failures are in `report`.
 * `phase`: the last `job_events` step; for a run-all, `run <case> (n/total)`.
 * `job_type`: `create` or `run` (`case_create` and `case_run` and `gaos_run_all` are internal names).
 * `error`: empty until the job fails; short, redacted by the job's own path.
@@ -40,7 +40,7 @@ Body `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"|"run"}`.
 2. **Reuse `enqueueCaseAction`.** The shim translates the body and returns; the guards (spec, repo, active job, executor, AI) are the dashboard's, so the two doors cannot diverge.
 3. **A duplicate is a 200, not a 409.** GAOS polls and retries; answering with the active job's id makes a retry harmless.
 4. **Run-all is a sequential job built on single runs.** Its state is a `job_runs` row of type `gaos_run_all` (no new table). A case that cannot be started counts as `skipped`; a failed case job counts as `failed`; the job itself fails only when nothing can be started (`503`) or after 3 hours. A restart marks a run-all `failed` (`FailOrphanedJobs`); it is not resumed.
-5. **GAOS gets no approval gate.** A `create` job still waits for a human to approve the spec (dashboard or GAOS Inbox) before the pull request. GAOS polls every 15 s for up to 40 minutes, then fails its card; the QA job keeps waiting and can still finish. Raising the GAOS limit or approving sooner is the remedy, not a change here.
+5. **GAOS gets no approval gate, but it can see the wait.** A `create` job still waits for a human to approve the spec (dashboard or GAOS Inbox) before the pull request, and the status route reports that wait as `awaiting_approval` (with `waiting_s`) instead of `running`. GAOS treats it as a human wait: it pauses its 40-minute timeout, keeps polling every 15 s and notifies. Any other status keeps the old rules.
 
 ## 4. Target files
 
