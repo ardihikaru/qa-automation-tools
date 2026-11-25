@@ -97,6 +97,8 @@ type Syncer struct {
 	mu      sync.Mutex
 	running map[int]*state
 
+	specReader SpecReader // defects.go: reads the automation repo to find a spec's operations
+
 	backoffStep time.Duration // sweeper backoff per failed attempt (backoffStepDefault)
 	sweepMu     sync.Mutex    // at most one sweep at a time
 	startDelay  time.Duration // sweeper delay before its first sweep
@@ -466,6 +468,14 @@ func (s *Syncer) push(ctx context.Context, productID int, pid string, cat *catal
 		res.ResultsUnchanged += *out.Unchanged
 		res.CatHead = rawString(out.CatHead, res.CatHead)
 		addRejects(*out.Rejected)
+	}
+
+	// QA_DEFECT_TRIAGE.md: the defect states that changed since they were last sent.
+	if f, stop := s.pushDefects(ctx, productID, pid, res); stop {
+		return true
+	} else if f != nil {
+		fail(f)
+		return false
 	}
 
 	switch {

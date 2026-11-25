@@ -50,6 +50,7 @@ referenced by any Go code.
   `PingContext` fails.
 - Pool limits are fixed in `connection.go:NewConnection`: `SetMaxOpenConns(25)`,
   `SetMaxIdleConns(5)`, `SetConnMaxLifetime(30m)`, `SetConnMaxIdleTime(5m)`.
+- `qa_defect_state`, `qa_defect_push` and `product_service_repos` belong to the defect push (QA_DEFECT_TRIAGE.md).
 - Every statement in `migrations.go:migrations` must stay idempotent, either by
   construction (`CREATE TABLE IF NOT EXISTS`, `INSERT ... ON DUPLICATE KEY`,
   DML guarded by `NOT EXISTS`/`IS NULL`/blank checks such as the three

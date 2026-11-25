@@ -146,6 +146,7 @@ func main() {
 			gaos := gaossync.New(database, cfg.Backend.GAOS.APIURL, cfg.Backend.GAOS.APIToken)
 			gaos.SetWebURL(cfg.Backend.GAOS.WebURL)
 			router.SetGAOS(gaos)
+			gaos.SetSpecReader(router.SpecReader()) // QA_DEFECT_TRIAGE.md: operation names of a defect's spec
 			router.SetOnResultsStored(gaos.Trigger) // a stored run is pushed like a synced catalog
 			syncer.OnSucceeded, syncer.OnUnchanged = gaos.Trigger, gaos.Retry
 			log.Printf("   GAOS integration: configured=%v", gaos.Configured())
