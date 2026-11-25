@@ -46,7 +46,7 @@ decides is kept apart, in the table `gaos_decisions`; nothing GAOS sends ever wr
      the product is flagged, the same push starts in the background, coalesced with any push already running. An upload that
      stored nothing (the same run sent again) starts none, and an upload never waits for or fails on the push. So a CI run
      reaches GAOS without anyone pressing "Pull".
-5. **What is sent:** cases whose status is `planned` or `automated` with a code like `TC-AUTH-001`. **What is skipped
+5. **What is sent:** cases whose status is `planned` or `automated` with a code like `TC-AUTH-001`. A `blocked` case that carries a defect state (`qa_defect_state`) and a usable spec is sent too, as an implemented case: its spec runs as an expected failure, and GAOS refuses a defect for a case it does not know (`unknown-case`). **What is skipped
    and counted:** `blocked`, `manual-only` and `wont` cases (the QA side may not park or retire a case in GAOS) and local
    drafts (codes starting `L-`).
 6. GAOS answers one write at a time per token. A `429` is waited out (the `Retry-After`, at most 10 seconds) and retried up

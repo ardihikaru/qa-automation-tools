@@ -38,6 +38,10 @@ type catalog struct {
 	features map[string][]storyFeature // story code -> its features, ordered by feature code
 	epics    map[string]catEpic
 	results  map[string]storedRun // case code -> its latest stored run (kb_case_results)
+	// defects holds the cases that carry a defect state (qa_defect_state). The catalog marks such a
+	// case blocked while its spec still runs as an expected failure, and GAOS refuses a defect for a
+	// case it does not know, so these cases are sent although blocked.
+	defects map[string]bool
 }
 
 // storedRun is one kb_case_results row; runAt is unix seconds.
@@ -55,7 +59,7 @@ func (s *Syncer) readCatalog(ctx context.Context, productID int) (*catalog, erro
 		return nil, err
 	}
 	defer tx.Rollback()
-	cat := &catalog{features: map[string][]storyFeature{}, epics: map[string]catEpic{}, results: map[string]storedRun{}}
+	cat := &catalog{features: map[string][]storyFeature{}, epics: map[string]catEpic{}, results: map[string]storedRun{}, defects: map[string]bool{}}
 
 	rows, err := tx.QueryContext(ctx, `SELECT code, epic_code, COALESCE(story_code,''), COALESCE(scenario,''), polarity, level, priority, status, spec_paths
 FROM kb_test_cases WHERE product_id = ? AND removed_at IS NULL ORDER BY code`, productID)
@@ -96,6 +100,23 @@ WHERE sf.product_id = ? ORDER BY sf.feature_code`, productID)
 	}
 	frows.Close()
 	if err := frows.Err(); err != nil {
+		return nil, err
+	}
+
+	drows, err := tx.QueryContext(ctx, `SELECT case_code FROM qa_defect_state WHERE product_id = ?`, productID)
+	if err != nil {
+		return nil, err
+	}
+	for drows.Next() {
+		var code string
+		if err := drows.Scan(&code); err != nil {
+			drows.Close()
+			return nil, err
+		}
+		cat.defects[code] = true
+	}
+	drows.Close()
+	if err := drows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -222,7 +243,8 @@ func buildPlan(cat *catalog) *plan {
 	modulesByEpic := map[string]map[string]int{}
 	for _, c := range cat.cases {
 		m := caseCodeRe.FindStringSubmatch(c.code)
-		if (c.status != "planned" && c.status != "automated") || m == nil || m[1] != c.epic || !epicCodeRe.MatchString(c.epic) ||
+		blockedByDefect := c.status == "blocked" && cat.defects[c.code] && usableSpec(c.specPaths) != ""
+		if (c.status != "planned" && c.status != "automated" && !blockedByDefect) || m == nil || m[1] != c.epic || !epicCodeRe.MatchString(c.epic) ||
 			!polarities[c.polarity] || !levels[c.level] || !priorities[c.priority] {
 			p.skipped++
 			continue
@@ -248,7 +270,7 @@ func buildPlan(cat *catalog) *plan {
 		if len(item.Features) > maxFeatures {
 			item.Features = item.Features[:maxFeatures]
 		}
-		if c.status == "automated" {
+		if c.status == "automated" || blockedByDefect {
 			if sp := usableSpec(c.specPaths); sp != "" {
 				item.Implemented, item.Spec = true, sp
 			} else {
