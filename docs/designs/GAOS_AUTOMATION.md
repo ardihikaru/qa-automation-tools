@@ -4,7 +4,7 @@ Status: implemented by PR #83. Builds on [CASE_AUTOMATION.md](CASE_AUTOMATION.md
 
 ## 1. Goal
 
-GAOS holds the `GAOS_INBOUND_TOKEN` bearer credential and no session, so the session-authenticated `create-automation` and `run` routes are out of its reach. Two bearer routes give it the same two actions and a way to watch the job. They are a thin shim: no automation logic is added.
+GAOS holds the `GAOS_INBOUND_TOKEN` bearer credential and no session, so the session-authenticated `create-automation` and `run` routes are out of its reach. Two bearer routes give it the same two actions and a way to watch the job; a third cancels a job GAOS has given up on. They are a thin shim: no automation logic is added.
 
 ## 2. Contract
 
@@ -25,6 +25,16 @@ Body `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"|"run"}`.
 
 `create` and `run` of one case go through `enqueueCaseAction` and the `caseauto` machine. `run` with `*` starts one job of type `gaos_run_all` that runs every live case with a spec, one `case_run` after the other, through the same path, against staging.
 
+### `POST /api/v1/gaos/jobs/{id}/cancel`
+
+No body. `200 {"job_id","status":"failed","error":"canceled by GAOS","canceled":true}` when the job was queued, running or awaiting approval; `404` for an unknown id; `405` for a wrong method.
+
+* Every open approval of the job is answered `rejected` (source GAOS, text `canceled by GAOS`) first, so nothing can be approved afterwards and the Machine, which reads the approval before it commits, never reaches push or the pull request. A late approve finds the row closed (first answer wins) and changes nothing.
+* The job's context is canceled and the job is marked `failed` with `error` `canceled by GAOS`. Nothing the job's goroutine does afterwards can change that record.
+* A job that already ended is answered as it is: `200 {"job_id","status":<its final status>,"error":<its error>,"canceled":false}`. Canceling twice is therefore harmless.
+* A `*` run-all job is marked `failed` at once and stops after the case in flight; the in-flight case's own job is not interrupted.
+* The GAOS Inbox item of a canceled approval is not touched here; GAOS already failed its card.
+
 ### `GET /api/v1/gaos/jobs/{id}`
 
 `200 {job_id, status, phase, job_type, error, report:{passed,failed,skipped}}`, `404` for an unknown id.
@@ -41,7 +51,8 @@ Body `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"|"run"}`.
 3. **A duplicate is a 200, not a 409.** GAOS polls and retries; answering with the active job's id makes a retry harmless.
 4. **Run-all is a sequential job built on single runs.** Its state is a `job_runs` row of type `gaos_run_all` (no new table). A case that cannot be started counts as `skipped`; a failed case job counts as `failed`; the job itself fails only when nothing can be started (`503`) or after 3 hours. A restart marks a run-all `failed` (`FailOrphanedJobs`); it is not resumed.
 5. **GAOS gets no approval gate, but it can see the wait.** A `create` job still waits for a human to approve the spec (dashboard or GAOS Inbox) before the pull request, and the status route reports that wait as `awaiting_approval` (with `waiting_s`) instead of `running`. GAOS treats it as a human wait: it pauses its 40-minute timeout, keeps polling every 15 s and notifies. Any other status keeps the old rules.
+6. **Cancel rejects the approval before it stops the job.** Rejecting first closes the only door to push; the context cancel and the `failed` mark follow. `updateJob` refuses any later change to a job whose error is `canceled by GAOS`.
 
 ## 4. Target files
 
-`ai-backend/internal/api/gaos_automation.go` (+ test), `gaos_inbound.go` (routing), `job_events.go` (shared `jobPhase`, `jobReportCounts`), `ai-backend/internal/api/README.md`, `docs/GAOS_COLLABORATION.md`.
+`ai-backend/internal/api/gaos_automation.go` (+ test), `gaos_inbound.go` (routing), `jobs_executor.go` (`updateJob` guard), `case_automation.go` and `jobs_executor.go` (register the cancel func), `services/caseauto/caseauto_test.go`, `job_events.go` (shared `jobPhase`, `jobReportCounts`), `ai-backend/internal/api/README.md`, `docs/GAOS_COLLABORATION.md`.

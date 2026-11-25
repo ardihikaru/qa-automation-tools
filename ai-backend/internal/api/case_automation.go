@@ -631,6 +631,7 @@ const caseCreateMaxDuration = 76 * time.Hour // the 72 h approval plus working t
 func (r *Router) runCaseCreate(id string, payload map[string]interface{}, resume bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), caseCreateMaxDuration)
 	defer cancel()
+	defer registerJobCancel(id, cancel)()
 	fail := func(err error, step string) {
 		msg := r.caseAuto.redact.Redact(err.Error())
 		if !caseauto.IsStepErr(err) {

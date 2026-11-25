@@ -89,6 +89,12 @@ func (r *Router) serveGAOSInbound(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		r.gaosAutomation(w, req)
+	case strings.HasPrefix(req.URL.Path, gaosJobsPrefix) && strings.HasSuffix(req.URL.Path, gaosCancelSuffix):
+		if req.Method != http.MethodPost {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosJobCancel(w, req, strings.TrimSuffix(gaosJobID(req.URL.Path), gaosCancelSuffix))
 	case strings.HasPrefix(req.URL.Path, gaosJobsPrefix):
 		if req.Method != http.MethodGet {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")

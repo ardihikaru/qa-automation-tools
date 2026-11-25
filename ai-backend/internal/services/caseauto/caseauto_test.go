@@ -561,6 +561,28 @@ func TestRejectAndExpiry(t *testing.T) {
 	}
 }
 
+// GAOS canceled the job: its open approval is rejected "canceled by GAOS" and the Machine never
+// commits, pushes or opens a pull request, whoever tries to approve afterwards.
+func TestCanceledByGAOSNeverPushes(t *testing.T) {
+	r := newRig([]string{reply(specPath, goodSpec(""))}, []RunResult{pass})
+	r.ap.onGet = func(a *fakeApprovals, ext string, n int) {
+		if n == 2 {
+			a.Answer(context.Background(), ext, ApprovalRejected, "gaos", "canceled by GAOS")
+			// the late approve: first answer wins, so it must change nothing
+			if ok, _ := a.Answer(context.Background(), ext, ApprovalApproved, "dashboard", ""); ok {
+				t.Error("a late approve changed a rejected approval")
+			}
+		}
+	}
+	_, err := r.m.Run(context.Background(), testJob())
+	if err == nil || !strings.Contains(err.Error(), "rejected") {
+		t.Fatalf("run: %v", err)
+	}
+	if r.repo.pushed || r.repo.prs != 0 || len(r.repo.committed) != 0 {
+		t.Errorf("pushed=%v prs=%d committed=%v", r.repo.pushed, r.repo.prs, r.repo.committed)
+	}
+}
+
 func TestChangesRoundThenApprove(t *testing.T) {
 	r := newRig([]string{reply(specPath, goodSpec("")), reply(specPath, goodSpec("  // changed\n"))}, []RunResult{pass})
 	r.ap.onGet = func(a *fakeApprovals, ext string, n int) {

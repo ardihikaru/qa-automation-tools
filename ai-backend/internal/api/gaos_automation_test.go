@@ -4,6 +4,7 @@ package api
 // a scratch schema (QA_TEST_MYSQL_DSN) and skips without one.
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/qa-automation/ai-backend/internal/config"
 	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/services/ai"
+	"github.com/qa-automation/ai-backend/internal/services/caseauto"
 	"github.com/qa-automation/ai-backend/internal/services/executor"
 	"github.com/qa-automation/ai-backend/internal/services/repopool"
 	"github.com/qa-automation/ai-backend/internal/testdb"
@@ -212,7 +214,7 @@ func TestGAOSShimUsesOnlyThePublicPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, banned := range []string{"caseauto.", "runCaseCreate", "runExecutorJob", "NewMachine"} {
+	for _, banned := range []string{"caseauto.NewMachine", "caseauto.Machine", "runCaseCreate", "runExecutorJob", "NewMachine"} {
 		if strings.Contains(string(src), banned) {
 			t.Errorf("gaos_automation.go reaches past enqueueCaseAction: %q", banned)
 		}
@@ -277,5 +279,89 @@ func TestGAOSJobAwaitingApproval(t *testing.T) {
 	must(t, d, `UPDATE job_runs SET status = 'failed' WHERE id = 'job-w'`)
 	if m := get(); m["status"] != "failed" {
 		t.Errorf("failed job: %v", m)
+	}
+}
+
+func TestGAOSCancelGuardAndShape(t *testing.T) {
+	r := NewRouter(nil, nil, nil, nil)
+	r.SetGAOSInboundToken(inboundTok)
+	for _, h := range []string{"", "Bearer wrong"} {
+		if w := inboundCall(r, "POST", "/api/v1/gaos/jobs/job-1/cancel", h, ``); w.Code != http.StatusUnauthorized {
+			t.Errorf("header %q: got %d, want 401", h, w.Code)
+		}
+	}
+	// The right token but no database: 503, never a panic.
+	if w := inboundCall(r, "POST", "/api/v1/gaos/jobs/job-1/cancel", "Bearer "+inboundTok, ``); w.Code != http.StatusServiceUnavailable {
+		t.Errorf("no db: got %d, want 503", w.Code)
+	}
+}
+
+// A cancel rejects the open approval (source GAOS), fails the job, and a late approve is refused.
+func TestGAOSCancel(t *testing.T) {
+	r, d := gaosAutomationFixture(t)
+	bearer := "Bearer " + inboundTok
+	cancel := func(id string) (int, map[string]any) {
+		w := inboundCall(r, "POST", "/api/v1/gaos/jobs/"+id+"/cancel", bearer, ``)
+		var m map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		return w.Code, m
+	}
+	if w := inboundCall(r, "GET", "/api/v1/gaos/jobs/job-1/cancel", bearer, ``); w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET cancel: got %d, want 405", w.Code)
+	}
+	if code, _ := cancel("job-nope"); code != http.StatusNotFound {
+		t.Errorf("unknown job: %d", code)
+	}
+	// An ended job is answered as it is.
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-done','case_create','completed','{}', NOW(3))`)
+	if code, m := cancel("job-done"); code != 200 || m["canceled"] != false || m["status"] != "succeeded" {
+		t.Errorf("ended job: %d %v", code, m)
+	}
+	// A job awaiting approval.
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-w','case_create','running','{"product_id":1,"case_code":"TC-AUTH-001"}', NOW(3))`)
+	must(t, d, `INSERT INTO case_approvals (job_id, product_id, case_code, external_id, status, created_at) VALUES ('job-w',1,'TC-AUTH-001','qa-job-w-pr','open', UTC_TIMESTAMP())`)
+	// Half the job is in memory (its goroutine's record), as for a live job.
+	r.jobs.mu.Lock()
+	r.jobs.jobs["job-w"] = &jobRecord{ID: "job-w", Type: "case_create", Status: jobStatusRunning, Payload: map[string]interface{}{}}
+	r.jobs.mu.Unlock()
+	stopped := false
+	gaosJobCancels.Store("job-w", context.CancelFunc(func() { stopped = true }))
+	code, m := cancel("job-w")
+	if code != 200 || m["canceled"] != true || m["status"] != "failed" || m["error"] != "canceled by GAOS" || m["job_id"] != "job-w" {
+		t.Fatalf("cancel: %d %v", code, m)
+	}
+	if !stopped {
+		t.Error("the job's context was not canceled")
+	}
+	store := &caseauto.ApprovalStore{DB: d}
+	ap, err := store.Get(context.Background(), "qa-job-w-pr")
+	if err != nil || ap.Status != caseauto.ApprovalRejected {
+		t.Fatalf("approval after cancel: %+v %v", ap, err)
+	}
+	// The late approve changes nothing.
+	if ok, err := store.Answer(context.Background(), "qa-job-w-pr", caseauto.ApprovalApproved, "dashboard", ""); ok || err != nil {
+		t.Errorf("late approve: changed=%v err=%v", ok, err)
+	}
+	if ap, _ := store.Get(context.Background(), "qa-job-w-pr"); ap.Status != caseauto.ApprovalRejected {
+		t.Errorf("late approve reopened it: %s", ap.Status)
+	}
+	// The job's own goroutine finishing later cannot revive it.
+	r.finishJob("job-w", jobStatusCompleted, "", nil)
+	w := inboundCall(r, "GET", "/api/v1/gaos/jobs/job-w", bearer, ``)
+	if !strings.Contains(w.Body.String(), `"status":"failed"`) || !strings.Contains(w.Body.String(), "canceled by GAOS") {
+		t.Errorf("job after a late finish: %s", w.Body)
+	}
+	// Idempotent: a second cancel changes nothing.
+	if code, m := cancel("job-w"); code != 200 || m["canceled"] != false || m["status"] != "failed" {
+		t.Errorf("second cancel: %d %v", code, m)
+	}
+	// A job known only to the database (after a restart) is canceled in its row.
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-db','case_run','running','{}', NOW(3))`)
+	if code, m := cancel("job-db"); code != 200 || m["canceled"] != true {
+		t.Errorf("db-only cancel: %d %v", code, m)
+	}
+	var st, er string
+	if err := d.QueryRow(context.Background(), `SELECT status, error FROM job_runs WHERE id='job-db'`).Scan(&st, &er); err != nil || st != "failed" || er != "canceled by GAOS" {
+		t.Errorf("db-only row: %s %s %v", st, er, err)
 	}
 }

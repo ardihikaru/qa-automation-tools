@@ -68,6 +68,12 @@ func (r *Router) updateJob(id string, mutate func(*jobRecord)) *jobRecord {
 		r.jobs.mu.Unlock()
 		return nil
 	}
+	if rec.Status == jobStatusFailed && rec.Error == gaosCanceledMsg {
+		// GAOS canceled this job: nothing the job's own goroutine does afterwards may change it.
+		snapshot := *rec
+		r.jobs.mu.Unlock()
+		return &snapshot
+	}
 	mutate(rec)
 	snapshot := *rec
 	r.jobs.mu.Unlock()
@@ -80,6 +86,7 @@ func (r *Router) updateJob(id string, mutate func(*jobRecord)) *jobRecord {
 func (r *Router) runExecutorJob(id, jobType string, payload map[string]interface{}) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.executorTimeout)
 	defer cancel()
+	defer registerJobCancel(id, cancel)()
 
 	fail := func(err error) {
 		now := time.Now().UTC()
