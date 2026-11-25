@@ -155,6 +155,18 @@ approval rejected ("canceled by GAOS"), is stopped and marked `failed`; the answ
 `{"job_id","status":"failed","error":"canceled by GAOS","canceled":true}`. A job that already ended is returned as it is
 with `"canceled":false`. An unknown job is `404`. After a cancel no pull request can be opened for that job.
 
+### Defects (QA tools to GAOS)
+
+The Playwright ingest also reads the `defect` annotations of a report (a pinned `test.fail()` that failed as expected is
+an `xfail`, one that now passes is an `xpass`, an unexpected failure is a `fail`). The last state of each case is
+kept, and **only a change** is pushed to `POST /api/v1/products/{id}/qa/defects` with the other pushes, in batches of at
+most 50 items and 240 KiB. Each item carries the case, the defect id, the kind, the level, `automationType` (`be` for
+API/GQL, `e2e` for WEB/E2E), `backend` (`graphql` or `rest` from the spec path), `targetRepos` (the spec's service
+directory resolved to the product's repositories, plus the mapped backends for an e2e case), up to five `operations`,
+the spec, a title and an excerpt of at most 4 KiB with secrets removed. A GAOS without the route (404 or 405) is waited
+out for 30 minutes and nothing is lost. The mapping of an app directory to its backend repositories is set with
+`PUT /api/products/{id}/service-repos`. See [QA_DEFECT_TRIAGE.md](designs/QA_DEFECT_TRIAGE.md).
+
 ## Learned policies (Inbox approvals)
 
 The `/learning` page of the QA tools turns findings from case automation (a reviewer's *Needs changes*, a repair that

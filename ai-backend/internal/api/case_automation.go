@@ -452,7 +452,7 @@ func (r *Router) finishCaseRun(ctx context.Context, jobID string, payload, resul
 			out, err := caseresults.Save(ctx, d, pid, rep, jobID, "case-run")
 			if err != nil {
 				log.Printf("job %s: saving the case result: %v", jobID, err)
-			} else if out.Stored > 0 {
+			} else if defects := r.saveDefects(ctx, pid, rep, jobID); out.Stored > 0 || defects > 0 {
 				r.notifyResultsStored(pid) // wired to gaossync.Trigger
 			}
 		}

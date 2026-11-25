@@ -1003,6 +1003,43 @@ ALTER TABLE case_approvals
   ADD COLUMN answer_source VARCHAR(32) NULL,
   ADD COLUMN answer_actor VARCHAR(120) NULL,
   ADD COLUMN answer_source_detail JSON NULL;`,
+	// QA_DEFECT_TRIAGE.md: the last defect state of each case (xfail | xpass | fail) and what was
+	// pushed to GAOS. hash is the content that matters (kind, defect id, title, case, spec); a push is
+	// owed while hash differs from pushed_hash and rejected_hash.
+	`CREATE TABLE IF NOT EXISTS qa_defect_state (
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  kind VARCHAR(8) NOT NULL,
+  defect_id VARCHAR(12) NOT NULL DEFAULT '',
+  title VARCHAR(255) NOT NULL DEFAULT '',
+  excerpt TEXT NULL,
+  run_ref VARCHAR(120) NOT NULL DEFAULT '',
+  run_at DATETIME NOT NULL COMMENT 'UTC start of the run that last showed this state',
+  hash CHAR(64) NOT NULL,
+  pushed_hash CHAR(64) NULL,
+  pushed_at DATETIME NULL,
+  rejected_hash CHAR(64) NULL,
+  rejected_reason VARCHAR(80) NOT NULL DEFAULT '',
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (product_id, case_code),
+  CONSTRAINT fk_qa_defect_state_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// QA_DEFECT_TRIAGE.md: when an older GAOS (404/405) or a daily cap makes the defect push wait.
+	`CREATE TABLE IF NOT EXISTS qa_defect_push (
+  product_id INT NOT NULL PRIMARY KEY,
+  backoff_until DATETIME NULL,
+  note VARCHAR(120) NOT NULL DEFAULT '',
+  CONSTRAINT fk_qa_defect_push_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// QA_DEFECT_TRIAGE.md: which product repositories (by product_repos.name) a service or app directory
+	// of the automation repo's tests/ tree stands for. Only e2e cases read it, for their backends.
+	`CREATE TABLE IF NOT EXISTS product_service_repos (
+  product_id INT NOT NULL,
+  service_dir VARCHAR(100) NOT NULL,
+  repo_name VARCHAR(100) NOT NULL,
+  PRIMARY KEY (product_id, service_dir, repo_name),
+  CONSTRAINT fk_product_service_repos_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 	// The test-catalog knowledge format lost its product prefix ("<product>-test-catalog-v1" is now
 	// "test-catalog-v1"). Idempotent: a second run matches no rows.
 	`UPDATE product_settings SET knowledge_format = 'test-catalog-v1'

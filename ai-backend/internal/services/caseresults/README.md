@@ -8,6 +8,14 @@ Per-case automated results (spec: [CASE_RESULTS.md](../../../../docs/designs/CAS
 - `Save(ctx, db, productID, report, runRef, source) (*Outcome, error)` (`store.go`): upserts in one transaction. A report older than the stored `run_at` leaves the row unchanged (`Stale`). Codes that are not active `kb_test_cases` of the product are only reported (`Unmatched`, first 20, plus the count).
 - `DefaultRunRef(t)`: `pw-<unix>`.
 
+## Defects (QA_DEFECT_TRIAGE.md)
+
+`Report.Defects` (code -> `Defect{Kind, DefectID, Title, Excerpt}`) is read by `Parse` from `defect` annotations and
+`expectedStatus`: `xfail` (pinned, failed as expected), `xpass` (pinned, passed) and `fail` (unexpected failure).
+`Results` is unchanged by it. `SaveDefects` stores the last state per case in `qa_defect_state` (scrubbed by `Scrub`,
+excerpt at most 4 KiB, title 200 characters), reports how many changed, clears the state of a case that passes and
+ignores a report older than the stored state.
+
 ## Invariants
 - Latest run wins per `(product_id, case_code)`; `run_at` is UTC.
 - Writes only `kb_case_results`; never `kb_test_cases`.

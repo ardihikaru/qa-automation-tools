@@ -118,7 +118,8 @@ func (r *Router) ingestReport(w http.ResponseWriter, req *http.Request, pid int,
 		writeJSONError(w, http.StatusInternalServerError, "store failed")
 		return
 	}
-	if out.Stored > 0 {
+	defects := r.saveDefects(ctx, pid, rep, runRef)
+	if out.Stored > 0 || defects > 0 {
 		r.notifyResultsStored(pid)
 	}
 	runID := r.recordRun(ctx, runhistory.RunIn{ProductID: pid, Source: source, RunRef: runRef}, rep)
@@ -127,6 +128,21 @@ func (r *Router) ingestReport(w http.ResponseWriter, req *http.Request, pid int,
 		"stored": out.Stored, "stale": out.Stale, "unmatched": out.Unmatched, "unmatched_count": out.UnmatchedN,
 		"run_id": runID,
 	})
+}
+
+// saveDefects stores the defect states of a report (QA_DEFECT_TRIAGE.md) and returns how many changed.
+// A failure is only logged: the upload never depends on it.
+func (r *Router) saveDefects(ctx context.Context, pid int, rep *caseresults.Report, runRef string) int {
+	d := r.getDB()
+	if d == nil {
+		return 0
+	}
+	out, err := caseresults.SaveDefects(context.WithoutCancel(ctx), d, pid, rep, runRef, r.caseAuto.redact.Redact)
+	if err != nil {
+		log.Printf("defects: product %d: %v", pid, err)
+		return 0
+	}
+	return out.Changed
 }
 
 // recordRun logs a Playwright report in the run history (RUN_HISTORY.md). A failure is only

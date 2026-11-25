@@ -47,6 +47,9 @@ type Report struct {
 	Stats Stats
 	// Cases: code -> how long its tests took, for the run history. Results above is unchanged by it.
 	Cases map[string]CaseStat
+	// Defects: code -> the defect observation of its tests (QA_DEFECT_TRIAGE.md). Results above is
+	// unchanged by it: an xfail still counts as a pass there.
+	Defects map[string]Defect
 }
 
 // Stats is a run's duration and counts. DurationMs is nil when the report has no usable
@@ -69,19 +72,30 @@ type CaseStat struct {
 	Attempts   int
 }
 
+type pwAnnotation struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
+}
+
+type pwResult struct {
+	Duration float64 `json:"duration"`
+	Error    *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
 // pwSuite mirrors the part of Playwright's JSON reporter output we read.
 type pwSuite struct {
 	Specs []struct {
 		Title string `json:"title"`
 		Tests []struct {
-			Status  string `json:"status"` // expected | unexpected | flaky | skipped
-			Results []struct {
-				Duration float64 `json:"duration"`
-			} `json:"results"`
-			Annotations []struct {
-				Type        string `json:"type"`
-				Description string `json:"description"`
-			} `json:"annotations"`
+			Status         string         `json:"status"`         // expected | unexpected | flaky | skipped
+			ExpectedStatus string         `json:"expectedStatus"` // passed | failed (test.fail() pins failed)
+			Results        []pwResult     `json:"results"`
+			Annotations    []pwAnnotation `json:"annotations"`
 		} `json:"tests"`
 	} `json:"specs"`
 	Suites []pwSuite `json:"suites"`
@@ -114,7 +128,7 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 	if len(pr.Suites) == 0 {
 		return nil, ErrNotReport
 	}
-	rep := &Report{StartedAt: now, Results: map[string]string{}, SkipReasons: map[string][]string{}, Cases: map[string]CaseStat{}}
+	rep := &Report{StartedAt: now, Results: map[string]string{}, SkipReasons: map[string][]string{}, Cases: map[string]CaseStat{}, Defects: map[string]Defect{}}
 	var counted Stats // from the tests, used when the report has no stats counts
 	if t, err := time.Parse(time.RFC3339, pr.Stats.StartTime); err == nil && !t.After(now) {
 		rep.StartedAt = t
@@ -145,7 +159,11 @@ func Parse(r io.Reader, now time.Time) (*Report, error) {
 						ms += r.Duration
 					}
 				}
+				def, hasDef := classifyDefect(sp.Title, t.Status, t.ExpectedStatus, t.Annotations, lastError(t.Results))
 				for _, c := range codes {
+					if hasDef {
+						rep.addDefect(c, def)
+					}
 					cs := rep.Cases[c]
 					cs.Tests++
 					cs.Attempts += len(t.Results)

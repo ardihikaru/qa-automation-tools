@@ -101,7 +101,10 @@ SET s.gaos_push_requested_at = UTC_TIMESTAMP(6), s.gaos_push_attempts = 0
 WHERE s.gaos_integrated = 1 AND s.gaos_product_id <> '' AND s.gaos_push_requested_at IS NULL
   AND (s.gaos_last_sync_at IS NULL
        OR EXISTS (SELECT 1 FROM kb_case_results r WHERE r.product_id = s.product_id AND r.updated_at > s.gaos_last_sync_at)
-       OR EXISTS (SELECT 1 FROM kb_test_cases c WHERE c.product_id = s.product_id AND c.updated_at > s.gaos_last_sync_at))`); err != nil {
+       OR EXISTS (SELECT 1 FROM kb_test_cases c WHERE c.product_id = s.product_id AND c.updated_at > s.gaos_last_sync_at)
+       OR (EXISTS (SELECT 1 FROM qa_defect_state d JOIN kb_test_cases c2 ON c2.product_id = d.product_id AND c2.code = d.case_code AND c2.removed_at IS NULL
+                   WHERE d.product_id = s.product_id AND d.hash <> COALESCE(d.pushed_hash, '') AND d.hash <> COALESCE(d.rejected_hash, ''))
+           AND NOT EXISTS (SELECT 1 FROM qa_defect_push b WHERE b.product_id = s.product_id AND b.backoff_until > UTC_TIMESTAMP())))`); err != nil {
 		log.Printf("gaossync: sweeper: promote changed data to owed pushes: %v", err)
 	} else if n := res.RowsAffected(); n > 0 {
 		log.Printf("gaossync: sweeper: %d product(s) have data newer than their last push", n)
