@@ -240,3 +240,42 @@ func TestGAOSAutomationWithoutConfiguration(t *testing.T) {
 		}
 	}
 }
+
+// A running create whose newest approval is open is awaiting_approval; answered or absent, running.
+func TestGAOSJobAwaitingApproval(t *testing.T) {
+	r, d := gaosAutomationFixture(t)
+	bearer := "Bearer " + inboundTok
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-w','case_create','running','{"product_id":1,"case_code":"TC-AUTH-001"}', NOW(3))`)
+	get := func() map[string]any {
+		w := inboundCall(r, "GET", "/api/v1/gaos/jobs/job-w", bearer, ``)
+		if w.Code != http.StatusOK {
+			t.Fatalf("got %d %s", w.Code, w.Body)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	if m := get(); m["status"] != "running" || m["waiting_s"] != nil {
+		t.Errorf("no approval: %v", m)
+	}
+	must(t, d, `INSERT INTO case_approvals (job_id, product_id, case_code, external_id, status, created_at) VALUES ('job-w',1,'TC-AUTH-001','ext-1','open', DATE_SUB(UTC_TIMESTAMP(), INTERVAL 90 SECOND))`)
+	m := get()
+	if m["status"] != "awaiting_approval" {
+		t.Fatalf("open approval: %v", m)
+	}
+	if ws, _ := m["waiting_s"].(float64); ws < 89 || ws > 200 {
+		t.Errorf("waiting_s = %v, want about 90", m["waiting_s"])
+	}
+	must(t, d, `UPDATE case_approvals SET status = 'approved' WHERE job_id = 'job-w'`)
+	if m := get(); m["status"] != "running" || m["waiting_s"] != nil {
+		t.Errorf("answered approval: %v", m)
+	}
+	// A finished job is never awaiting, whatever its approvals say.
+	must(t, d, `UPDATE case_approvals SET status = 'open' WHERE job_id = 'job-w'`)
+	must(t, d, `UPDATE job_runs SET status = 'failed' WHERE id = 'job-w'`)
+	if m := get(); m["status"] != "failed" {
+		t.Errorf("failed job: %v", m)
+	}
+}

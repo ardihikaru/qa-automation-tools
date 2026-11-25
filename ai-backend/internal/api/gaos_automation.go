@@ -164,14 +164,22 @@ func (r *Router) gaosJobStatus(w http.ResponseWriter, req *http.Request, jobID s
 	if p, _ := job.Payload["phase"].(string); !ok && p != "" {
 		phase = p
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"job_id":   job.ID,
 		"status":   gaosStatus(job.Status),
 		"phase":    phase,
 		"job_type": gaosJobType(job.Type),
 		"error":    job.Error,
 		"report":   jobReportCounts(job),
-	})
+	}
+	// A running create that waits for a human is not "running" to GAOS: its poll must not time out.
+	if job.Status == jobStatusRunning {
+		if age, open := latestApprovalOpen(ctx, d, jobID); open {
+			out["status"] = "awaiting_approval"
+			out["waiting_s"] = age
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // gaosJobID is the job id of a /api/v1/gaos/jobs/{id} path ("" when the path has none).
@@ -320,4 +328,16 @@ func gaosJobType(t string) string {
 		return "create"
 	}
 	return "run"
+}
+
+// latestApprovalOpen reports whether the job's newest approval is still open, and its age in
+// seconds. Any read error or no approval answers false (the status stays running).
+func latestApprovalOpen(ctx context.Context, d *db.DB, jobID string) (int64, bool) {
+	var status string
+	var age int64
+	err := d.QueryRow(ctx, `SELECT status, GREATEST(TIMESTAMPDIFF(SECOND, created_at, UTC_TIMESTAMP()), 0) FROM case_approvals WHERE job_id = ? ORDER BY id DESC LIMIT 1`, jobID).Scan(&status, &age)
+	if err != nil {
+		return 0, false
+	}
+	return age, status == "open"
 }

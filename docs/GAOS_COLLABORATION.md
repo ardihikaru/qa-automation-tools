@@ -138,7 +138,7 @@ automation for the case) or `run` (run the spec the case already has). Answer: `
 
 The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"}}`.
 
-* `status` is `queued`, `running`, `succeeded` or `failed` (the job page's `completed` is `succeeded` here; failing
+* `status` is `queued`, `running`, `awaiting_approval` (a running `create` whose spec waits for a human; the answer adds `waiting_s`), `succeeded` or `failed` (the job page's `completed` is `succeeded` here; failing
   tests are in `report`, not in `status`); `phase` is the step the job is in (`prepare`, `generate`, `write`, `run`,
   `repair`, `approval`, `push`, `pr`, `done`; a run-all shows `run <case> (n/total)`); `job_type` is `create` or
   `run`; `error` is empty until the job fails.
