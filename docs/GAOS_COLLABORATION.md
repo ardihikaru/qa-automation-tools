@@ -148,6 +148,13 @@ The state of one job: `{"job_id","status","phase","job_type","error","report":{"
 The job id is the one the `202` answered. The numbers, the phase and the error are the ones the job page shows, so a
 GAOS card and the dashboard never disagree.
 
+### `POST /api/v1/gaos/jobs/{id}/cancel`
+
+GAOS calls it when it fails a card (timeout, flapping cap). A job still queued, running or awaiting approval has its open
+approval rejected ("canceled by GAOS"), is stopped and marked `failed`; the answer is
+`{"job_id","status":"failed","error":"canceled by GAOS","canceled":true}`. A job that already ended is returned as it is
+with `"canceled":false`. An unknown job is `404`. After a cancel no pull request can be opened for that job.
+
 ## Learned policies (Inbox approvals)
 
 The `/learning` page of the QA tools turns findings from case automation (a reviewer's *Needs changes*, a repair that

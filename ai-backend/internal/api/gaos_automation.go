@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/qa-automation/ai-backend/internal/db"
+	"github.com/qa-automation/ai-backend/internal/services/caseauto"
 )
 
 const (
@@ -36,7 +37,23 @@ const (
 	gaosAllCases = "*"
 	// gaosRunAllTimeout bounds one run-all job; GAOS gives up after 40 minutes, this frees the slot.
 	gaosRunAllTimeout = 3 * time.Hour
+	// gaosCancelSuffix ends the cancel route: /api/v1/gaos/jobs/{id}/cancel.
+	gaosCancelSuffix = "/cancel"
+	// gaosCanceledMsg is the error of a job GAOS canceled, and the text of its rejected approvals.
+	gaosCanceledMsg = "canceled by GAOS"
 )
+
+// gaosJobCancels holds the cancel func of every job whose goroutine is running in this process.
+var gaosJobCancels sync.Map
+
+// gaosCancelMu makes "is the job still live" and "mark it canceled" one step.
+var gaosCancelMu sync.Mutex
+
+// registerJobCancel records a running job's cancel func; the returned func removes it.
+func registerJobCancel(id string, cancel context.CancelFunc) func() {
+	gaosJobCancels.Store(id, cancel)
+	return func() { gaosJobCancels.Delete(id) }
+}
 
 // gaosRunAllMu makes "is a run-all active for this product" and "start one" one step.
 var gaosRunAllMu sync.Mutex
@@ -262,6 +279,10 @@ func (r *Router) runAllCases(jobID string, pid int, codes []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), gaosRunAllTimeout)
 	defer cancel()
 	counts := map[string]int{"passed": 0, "failed": 0, "skipped": 0}
+	canceled := func() bool {
+		j, _ := r.lookupJob(ctx, jobID)
+		return j != nil && j.Status == jobStatusFailed && j.Error == gaosCanceledMsg
+	}
 	finish := func(status jobStatus, msg string) {
 		r.updateJob(jobID, func(j *jobRecord) {
 			now := time.Now().UTC()
@@ -272,6 +293,9 @@ func (r *Router) runAllCases(jobID string, pid int, codes []string) {
 	}
 	d := r.getDB()
 	for i, code := range codes {
+		if canceled() {
+			return // GAOS canceled the job: stop after the case that was in flight
+		}
 		r.updateJob(jobID, func(j *jobRecord) {
 			j.Payload["phase"] = "run " + code + " (" + strconv.Itoa(i+1) + "/" + strconv.Itoa(len(codes)) + ")"
 		})
@@ -340,4 +364,86 @@ func latestApprovalOpen(ctx context.Context, d *db.DB, jobID string) (int64, boo
 		return 0, false
 	}
 	return age, status == "open"
+}
+
+// gaosJobCancel cancels a job that is still queued, running or awaiting approval: its open
+// approvals are rejected first (so nothing can be approved, and the Machine, which reads the
+// approval before it commits, can never reach push), then its context is canceled and the job is
+// marked failed "canceled by GAOS". A job that already ended is answered as it is.
+func (r *Router) gaosJobCancel(w http.ResponseWriter, req *http.Request, jobID string) {
+	if jobID == "" || len(jobID) > gaosMaxJobIDLen || strings.Contains(jobID, "/") {
+		writeJSONError(w, http.StatusNotFound, "job not found")
+		return
+	}
+	d := r.getDB()
+	if d == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
+	ctx := req.Context()
+	gaosCancelMu.Lock()
+	defer gaosCancelMu.Unlock()
+	job, err := r.lookupJob(ctx, jobID)
+	if err != nil {
+		log.Printf("gaos job cancel: lookup: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if job == nil {
+		writeJSONError(w, http.StatusNotFound, "job not found")
+		return
+	}
+	if job.Status != jobStatusQueued && job.Status != jobStatusRunning {
+		writeJSON(w, http.StatusOK, map[string]any{"job_id": job.ID, "status": gaosStatus(job.Status), "error": job.Error, "canceled": false})
+		return
+	}
+	if err := r.rejectOpenApprovals(ctx, d, jobID); err != nil {
+		log.Printf("gaos job cancel: approvals: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	now := time.Now().UTC()
+	if r.updateJob(jobID, func(j *jobRecord) {
+		j.Status, j.Error, j.CompletedAt = jobStatusFailed, gaosCanceledMsg, &now
+		if j.StartedAt != nil {
+			j.DurationMs = now.Sub(*j.StartedAt).Milliseconds()
+		}
+	}) == nil {
+		// Not in memory (read back from the database): write the row itself.
+		if _, err := d.Exec(ctx, `UPDATE job_runs SET status = 'failed', error = ?, completed_at = UTC_TIMESTAMP() WHERE id = ? AND status IN ('queued','running')`, gaosCanceledMsg, jobID); err != nil {
+			log.Printf("gaos job cancel: mark failed: %v", err)
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+	if c, ok := gaosJobCancels.Load(jobID); ok {
+		c.(context.CancelFunc)()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"job_id": jobID, "status": "failed", "error": gaosCanceledMsg, "canceled": true})
+}
+
+// rejectOpenApprovals answers every open approval of the job as rejected, source GAOS. The answer
+// is the store's own first-answer-wins update, so a late approve finds the row closed.
+func (r *Router) rejectOpenApprovals(ctx context.Context, d *db.DB, jobID string) error {
+	rows, err := d.Query(ctx, `SELECT external_id FROM case_approvals WHERE job_id = ? AND status = 'open'`, jobID)
+	if err != nil {
+		return err
+	}
+	var exts []string
+	for rows.Next() {
+		var e string
+		if err := rows.Scan(&e); err != nil {
+			rows.Close()
+			return err
+		}
+		exts = append(exts, e)
+	}
+	rows.Close()
+	store := &caseauto.ApprovalStore{DB: d}
+	for _, e := range exts {
+		if _, err := store.AnswerSourced(ctx, e, caseauto.ApprovalRejected, caseauto.AnswerMeta{By: "gaos", Text: gaosCanceledMsg, Source: caseauto.SourceGAOS}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
