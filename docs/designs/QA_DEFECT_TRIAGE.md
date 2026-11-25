@@ -35,6 +35,7 @@ The result values of the results API do not change: an `xfail` is a pass there, 
 5. **Limits.** At most 50 items and about 240 KiB per request (GAOS reads 256 KiB); a larger set is split into several requests. Only products with the GAOS link on are pushed. `be` and `e2e` items are both sent; GAOS decides what it fixes.
 6. **Untrusted text.** `title` and `excerpt` leave this server only after a scrub (private keys, JWTs, AWS-style keys, bearer or basic tokens, `password=`/`token=` pairs, GitHub and GAOS tokens) and the case automation redactor (known secrets, tokens, URL credentials); the excerpt is cut to 4 KiB on a character boundary. The scrub runs when the state is stored, so a secret is never in the table.
 7. **A state the push cannot describe** (no usable spec path, an unknown level) is not sent; it is marked rejected locally with the reason (`no-usable-spec`, `bad-level`) and logged by case code.
+7. **A defect case must exist in GAOS (found live, 2026-11-26).** The team's catalog marks a case that pins a defect `blocked`, and the case push skips blocked cases, so every such defect was rejected `unknown-case` and, by item 4, never re-sent. The case push now also sends a `blocked` case that has a `qa_defect_state` row and a usable spec (as `planned`, implemented, with its spec). Rejected rows are not retried on their own: after the case reaches GAOS, delete the row (or let the case's next observation change its hash) so the defect is pushed. Test: `TestBuildPlanSendsABlockedCaseThatCarriesADefect`.
 
 ## 5. The body
 

@@ -206,3 +206,25 @@ func TestScenarioClipInPlan(t *testing.T) {
 		t.Fatalf("len %d", len(got))
 	}
 }
+
+// A case that carries a defect state is blocked in the catalog while its spec runs as an expected
+// failure. GAOS refuses a defect for a case it does not know (unknown-case, found live), so it is sent.
+func TestBuildPlanSendsABlockedCaseThatCarriesADefect(t *testing.T) {
+	withSpec := catCase("TC-AUTH-001", "AUTH", "", "blocked")
+	withSpec.specPaths = []string{"tests/api/graphql/x/y.spec.ts"}
+	noSpec := catCase("TC-AUTH-002", "AUTH", "", "blocked")
+	other := catCase("TC-AUTH-003", "AUTH", "", "blocked")
+	other.specPaths = []string{"tests/api/graphql/x/z.spec.ts"}
+	cat := &catalog{
+		epics:   map[string]catEpic{"AUTH": {"Authentication", "sut-auth"}},
+		defects: map[string]bool{"TC-AUTH-001": true, "TC-AUTH-002": true},
+		cases:   []catCaseT{withSpec, noSpec, other},
+	}
+	p := buildPlan(cat)
+	if len(p.cases) != 1 || p.skipped != 2 {
+		t.Fatalf("sent %d skipped %d; want the one blocked case with a defect and a spec", len(p.cases), p.skipped)
+	}
+	if c := p.cases[0]; c.CaseID != "TC-AUTH-001" || c.Decision != "planned" || !c.Implemented || c.Spec == "" {
+		t.Fatalf("a blocked case with a defect must be sent as implemented: %+v", c)
+	}
+}
