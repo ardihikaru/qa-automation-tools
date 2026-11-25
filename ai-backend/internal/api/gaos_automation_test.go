@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,7 +146,7 @@ func TestGAOSAutomationRoutes(t *testing.T) {
 			t.Errorf("the job answer has no %q: %s", k, w.Body)
 		}
 	}
-	if job["job_id"] != created.JobID || job["job_type"] != "case_create" {
+	if job["job_id"] != created.JobID || job["job_type"] != "create" {
 		t.Errorf("the job answer is %s", w.Body)
 	}
 	rep, _ := job["report"].(map[string]any)
@@ -158,15 +160,62 @@ func TestGAOSAutomationRoutes(t *testing.T) {
 		t.Errorf("unknown job: got %d, want 404", w.Code)
 	}
 
-	// A job that is already active for the case: 409, and the answer names it.
-	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-active','case_run','running','{"product_id":1,"case_code":"TC-AUTH-001"}', NOW(3))`)
+	// A job that is already active for the case: 200 with that job's id (the dedupe).
+	// (the create above is still queued or running, so it is the active one).
+	_ = d
 	w = inboundCall(r, "POST", "/api/v1/gaos/automation", bearer, `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"}`)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("an active job: got %d, want 409 (%s)", w.Code, w.Body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("an active job: got %d, want 200 (%s)", w.Code, w.Body)
 	}
 	var busy map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &busy); err != nil || busy["job_id"] == "" {
-		t.Errorf("the 409 answer has no job id: %s (%v)", w.Body, err)
+	if err := json.Unmarshal(w.Body.Bytes(), &busy); err != nil || busy["job_id"] != created.JobID {
+		t.Errorf("the dedupe answer is not the active job: %s (%v)", w.Body, err)
+	}
+}
+
+func TestGAOSStatusMapping(t *testing.T) {
+	for in, want := range map[jobStatus]string{jobStatusQueued: "queued", jobStatusRunning: "running", jobStatusCompleted: "succeeded", jobStatusFailed: "failed"} {
+		if got := gaosStatus(in); got != want {
+			t.Errorf("gaosStatus(%s) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// "*" is valid only for run; for a product with no automated case nothing is started; an active
+// run-all is returned, not duplicated.
+func TestGAOSRunAll(t *testing.T) {
+	r, d := gaosAutomationFixture(t)
+	bearer := "Bearer " + inboundTok
+	w := inboundCall(r, "POST", "/api/v1/gaos/automation", bearer, `{"product":"p-6","caseCode":"*","mode":"create"}`)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("create *: got %d, want 422 (%s)", w.Code, w.Body)
+	}
+	w = inboundCall(r, "POST", "/api/v1/gaos/automation", bearer, `{"product":"p-6","caseCode":"*","mode":"run"}`)
+	if w.Code != http.StatusConflict {
+		t.Errorf("run * with no automated case: got %d, want 409 (%s)", w.Code, w.Body)
+	}
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-all','gaos_run_all','running','{"product_id":1,"case_code":"*","phase":"run TC-AUTH-001 (1/2)"}', NOW(3))`)
+	w = inboundCall(r, "POST", "/api/v1/gaos/automation", bearer, `{"product":"p-6","caseCode":"*","mode":"run"}`)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"job-all"`) {
+		t.Errorf("active run-all: got %d %s, want 200 job-all", w.Code, w.Body)
+	}
+	w = inboundCall(r, "GET", "/api/v1/gaos/jobs/job-all", bearer, ``)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"phase":"run TC-AUTH-001 (1/2)"`) || !strings.Contains(w.Body.String(), `"status":"running"`) {
+		t.Errorf("run-all status: %d %s", w.Code, w.Body)
+	}
+}
+
+// The shim calls the Machine path only through enqueueCaseAction / the job records: it must not
+// reach into caseauto internals or start the Machine itself.
+func TestGAOSShimUsesOnlyThePublicPath(t *testing.T) {
+	src, err := os.ReadFile("gaos_automation.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{"caseauto.", "runCaseCreate", "runExecutorJob", "NewMachine"} {
+		if strings.Contains(string(src), banned) {
+			t.Errorf("gaos_automation.go reaches past enqueueCaseAction: %q", banned)
+		}
 	}
 }
 

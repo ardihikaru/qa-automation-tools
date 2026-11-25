@@ -123,8 +123,14 @@ automation for the case) or `run` (run the spec the case already has). Answer: `
 * The job is the ordinary case automation job (`case_create` or `case_run`): it is on the job page, its log is the
   usual one, and a `create` still waits for a human to approve the spec before the pull request is opened. **GAOS does
   not get the approval gate.**
-* A job that is already active for that case is `409` and the answer names it (`job_id`); a case that already has a
-  spec (`create`), a case that has none (`run`), and a product without an automation repository are `409` as well.
+* A job that is already active for that case is not started twice: the call answers `200 {"job_id"}` with the active
+  job's id. A case that already has a spec (`create`), a case that has none (`run`), and a product without an
+  automation repository are `409`.
+* `caseCode` `"*"` with `mode` `run` runs every automated case of the product (one `case_run` per case, one after
+  the other, through the same path) as one job of type `gaos_run_all`; `202 {"job_id"}`, or `200` with the active
+  run-all of that product, or `409` when the product has no automated case. `"*"` with `create` is `422`. A restart
+  marks a run-all job `failed` (it is not resumed). Its `report` is the sum of the cases' counts; a case that cannot be
+  started counts as `skipped`.
 * An instance that cannot run case automation (no playwright-executor, no repository pool, no `REPO_POOL_HOST_DIR`, or
   no AI for `create`) answers `503`; nothing is started.
 
@@ -132,9 +138,10 @@ automation for the case) or `run` (run the spec the case already has). Answer: `
 
 The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"}}`.
 
-* `status` is `queued`, `running`, `completed` or `failed`; `phase` is the step the job is in (`prepare`, `generate`,
-  `write`, `run`, `repair`, `approval`, `push`, `pr`, `done`); `job_type` is `case_run` or `case_create`; `error` is
-  empty until the job fails.
+* `status` is `queued`, `running`, `succeeded` or `failed` (the job page's `completed` is `succeeded` here; failing
+  tests are in `report`, not in `status`); `phase` is the step the job is in (`prepare`, `generate`, `write`, `run`,
+  `repair`, `approval`, `push`, `pr`, `done`; a run-all shows `run <case> (n/total)`); `job_type` is `create` or
+  `run`; `error` is empty until the job fails.
 * `report` holds the counts of the last run of the spec (`0`, `0`, `0` before the first run).
 * An unknown job id is `404`.
 
