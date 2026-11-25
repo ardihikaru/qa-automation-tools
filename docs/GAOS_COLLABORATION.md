@@ -105,6 +105,42 @@ cases and 1 MiB (more is `400`). Unknown JSON fields are tolerated; the automati
 `user_story`, `polarity`, `level`, `pri`). The product's GAOS card shows it as **GAOS decisions**; filtering to the
 differing ones is how the `exists-differs` cases are found.
 
+## Direction 3: GAOS starts an automation (two more endpoints)
+
+GAOS can now ask the QA tools to write an automation for a case, or to run the one the case already has, and to watch
+the job. The two routes sit in the same family as the endpoints above and use the **same** `GAOS_INBOUND_TOKEN`: no
+cookie, no session, `401` a wrong or missing token, `503` token not configured (closed), `405` a wrong method.
+
+### `POST /api/v1/gaos/automation`
+
+Body: `{"product":"p-6","caseCode":"TC-AUTH-001","mode":"create"}`. `mode` is `create` (generate and write a new
+automation for the case) or `run` (run the spec the case already has). Answer: `202 {"job_id":"job-..."}`.
+
+* `product` is the GAOS product id and must name a product this side has flagged as integrated (`gaos_integrated` and
+  `gaos_product_id`); an unknown id, and an id of a product that is not flagged, are both `404 unknown product`.
+* `caseCode` is the case of that product; an unknown (or deleted) case is `404 unknown case`.
+* A bad body, and a mode that is neither `create` nor `run`, are `422`.
+* The job is the ordinary case automation job (`case_create` or `case_run`): it is on the job page, its log is the
+  usual one, and a `create` still waits for a human to approve the spec before the pull request is opened. **GAOS does
+  not get the approval gate.**
+* A job that is already active for that case is `409` and the answer names it (`job_id`); a case that already has a
+  spec (`create`), a case that has none (`run`), and a product without an automation repository are `409` as well.
+* An instance that cannot run case automation (no playwright-executor, no repository pool, no `REPO_POOL_HOST_DIR`, or
+  no AI for `create`) answers `503`; nothing is started.
+
+### `GET /api/v1/gaos/jobs/{id}`
+
+The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"}}`.
+
+* `status` is `queued`, `running`, `completed` or `failed`; `phase` is the step the job is in (`prepare`, `generate`,
+  `write`, `run`, `repair`, `approval`, `push`, `pr`, `done`); `job_type` is `case_run` or `case_create`; `error` is
+  empty until the job fails.
+* `report` holds the counts of the last run of the spec (`0`, `0`, `0` before the first run).
+* An unknown job id is `404`.
+
+The job id is the one the `202` answered. The numbers, the phase and the error are the ones the job page shows, so a
+GAOS card and the dashboard never disagree.
+
 ## Learned policies (Inbox approvals)
 
 The `/learning` page of the QA tools turns findings from case automation (a reviewer's *Needs changes*, a repair that
@@ -194,7 +230,8 @@ object (from the 200/409, the webhook when GAOS sends `source`, or the poll). `a
 ## Security in short
 
 The answer relay sends the signed-in username (and, when impersonating, the real user's name) to GAOS; the comment is
-redacted first, as before. Bearer tokens only on the two routes; constant-time comparison; a missing token closes them. No token appears in a log, a
+redacted first, as before. Bearer tokens only on the inbound routes (the five GAOS routes and the CI results route);
+constant-time comparison; a missing token closes them. No token appears in a log, a
 note or a response. Everything received is bounded (200 items, 1 MiB) and checked; text from GAOS is never written into
 `kb_*`. The URL to GAOS is configuration, never request input, and redirects are refused. Pushes for two products never
 overlap (GAOS allows one write at a time per token).
@@ -207,3 +244,5 @@ from the GAOS decisions view.
 
 *Status on 2026-11-14:* the push and the two endpoints are deployed; tombstones in `results`, the decisions view and the
 module-derivation fix are merged to `main` and go live with the next deploy.
+
+*Status on 2026-11-25:* the two automation routes (Direction 3) are implemented and go live with the next deploy.

@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/qa-automation/ai-backend/internal/db"
 	"github.com/qa-automation/ai-backend/internal/services/caseauto"
 	"github.com/qa-automation/ai-backend/internal/services/gaossync"
 )
@@ -44,6 +45,61 @@ func (r *Router) lookupJob(ctx context.Context, id string) (*jobRecord, error) {
 		return nil, err
 	}
 	return &job, nil
+}
+
+// jobPhase is the step the job last reported (job_events.step). The second answer is false when
+// the job has no event yet or the table cannot be read.
+func jobPhase(ctx context.Context, d *db.DB, jobID string) (string, bool) {
+	if d == nil {
+		return "", false
+	}
+	var phase string
+	if err := d.QueryRow(ctx, `SELECT step FROM job_events WHERE job_id = ? ORDER BY seq DESC LIMIT 1`, jobID).Scan(&phase); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("job phase: %v", err)
+		}
+		return "", false
+	}
+	return phase, true
+}
+
+// jobReportMap is the report of a job as the job page shows it: the machine's report from the
+// payload, else the run's summary from the result.
+func jobReportMap(job *jobRecord) (map[string]interface{}, bool) {
+	if rep, ok := job.Payload["report"].(map[string]interface{}); ok {
+		return rep, true
+	}
+	if rep, ok := job.Result["summary"].(map[string]interface{}); ok {
+		return rep, true
+	}
+	return nil, false
+}
+
+// jobReportCounts is the report of a job as counts: passed, failed and skipped. The three keys are
+// always there, 0 when the job has no report yet.
+func jobReportCounts(job *jobRecord) map[string]int {
+	out := map[string]int{"passed": 0, "failed": 0, "skipped": 0}
+	rep, ok := jobReportMap(job)
+	if !ok {
+		// The machine stores its report as map[string]int until the job is read back from the database.
+		var m map[string]int
+		switch {
+		case job.Payload["report"] != nil:
+			m, _ = job.Payload["report"].(map[string]int)
+		default:
+			m, _ = job.Result["summary"].(map[string]int)
+		}
+		if m == nil {
+			return out
+		}
+		rep = map[string]interface{}{"passed": m["passed"], "failed": m["failed"], "skipped": m["skipped"]}
+	}
+	for _, k := range []string{"passed", "failed", "skipped"} {
+		if v, ok := rep[k]; ok {
+			out[k] = intFrom(v)
+		}
+	}
+	return out
 }
 
 // handleJobSub serves /api/jobs/{id}/{events|approval}.
@@ -96,8 +152,8 @@ func (r *Router) handleJobEvents(w http.ResponseWriter, req *http.Request, jobID
 	if len(events) > 0 {
 		phase = events[len(events)-1].Step
 	}
-	if err := d.QueryRow(ctx, `SELECT step FROM job_events WHERE job_id = ? ORDER BY seq DESC LIMIT 1`, jobID).Scan(&phase); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("job events: phase: %v", err)
+	if p, ok := jobPhase(ctx, d, jobID); ok {
+		phase = p
 	}
 	out := map[string]any{"events": events, "status": job.Status, "phase": phase, "job_type": job.Type}
 	if job.Error != "" {
@@ -120,9 +176,7 @@ func (r *Router) handleJobEvents(w http.ResponseWriter, req *http.Request, jobID
 		content, _ := p["spec_content"].(string)
 		out["spec"] = map[string]any{"path": sp, "content": content}
 	}
-	if rep, ok := p["report"].(map[string]interface{}); ok {
-		out["report"] = rep
-	} else if rep, ok := job.Result["summary"].(map[string]interface{}); ok {
+	if rep, ok := jobReportMap(job); ok {
 		out["report"] = rep
 	}
 	if vd, ok := job.Result["verdict"].(map[string]interface{}); ok {

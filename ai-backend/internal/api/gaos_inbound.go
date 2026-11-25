@@ -5,6 +5,9 @@ package api
 //   POST /api/v1/gaos/catalog  - GAOS pushes its planning decisions; stored in gaos_decisions.
 // They sit outside cookie auth (see ServeHTTP) and are guarded by one static bearer token.
 // No handler here may use the session user: there is none.
+//
+// The GAOS automation routes (GAOS_AUTOMATION.md) share the same guard:
+//   POST /api/v1/gaos/automation, GET /api/v1/gaos/jobs/{id} (gaos_automation.go).
 
 import (
 	"context"
@@ -40,10 +43,13 @@ var (
 	gaosErrBadBody = errors.New("bad body")
 )
 
-// IsGAOSInboundPath reports whether path is one of the two bearer-authenticated routes.
-// auth.IsAuthAllowList mirrors this (GAOS_INBOUND.md decision 1).
+// IsGAOSInboundPath reports whether path is one of the bearer-authenticated routes.
+// auth.IsAuthAllowList mirrors this (GAOS_INBOUND.md decision 1); the GAOS automation routes
+// (GAOS_AUTOMATION.md decision 1) are guarded here only: that mirror is exact-match and is
+// never called.
 func IsGAOSInboundPath(path string) bool {
-	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog" || path == gaosInboxAnswerPath
+	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog" || path == gaosInboxAnswerPath ||
+		path == gaosAutomationPath || strings.HasPrefix(path, gaosJobsPrefix)
 }
 
 // SetGAOSInboundToken enables the inbound routes. Empty = disabled (503, fail-closed).
@@ -64,19 +70,31 @@ func (r *Router) serveGAOSInbound(w http.ResponseWriter, req *http.Request) {
 		writeJSONError(w, http.StatusServiceUnavailable, "database unavailable")
 		return
 	}
-	switch req.URL.Path {
-	case "/api/v1/gaos/results":
+	switch {
+	case req.URL.Path == "/api/v1/gaos/results":
 		if req.Method != http.MethodGet {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
 		r.gaosResults(w, req)
-	case gaosInboxAnswerPath:
+	case req.URL.Path == gaosInboxAnswerPath:
 		if req.Method != http.MethodPost {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
 		r.gaosInboxAnswer(w, req)
+	case req.URL.Path == gaosAutomationPath:
+		if req.Method != http.MethodPost {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosAutomation(w, req)
+	case strings.HasPrefix(req.URL.Path, gaosJobsPrefix):
+		if req.Method != http.MethodGet {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosJobStatus(w, req, gaosJobID(req.URL.Path))
 	default:
 		if req.Method != http.MethodPost {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
