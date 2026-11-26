@@ -23,7 +23,8 @@ const TestCatalogFormatName = "test-catalog-v1"
 func (testCatalog) Name() string { return TestCatalogFormatName }
 
 // Version 2: optional 13th column "Prod since" (MODULE_CHECKLIST_EXPORT.md, Amendment 1).
-func (testCatalog) Version() int { return 2 }
+// Version 3: optional 14th column "Periode pelaksanaan" (development period, Amendment 2).
+func (testCatalog) Version() int { return 3 }
 
 const (
 	modulesDir = "docs/modules/"
@@ -135,15 +136,20 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 				continue
 			}
 			fid := idm[1]
-			// 12 columns, or 13 with "Prod since" after "Status as of" (MODULE_CHECKLIST_EXPORT.md).
-			if len(c) != 12 && len(c) != 13 {
-				prob(file, i+1, "feature row needs 12 or 13 columns, found %d", len(c))
+			// 12 columns; 13 with "Prod since" after "Status as of"; 14 with "Periode pelaksanaan"
+			// after "Prod since" (MODULE_CHECKLIST_EXPORT.md, Amendments 1 and 2).
+			if len(c) < 12 || len(c) > 14 {
+				prob(file, i+1, "feature row needs 12, 13 or 14 columns, found %d", len(c))
 				continue
 			}
-			prodSince := ""
-			if len(c) == 13 {
+			prodSince, devPeriod := "", ""
+			switch len(c) {
+			case 13:
 				prodSince = c[6]
 				c = append(c[:6:6], c[7:]...)
+			case 14:
+				prodSince, devPeriod = c[6], c[7]
+				c = append(c[:6:6], c[8:]...)
 			}
 			if _, dup := features[fid]; dup {
 				prob(file, i+1, "duplicate feature %s", fid)
@@ -173,9 +179,18 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 					prodSince = ""
 				}
 			}
+			if devPeriod == "—" {
+				devPeriod = ""
+			}
+			if devPeriod != "" {
+				if p, err := ParseProdSince(devPeriod); err != nil || p.Unknown || p.From == "" {
+					prob(file, i+1, "%s: \"Periode pelaksanaan\" must be YYYY-MM or YYYY-MM..YYYY-MM", fid)
+					devPeriod = ""
+				}
+			}
 			f := Feature{
 				Code: fid, ModuleCode: modCode, Name: c[2], RepoEntry: c[3], ReleaseStatus: status,
-				StatusAsOf: asOf, ProdSince: prodSince, Evidence: c[6], Notes: c[7], SourceFile: file, SourceLine: i + 1,
+				StatusAsOf: asOf, ProdSince: prodSince, DevPeriod: devPeriod, Evidence: c[6], Notes: c[7], SourceFile: file, SourceLine: i + 1,
 			}
 			if sub := strings.TrimSpace(c[1]); sub != "" {
 				code := submoduleCode(modCode, sub)
@@ -375,6 +390,7 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 		fit(k, "evidence", &x.Evidence, 500)
 		fit(k, "status_as_of", &x.StatusAsOf, 20)
 		fit(k, "prod_since", &x.ProdSince, 20)
+		fit(k, "dev_period", &x.DevPeriod, 20)
 		features[k] = x
 	}
 	for k, x := range epics {

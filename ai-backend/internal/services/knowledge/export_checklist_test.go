@@ -46,7 +46,7 @@ func TestStatusDatesIgnoreOtherStatuses(t *testing.T) {
 	parts, _ := buildChecklist(checklistInput{
 		parts:    []codeName{{"A", "P"}},
 		modules:  []checklistModuleIn{{"A01", "A", "M"}},
-		features: []checklistFeatureIn{{"A01.01", "A01", "", "F", "PROD", ""}},
+		features: []checklistFeatureIn{{"A01.01", "A01", "", "F", "PROD", "", ""}},
 		dates:    d,
 	})
 	r := parts[0].Modules[0].Rows[0]
@@ -75,10 +75,10 @@ func TestBuildChecklistOrphans(t *testing.T) {
 		modules:    []checklistModuleIn{{"A01", "A", "M1"}, {"B01", "B", "orphan module"}},
 		submodules: map[string]string{"S1": "Sub one"},
 		features: []checklistFeatureIn{
-			{"A01.01", "A01", "S1", "f1", "PROD", ""},
-			{"A01.02", "A01", "GONE", "f2", "UNKNOWN", ""}, // inactive sub-module: kept, empty cell
-			{"B01.01", "B01", "", "f3", "PROD", ""},        // module not active
-			{"Z.01", "Z01", "", "f4", "PROD", ""},          // module unknown
+			{"A01.01", "A01", "S1", "f1", "PROD", "", ""},
+			{"A01.02", "A01", "GONE", "f2", "UNKNOWN", "", ""}, // inactive sub-module: kept, empty cell
+			{"B01.01", "B01", "", "f3", "PROD", "", ""},        // module not active
+			{"Z.01", "Z01", "", "f4", "PROD", "", ""},          // module unknown
 		},
 	})
 	if skipped != 3 {
@@ -110,7 +110,7 @@ func fixtureSnapshot(t *testing.T, dates bool) (*ChecklistSnapshot, *Snapshot) {
 		in.submodules[s.Code] = s.Name
 	}
 	for _, x := range snap.Features {
-		in.features = append(in.features, checklistFeatureIn{x.Code, x.ModuleCode, x.SubmoduleCode, x.Name, x.ReleaseStatus, x.ProdSince})
+		in.features = append(in.features, checklistFeatureIn{x.Code, x.ModuleCode, x.SubmoduleCode, x.Name, x.ReleaseStatus, x.ProdSince, x.DevPeriod})
 	}
 	if dates {
 		in.dates = statusDates{}
@@ -355,9 +355,9 @@ func TestGoldenHashes(t *testing.T) {
 		"pdf":  hashHex(render(t, cs, "pdf", true)),
 	}
 	want := map[string]string{
-		"csv":  "26fb26f116442947daeb000ce244d4ae9ba2cd4d8fa1e04b1a43db1b1e19acf2",
-		"xlsx": "f23a1cef6ce795bd43f68291363f2e2fabd9eb267f1bc4537383a1fc941858d1",
-		"pdf":  "a61bc8b59e4e2306fc70f456a3a213b7a2761ae16799f1f5c00d2803c9a02d86",
+		"csv":  "4d4da0ce7825e2da320a1a5b009117ccbe5f15b067fcdc86eaf599c4c1178641",
+		"xlsx": "3d80e5bd8fd272f5107059782b92cdebacb6bc802ab766485944c80ad8cc373d",
+		"pdf":  "cc9afb643fdad3a42d57fb56e11719c549624ef2f3178f16902a840013fbf5c4",
 	}
 	for k, v := range got {
 		if want[k] != v {

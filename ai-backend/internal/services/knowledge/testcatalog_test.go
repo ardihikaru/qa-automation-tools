@@ -225,7 +225,7 @@ func TestSUTRules(t *testing.T) {
 	for _, want := range []string{
 		`A01.02 unknown release status`,
 		`A02.01 is not under its module heading`,
-		`feature row needs 12 or 13 columns, found 3`,
+		`feature row needs 12, 13 or 14 columns, found 3`,
 		`US-OUT-03 names no module feature`,
 		`US-OUT-04 names unknown feature A09.99`,
 		`TC-OUT-002 story US-OUT-09 is not listed`,

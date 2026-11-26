@@ -166,11 +166,17 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	_ = f.SetColWidth(sum, "C", "I", 13)
 
 	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Prod sejak | Cek [| Status tercatat | Sumber tanggal].
-	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
-	dc := 7 // first last-update column; one less without Cek
-	if snap.Filter.HideCheck {
-		cols, dc = cols[:5], 6
+	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak"}
+	devCol, cekCol := 0, 0 // 1-based column numbers, 0 = not shown
+	if snap.Filter.ShowDevPeriod {
+		cols = append(cols, "Periode pelaksanaan")
+		devCol = len(cols)
 	}
+	if !snap.Filter.HideCheck {
+		cols = append(cols, "Cek")
+		cekCol = len(cols)
+	}
+	dc := len(cols) + 1 // first last-update column
 	if withLastUpdate {
 		cols = append(cols, "Status tercatat", "Sumber tanggal")
 	}
@@ -198,6 +204,9 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 				if ps := rowProdSince(x); ps != "" {
 					_ = f.SetCellStr(sh, cell(5), ps)
 				}
+				if dp := prodSinceText(x.DevPeriod); devCol > 0 && dp != "" {
+					_ = f.SetCellStr(sh, cell(devCol), dp)
+				}
 				if withLastUpdate && x.StatusSince != nil {
 					d := x.StatusSince.In(wib)
 					_ = f.SetCellValue(sh, cell(dc), time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC))
@@ -212,8 +221,13 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 		_ = f.SetColWidth(sh, "C", "C", 70)
 		_ = f.SetColWidth(sh, "D", "D", 14)
 		_ = f.SetColWidth(sh, "E", "E", 16)
-		if dc == 7 {
-			_ = f.SetColWidth(sh, "F", "F", 8)
+		if devCol > 0 {
+			n, _ := excelize.ColumnNumberToName(devCol)
+			_ = f.SetColWidth(sh, n, n, 20)
+		}
+		if cekCol > 0 {
+			n, _ := excelize.ColumnNumberToName(cekCol)
+			_ = f.SetColWidth(sh, n, n, 8)
 		}
 		if withLastUpdate {
 			a, _ := excelize.ColumnNumberToName(dc)

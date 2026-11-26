@@ -15,7 +15,7 @@ import (
 // TemplateVersion is part of the export cache key. Raise it on any change that alters the output
 // of any renderer (layout, columns, colours, wording, time zone); the golden-hash test fails when
 // the output changes without a bump, including after a library upgrade.
-const TemplateVersion = 7
+const TemplateVersion = 8
 
 // maxExportFeatures is the largest catalogue the export accepts.
 const maxExportFeatures = 20000
@@ -40,6 +40,7 @@ type ChecklistRow struct {
 	Feature     string
 	Status      string
 	ProdSince   string     // raw "Prod since" cell ("" when absent); rendered with prodSinceText
+	DevPeriod   string     // raw "Periode pelaksanaan" cell ("" when absent); rendered with prodSinceText
 	StatusSince *time.Time // UTC; nil when unknown or the option is off
 	DateSource  string     // DateSourceSync, DateSourceBackfill, or "" when there is no date
 }
@@ -144,7 +145,7 @@ type codeName struct{ code, name string }
 
 type checklistModuleIn struct{ code, part, name string }
 
-type checklistFeatureIn struct{ code, module, submodule, name, status, prodSince string }
+type checklistFeatureIn struct{ code, module, submodule, name, status, prodSince, devPeriod string }
 
 // statusDates holds, per feature code and status, the latest history date per source.
 type statusDates map[string]map[string][2]*time.Time // code -> status -> [sync, backfill]
@@ -202,7 +203,7 @@ func buildChecklist(in checklistInput) (parts []ChecklistPart, skipped int) {
 			skipped++
 			continue
 		}
-		row := ChecklistRow{ID: f.code, Submodule: in.submodules[f.submodule], Feature: f.name, Status: f.status, ProdSince: f.prodSince}
+		row := ChecklistRow{ID: f.code, Submodule: in.submodules[f.submodule], Feature: f.name, Status: f.status, ProdSince: f.prodSince, DevPeriod: f.devPeriod}
 		if in.dates != nil {
 			v := in.dates[f.code][f.status]
 			row.StatusSince, row.DateSource = pickStatusDate(v[0], v[1])
@@ -343,13 +344,13 @@ func (s *Syncer) ChecklistSnapshot(ctx context.Context, pid int, withHistory boo
 	}
 
 	// LIMIT keeps an oversized catalogue from being loaded; one extra row proves it is too large.
-	if rs, err = tx.QueryContext(ctx, `SELECT code, module_code, submodule_code, name, release_status, prod_since FROM kb_features`+active+` ORDER BY module_code, code LIMIT ?`, pid, maxExportFeatures+1); err != nil {
+	if rs, err = tx.QueryContext(ctx, `SELECT code, module_code, submodule_code, name, release_status, prod_since, dev_period FROM kb_features`+active+` ORDER BY module_code, code LIMIT ?`, pid, maxExportFeatures+1); err != nil {
 		return nil, err
 	}
 	for rs.Next() {
 		var f checklistFeatureIn
 		var sub, nm sql.NullString
-		if err := rs.Scan(&f.code, &f.module, &sub, &nm, &f.status, &f.prodSince); err != nil {
+		if err := rs.Scan(&f.code, &f.module, &sub, &nm, &f.status, &f.prodSince, &f.devPeriod); err != nil {
 			rs.Close()
 			return nil, err
 		}
@@ -448,4 +449,30 @@ func guardFormula(s string) string {
 		return "'" + s
 	}
 	return s
+}
+
+// devPeriodRollup is the development period of a group of rows: earliest start to latest end of
+// the rows that have one, as a raw value ("" when none has one). Modules and sub-modules have no
+// period of their own; it is derived from their features.
+func devPeriodRollup(rows []ChecklistRow) string {
+	from, to := "", ""
+	for _, r := range rows {
+		p, err := ParseProdSince(r.DevPeriod)
+		if r.DevPeriod == "" || err != nil || p.Unknown || p.From == "" {
+			continue
+		}
+		if from == "" || p.From < from {
+			from = p.From
+		}
+		if p.To > to {
+			to = p.To
+		}
+	}
+	switch {
+	case from == "":
+		return ""
+	case from == to:
+		return from
+	}
+	return from + ".." + to
 }

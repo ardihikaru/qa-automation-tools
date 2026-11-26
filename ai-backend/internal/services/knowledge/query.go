@@ -377,7 +377,7 @@ func (s *Syncer) Tree(ctx context.Context, pid int, includeRemoved bool) (Item, 
 	featBySub := map[string][]Item{}
 	featNoSub := map[string][]Item{}
 	for _, f := range feats {
-		x := slim(f, "code", "name", "release_status", "status_as_of", "prod_since", "origin", "removed_at")
+		x := slim(f, "code", "name", "release_status", "status_as_of", "prod_since", "dev_period", "origin", "removed_at")
 		addStats(x, stats[f["code"].(string)])
 		if sc, ok := f["submodule_code"].(string); ok && sc != "" {
 			featBySub[sc] = append(featBySub[sc], x)

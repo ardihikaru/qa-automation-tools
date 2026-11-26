@@ -46,6 +46,7 @@ func TestGuardedMigrationsAreKnown(t *testing.T) {
 		"ADD COLUMN gaos_push_requested_at",
 		"ADD COLUMN answer_source", // HISTORY_ANSWER.md
 		"ADD COLUMN prod_since",    // MODULE_CHECKLIST_EXPORT.md (PROD scope)
+		"ADD COLUMN dev_period",    // MODULE_CHECKLIST_EXPORT.md (Amendment 2)
 	}
 	var got []string
 	for _, m := range migrations {

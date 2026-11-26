@@ -250,3 +250,58 @@ func TestUndatedOnly(t *testing.T) {
 		t.Errorf("csv = %v", recs)
 	}
 }
+
+// The fixture's B part uses the 14-column layout: Prod since and Periode pelaksanaan are parsed.
+func TestFixtureDevPeriod(t *testing.T) {
+	cs, _ := fixtureSnapshot(t, false)
+	got := FilterChecklist(cs, ChecklistFilter{ShowDevPeriod: true, HideCheck: true})
+	recs := csvRecords(t, render(t, got, "csv", false))
+	if h := strings.Join(recs[0], ","); h != "ID,Sub-modul,Fitur,Status,Prod sejak,Periode pelaksanaan" {
+		t.Fatalf("head = %q", h)
+	}
+	by := map[string][]string{}
+	for _, r := range recs[1:] {
+		by[r[0]] = r
+	}
+	for id, want := range map[string][2]string{
+		"B01.001": {"Okt 2025", "Jul–Des 2024"}, "B01.002": {"Des 2025", "Jan–Apr 2025"}, "B01.003": {"?", "Sep 2024"},
+		"B02.02": {"< Mei 2026", "Feb–Mar 2025"}, "B02.01": {"Okt 2025", ""}, "A01.01": {"", ""}, "C01.02": {"Jul–Agu 2026", ""},
+	} {
+		if r := by[id]; r == nil || r[4] != want[0] || r[5] != want[1] {
+			t.Errorf("%s = %v, want %v", id, r, want)
+		}
+	}
+	var b01 []ChecklistRow
+	for _, p := range got.Parts {
+		for _, m := range p.Modules {
+			if m.Code == "B01" {
+				b01 = m.Rows
+			}
+		}
+	}
+	if r := devPeriodRollup(b01); r != "2024-07..2025-04" {
+		t.Errorf("B01 rollup = %q", r)
+	}
+	if devPeriodRollup(nil) != "" || devPeriodRollup([]ChecklistRow{{DevPeriod: "2024-09"}}) != "2024-09" {
+		t.Error("rollup edges")
+	}
+	pdf := string(render(t, got, "pdf", false))
+	if !strings.Contains(pdf, "Periode pelaksanaan modul: Jul 2024") || strings.Contains(pdf, "Cek") {
+		t.Error("PDF lacks the module roll-up or still has Cek")
+	}
+	sheets, rows := xlsxDump(t, render(t, FilterChecklist(cs, ChecklistFilter{ShowDevPeriod: true}), "xlsx", true))
+	for _, sh := range sheets {
+		if strings.HasPrefix(sh, "B ") {
+			if h := strings.Join(rows[sh][0], ","); h != "ID,Sub-modul,Fitur,Status,Prod sejak,Periode pelaksanaan,Cek,Status tercatat,Sumber tanggal" {
+				t.Errorf("xlsx head = %q", h)
+			}
+		}
+	}
+	if (ChecklistFilter{ShowDevPeriod: true}).variant() != "/devperiod" {
+		t.Error("variant")
+	}
+	// Without the option the output has no Periode pelaksanaan anywhere.
+	if s := string(render(t, FilterChecklist(cs, ChecklistFilter{}), "csv", false)); strings.Contains(s, "Periode pelaksanaan") {
+		t.Error("default CSV shows the development period")
+	}
+}

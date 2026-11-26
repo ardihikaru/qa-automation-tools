@@ -520,3 +520,15 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
 **Change 2026-11-26 (TemplateVersion 6): `include_undated` withdrawn.** Owner decision: a period is a hard filter. A ranged PROD export (e.g. May–Nov 2026) never lists PROD rows without a known period, because they cannot be shown to fall inside it; they are counted in the header (`N fitur PROD tanpa tanggal tidak disertakan`). They are listed, as `?`, only in a PROD export **without** a period. The `include_undated` parameter, the "Before <from>" label and the dialog checkbox from the TemplateVersion 4 change are removed; an `include_undated` query parameter is now ignored like any unknown parameter. The PROD-only legend and summary changes stay.
 
 **Change 2026-11-26 (TemplateVersion 7): PROD features with an unknown date only.** New param `prod_since=unknown` (`scope=prod` only, never with `since_from`/`since_to`, else 400) keeps only the PROD rows without a known period (`?`, empty or unparsable), e.g. to collect the missing dates. Scope line `Hanya fitur PROD yang tanggal rilisnya (Prod sejak) belum diketahui`; cache variant `/prod-undated`, file name `-PROD-UNDATED`. The dialog's *Production only* now offers one mutually exclusive radio group, "Which PROD features": *All PROD features* · *Released in a period* (the from/to months appear only for this one) · *Release date unknown*. One group instead of extra checkboxes because the three cannot be combined (a period and "no date" contradict each other), so the form cannot express an invalid request.
+
+## Amendment 2: "Periode pelaksanaan" (development period) (2026-11-26, TemplateVersion 8)
+
+**Why.** Owners also want to know when each feature was *developed*, not only when it reached production. Old planning documents give periods for many features (not all).
+
+**Catalogue format (test-catalog v3).** A feature row may have 14 columns: `Periode pelaksanaan` right after `Prod since`. 12 and 13 columns still parse. Values: `YYYY-MM` or `YYYY-MM..YYYY-MM` (from <= to); `—` or absent = unknown (stored `''`). `<…` and `?` are not allowed here (a sync problem, stored `''`).
+
+**Storage.** `kb_features.dev_period VARCHAR(20) NOT NULL DEFAULT ''` (guarded `ALTER`), raw. Modules and sub-modules have no stored period: it is **rolled up** from their features (earliest start to latest end) where shown (dashboard module/sub-module pages, PDF module heading). One source of truth, so a module never disagrees with its features.
+
+**Export.** `dev_period=0|1` (`strictBool`, default 0, any scope) adds a `Periode pelaksanaan` column after `Prod sejak` in all three formats (shown like `Jul–Des 2024`, `Jul 2024–Apr 2025`); the PDF also prints `Periode pelaksanaan modul: …` under each module heading. PDF widths: Sub-modul and Fitur give room. Cache variant `/devperiod`. The dialog has an "Add the Periode pelaksanaan column" checkbox (off by default).
+
+**Dashboard.** The feature page and panel show *Periode pelaksanaan*; module and sub-module pages show the rolled-up period.

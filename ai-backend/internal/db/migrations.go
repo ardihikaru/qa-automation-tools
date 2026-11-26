@@ -1048,6 +1048,10 @@ WHERE knowledge_format LIKE '%-test-catalog-v1';`,
 	// (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ? or '' when absent); the export parses it.
 	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'kb_features' AND column_name = 'prod_since'
 ALTER TABLE kb_features ADD COLUMN prod_since VARCHAR(20) NOT NULL DEFAULT '' AFTER status_as_of;`,
+	// MODULE_CHECKLIST_EXPORT.md (Amendment 2): the catalogue's optional "Periode pelaksanaan" cell
+	// (development period), raw; modules and sub-modules roll it up from their features.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'kb_features' AND column_name = 'dev_period'
+ALTER TABLE kb_features ADD COLUMN dev_period VARCHAR(20) NOT NULL DEFAULT '' AFTER prod_since;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
