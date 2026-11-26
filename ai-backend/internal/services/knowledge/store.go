@@ -22,7 +22,7 @@ var tables = map[string]table{
 	TypePart:      {"kb_parts", []string{"name"}},
 	TypeModule:    {"kb_modules", []string{"part_code", "name"}},
 	TypeSubmodule: {"kb_submodules", []string{"module_code", "name"}},
-	TypeFeature:   {"kb_features", []string{"module_code", "submodule_code", "name", "repo_entry", "release_status", "status_as_of", "evidence", "notes"}},
+	TypeFeature:   {"kb_features", []string{"module_code", "submodule_code", "name", "repo_entry", "release_status", "status_as_of", "prod_since", "evidence", "notes"}},
 	TypeEpic:      {"kb_epics", []string{"title", "service", "area"}},
 	TypeStory:     {"kb_stories", []string{"epic_code", "text", "unmapped_reason"}},
 	TypeAssistant: {"kb_assistants", []string{"kind", "name", "description", "path", "frontmatter", "body"}},
@@ -87,7 +87,7 @@ func rowsOf(s *Snapshot) map[string][]row {
 		out[TypeSubmodule] = append(out[TypeSubmodule], row{code: x.Code, vals: []any{x.ModuleCode, x.Name}})
 	}
 	for _, x := range s.Features {
-		out[TypeFeature] = append(out[TypeFeature], row{code: x.Code, vals: []any{x.ModuleCode, nullIfEmpty(x.SubmoduleCode), x.Name, x.RepoEntry, x.ReleaseStatus, x.StatusAsOf, x.Evidence, x.Notes}, file: x.SourceFile, line: x.SourceLine})
+		out[TypeFeature] = append(out[TypeFeature], row{code: x.Code, vals: []any{x.ModuleCode, nullIfEmpty(x.SubmoduleCode), x.Name, x.RepoEntry, x.ReleaseStatus, x.StatusAsOf, x.ProdSince, x.Evidence, x.Notes}, file: x.SourceFile, line: x.SourceLine})
 	}
 	for _, x := range s.Epics {
 		out[TypeEpic] = append(out[TypeEpic], row{code: x.Code, vals: []any{x.Title, x.Service, x.Area}, file: x.SourceFile})

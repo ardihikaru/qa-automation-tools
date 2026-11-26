@@ -104,6 +104,9 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	if !snap.SyncedAt.IsZero() {
 		_ = f.SetCellStr(sum, "A2", "Sinkronisasi katalog: "+dateID(snap.SyncedAt))
 	}
+	if s := scopeText(snap); s != "" {
+		_ = f.SetCellStr(sum, "A3", s)
+	}
 	head := append([]string{"Kode", "Nama", "Modul", "Fitur"}, ReleaseStatuses...)
 	row := 4
 	writeHead := func(r int) error {
@@ -161,8 +164,8 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	_ = f.SetColWidth(sum, "B", "B", 44)
 	_ = f.SetColWidth(sum, "C", "I", 13)
 
-	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Cek [| Status sejak | Sumber tanggal].
-	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Cek"}
+	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Prod sejak | Cek [| Status sejak | Sumber tanggal].
+	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
 	if withLastUpdate {
 		cols = append(cols, "Status sejak", "Sumber tanggal")
 	}
@@ -187,11 +190,14 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 				_ = f.SetCellStr(sh, cell(3), x.Feature)
 				_ = f.SetCellStr(sh, cell(4), x.Status)
 				_ = f.SetCellStyle(sh, cell(4), cell(4), statusStyle[ReleaseStatuses[statusIndex(x.Status)]])
+				if ps := prodSinceText(x.ProdSince); ps != "" {
+					_ = f.SetCellStr(sh, cell(5), ps)
+				}
 				if withLastUpdate && x.StatusSince != nil {
 					d := x.StatusSince.In(wib)
-					_ = f.SetCellValue(sh, cell(6), time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC))
-					_ = f.SetCellStyle(sh, cell(6), cell(6), dateStyle)
-					_ = f.SetCellStr(sh, cell(7), x.DateSource)
+					_ = f.SetCellValue(sh, cell(7), time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC))
+					_ = f.SetCellStyle(sh, cell(7), cell(7), dateStyle)
+					_ = f.SetCellStr(sh, cell(8), x.DateSource)
 				}
 				r++
 			}
@@ -200,9 +206,10 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 		_ = f.SetColWidth(sh, "B", "B", 30)
 		_ = f.SetColWidth(sh, "C", "C", 70)
 		_ = f.SetColWidth(sh, "D", "D", 14)
-		_ = f.SetColWidth(sh, "E", "E", 8)
+		_ = f.SetColWidth(sh, "E", "E", 16)
+		_ = f.SetColWidth(sh, "F", "F", 8)
 		if withLastUpdate {
-			_ = f.SetColWidth(sh, "F", "G", 16)
+			_ = f.SetColWidth(sh, "G", "H", 16)
 		}
 		if err := f.SetPanes(sh, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft", Selection: []excelize.Selection{{SQRef: "A2", ActiveCell: "A2", Pane: "bottomLeft"}}}); err != nil {
 			return nil, err

@@ -1,0 +1,142 @@
+package knowledge
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseProdSince(t *testing.T) {
+	ok := map[string]ProdSince{
+		"2026-07":          {From: "2026-07", To: "2026-07"},
+		"2026-07..2026-08": {From: "2026-07", To: "2026-08"},
+		"2025-12..2026-01": {From: "2025-12", To: "2026-01"},
+		"<2026-05":         {To: "2026-04"},
+		"<2026-01":         {To: "2025-12"},
+		"?":                {Unknown: true},
+	}
+	for in, want := range ok {
+		got, err := ParseProdSince(in)
+		if err != nil || got != want {
+			t.Errorf("ParseProdSince(%q) = %+v, %v; want %+v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"", "2026-13", "2026-7", "2026-08..2026-07", "<2026", "Jul 2026", "—", "2026-07..", ">2026-05"} {
+		if _, err := ParseProdSince(in); err == nil {
+			t.Errorf("ParseProdSince(%q) accepted", in)
+		}
+	}
+}
+
+func TestProdSinceText(t *testing.T) {
+	cases := map[string]string{
+		"":                 "",
+		"2026-07":          "Jul 2026",
+		"2026-07..2026-08": "Jul–Agu 2026",
+		"2025-12..2026-01": "Des 2025–Jan 2026",
+		"<2026-05":         "< Mei 2026",
+		"?":                "?",
+		"bogus":            "",
+	}
+	for in, want := range cases {
+		if got := prodSinceText(in); got != want {
+			t.Errorf("prodSinceText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func filterFixture() *ChecklistSnapshot {
+	rows := []ChecklistRow{
+		{ID: "A01.01", Status: "PROD", ProdSince: "<2026-05"},
+		{ID: "A01.02", Status: "PROD", ProdSince: "2026-05..2026-06"},
+		{ID: "A01.03", Status: "PROD", ProdSince: "2026-07..2026-08"},
+		{ID: "A01.04", Status: "PROD", ProdSince: "2026-11"},
+		{ID: "A01.05", Status: "PROD", ProdSince: "?"},
+		{ID: "A01.06", Status: "PROD"}, // no Prod since column
+		{ID: "A01.07", Status: "DEV-DONE"},
+	}
+	return &ChecklistSnapshot{ProductName: "P", Parts: []ChecklistPart{
+		{Code: "A", Name: "PA", Modules: []ChecklistModule{{Code: "A01", Name: "M", Rows: rows}}},
+		{Code: "B", Name: "PB", Modules: []ChecklistModule{{Code: "B01", Name: "N", Rows: []ChecklistRow{{ID: "B01.01", Status: "IN-PROGRESS"}}}}},
+	}}
+}
+
+func ids(s *ChecklistSnapshot) string {
+	var out []string
+	for _, p := range s.Parts {
+		for _, m := range p.Modules {
+			for _, r := range m.Rows {
+				out = append(out, r.ID)
+			}
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+func TestFilterChecklist(t *testing.T) {
+	src := filterFixture()
+	cases := []struct {
+		name     string
+		f        ChecklistFilter
+		want     string
+		excluded int
+		parts    int
+	}{
+		{"all", ChecklistFilter{}, "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06,A01.07,B01.01", 0, 2},
+		{"prod", ChecklistFilter{Scope: ScopeProd}, "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06", 0, 1},
+		{"may-nov", ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"}, "A01.02,A01.03,A01.04", 2, 1},
+		{"before-may", ChecklistFilter{Scope: ScopeProd, To: "2026-04"}, "A01.01", 2, 1},
+		{"from-aug", ChecklistFilter{Scope: ScopeProd, From: "2026-08"}, "A01.03,A01.04", 2, 1},
+		{"edge-jun", ChecklistFilter{Scope: ScopeProd, From: "2026-06", To: "2026-06"}, "A01.02", 2, 1},
+		{"apr-may", ChecklistFilter{Scope: ScopeProd, From: "2026-04", To: "2026-05"}, "A01.01,A01.02", 2, 1},
+		{"dec", ChecklistFilter{Scope: ScopeProd, From: "2026-12", To: "2026-12"}, "", 2, 0},
+	}
+	for _, c := range cases {
+		got := FilterChecklist(src, c.f)
+		if ids(got) != c.want || got.ExcludedUnknown != c.excluded || len(got.Parts) != c.parts {
+			t.Errorf("%s: rows %q excluded %d parts %d; want %q %d %d", c.name, ids(got), got.ExcludedUnknown, len(got.Parts), c.want, c.excluded, c.parts)
+		}
+	}
+	if ids(src) != "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06,A01.07,B01.01" {
+		t.Error("FilterChecklist changed its input")
+	}
+}
+
+func TestScopeInRenders(t *testing.T) {
+	snap := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"})
+	want := "Hanya fitur PROD yang periode Prod sejak-nya beririsan dengan Mei 2026 s.d. Nov 2026 (2 fitur PROD tanpa tanggal tidak disertakan)"
+	if got := scopeText(snap); got != want {
+		t.Fatalf("scopeText = %q", got)
+	}
+	recs := csvRecords(t, render(t, snap, "csv", false))
+	if len(recs) != 4 || recs[1][4] != "Mei–Jun 2026" || recs[3][4] != "Nov 2026" {
+		t.Errorf("csv = %v", recs)
+	}
+	if pdf := string(render(t, snap, "pdf", false)); !strings.Contains(pdf, "Hanya fitur PROD") {
+		t.Error("PDF lacks the scope line")
+	}
+	sheets, rows := xlsxDump(t, render(t, snap, "xlsx", false))
+	if len(sheets) != 2 || !strings.Contains(strings.Join(rows["Ringkasan"][2], ""), "Hanya fitur PROD") {
+		t.Errorf("xlsx summary = %v", rows["Ringkasan"][:3])
+	}
+	if scopeText(FilterChecklist(filterFixture(), ChecklistFilter{})) != "" {
+		t.Error("full export has a scope line")
+	}
+}
+
+// The sample catalogue mixes the 12-column (A, B) and 13-column (C) layouts.
+func TestFixtureProdSince(t *testing.T) {
+	cs, _ := fixtureSnapshot(t, false)
+	got := map[string]string{}
+	for _, r := range csvRecords(t, render(t, cs, "csv", false))[1:] {
+		got[r[0]] = r[4]
+	}
+	want := map[string]string{"C01.01": "< Mei 2026", "C01.02": "Jul–Agu 2026", "C02.01": "?", "C02.02": "", "A01.01": ""}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s Prod sejak = %q, want %q", id, got[id], w)
+		}
+	}
+	if n := ids(FilterChecklist(cs, ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"})); n != "C01.02" {
+		t.Errorf("ranged fixture rows = %q", n)
+	}
+}

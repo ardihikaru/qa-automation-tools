@@ -38,6 +38,7 @@ type ExportQuery struct {
 	Format     string // pdf, xlsx or csv
 	LastUpdate bool
 	Force      bool
+	Filter     ChecklistFilter // zero value = every feature
 }
 
 // ExportResult is what the handler streams.
@@ -103,11 +104,12 @@ func nameHash(base string) string {
 var formatExt = map[string]bool{"pdf": true, "xlsx": true, "csv": true}
 
 // exportDir is the object directory (the key without the extension); it is also the flight key.
-func (c *ExportCache) exportDir(pid int, syncID int64, name string, lastUpdate bool, histMax int64) string {
+func (c *ExportCache) exportDir(pid int, syncID int64, name string, lastUpdate bool, histMax int64, f ChecklistFilter) string {
 	variant := "plain"
 	if lastUpdate {
 		variant = fmt.Sprintf("last-update-h%d", histMax)
 	}
+	variant += f.variant()
 	return fmt.Sprintf("%s%s/knowledge-exports/%d/modules-checklist/sync-%d/v%d/n%s/%s",
 		objectstore.Prefix, c.ns, pid, syncID, TemplateVersion, nameHash(ExportBaseName(name, pid)), variant)
 }
@@ -148,10 +150,10 @@ func (c *ExportCache) Serve(ctx context.Context, pid int, q ExportQuery) (Export
 		return ExportResult{}, err
 	}
 	base := ExportBaseName(info.ProductName, pid)
-	dir := c.exportDir(pid, info.SyncID, info.ProductName, q.LastUpdate, info.HistoryMaxID)
+	dir := c.exportDir(pid, info.SyncID, info.ProductName, q.LastUpdate, info.HistoryMaxID, q.Filter)
 	key := exportKey(dir, q.Format)
 	result := func(body []byte, cache string) ExportResult {
-		return ExportResult{Body: body, ContentType: contentTypeOf(q.Format), Filename: base + "-MODULE-CHECKLIST." + q.Format, Cache: cache}
+		return ExportResult{Body: body, ContentType: contentTypeOf(q.Format), Filename: base + "-MODULE-CHECKLIST" + strings.ToUpper(strings.ReplaceAll(q.Filter.variant(), "/", "-")) + "." + q.Format, Cache: cache}
 	}
 
 	skipPuts := false
@@ -200,10 +202,11 @@ func (c *ExportCache) Serve(ctx context.Context, pid int, q ExportQuery) (Export
 		if err != nil {
 			return nil, err
 		}
+		snap = FilterChecklist(snap, q.Filter)
 		out := &flightOut{reqFmt: q.Format, bodies: map[string][]byte{}, types: map[string]string{}, dir: dir, snap: snap}
 		if snap.SyncID != info.SyncID || snap.HistoryMaxID != info.HistoryMaxID || snap.ProductName != info.ProductName {
 			// The snapshot is the newer truth: store under the key it was built from.
-			out.dir = c.exportDir(pid, snap.SyncID, snap.ProductName, q.LastUpdate, snap.HistoryMaxID)
+			out.dir = c.exportDir(pid, snap.SyncID, snap.ProductName, q.LastUpdate, snap.HistoryMaxID, q.Filter)
 		}
 		for _, f := range exportFormats {
 			b, ct, err := c.render(snap, f, q.LastUpdate)

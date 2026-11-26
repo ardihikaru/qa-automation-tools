@@ -1044,6 +1044,10 @@ ALTER TABLE case_approvals
 	// "test-catalog-v1"). Idempotent: a second run matches no rows.
 	`UPDATE product_settings SET knowledge_format = 'test-catalog-v1'
 WHERE knowledge_format LIKE '%-test-catalog-v1';`,
+	// MODULE_CHECKLIST_EXPORT.md (PROD scope): the catalogue's optional "Prod since" cell, kept raw
+	// (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ? or '' when absent); the export parses it.
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'kb_features' AND column_name = 'prod_since'
+ALTER TABLE kb_features ADD COLUMN prod_since VARCHAR(20) NOT NULL DEFAULT '' AFTER status_as_of;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

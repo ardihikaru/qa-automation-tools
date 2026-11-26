@@ -15,7 +15,7 @@ import (
 // TemplateVersion is part of the export cache key. Raise it on any change that alters the output
 // of any renderer (layout, columns, colours, wording, time zone); the golden-hash test fails when
 // the output changes without a bump, including after a library upgrade.
-const TemplateVersion = 1
+const TemplateVersion = 2
 
 // maxExportFeatures is the largest catalogue the export accepts.
 const maxExportFeatures = 20000
@@ -39,6 +39,7 @@ type ChecklistRow struct {
 	Submodule   string
 	Feature     string
 	Status      string
+	ProdSince   string     // raw "Prod since" cell ("" when absent); rendered with prodSinceText
 	StatusSince *time.Time // UTC; nil when unknown or the option is off
 	DateSource  string     // DateSourceSync, DateSourceBackfill, or "" when there is no date
 }
@@ -66,6 +67,10 @@ type ChecklistSnapshot struct {
 	// transaction (0 when history was not requested). The cache key uses it.
 	HistoryMaxID int64
 	Parts        []ChecklistPart
+	// Filter is the scope the rows were selected with (FilterChecklist); the zero value is the
+	// full export. ExcludedUnknown counts PROD rows a ranged filter left out for lack of a period.
+	Filter          ChecklistFilter
+	ExcludedUnknown int
 }
 
 // FeatureCount is the number of feature rows in the snapshot.
@@ -115,7 +120,7 @@ type codeName struct{ code, name string }
 
 type checklistModuleIn struct{ code, part, name string }
 
-type checklistFeatureIn struct{ code, module, submodule, name, status string }
+type checklistFeatureIn struct{ code, module, submodule, name, status, prodSince string }
 
 // statusDates holds, per feature code and status, the latest history date per source.
 type statusDates map[string]map[string][2]*time.Time // code -> status -> [sync, backfill]
@@ -173,7 +178,7 @@ func buildChecklist(in checklistInput) (parts []ChecklistPart, skipped int) {
 			skipped++
 			continue
 		}
-		row := ChecklistRow{ID: f.code, Submodule: in.submodules[f.submodule], Feature: f.name, Status: f.status}
+		row := ChecklistRow{ID: f.code, Submodule: in.submodules[f.submodule], Feature: f.name, Status: f.status, ProdSince: f.prodSince}
 		if in.dates != nil {
 			v := in.dates[f.code][f.status]
 			row.StatusSince, row.DateSource = pickStatusDate(v[0], v[1])
@@ -314,13 +319,13 @@ func (s *Syncer) ChecklistSnapshot(ctx context.Context, pid int, withHistory boo
 	}
 
 	// LIMIT keeps an oversized catalogue from being loaded; one extra row proves it is too large.
-	if rs, err = tx.QueryContext(ctx, `SELECT code, module_code, submodule_code, name, release_status FROM kb_features`+active+` ORDER BY module_code, code LIMIT ?`, pid, maxExportFeatures+1); err != nil {
+	if rs, err = tx.QueryContext(ctx, `SELECT code, module_code, submodule_code, name, release_status, prod_since FROM kb_features`+active+` ORDER BY module_code, code LIMIT ?`, pid, maxExportFeatures+1); err != nil {
 		return nil, err
 	}
 	for rs.Next() {
 		var f checklistFeatureIn
 		var sub, nm sql.NullString
-		if err := rs.Scan(&f.code, &f.module, &sub, &nm, &f.status); err != nil {
+		if err := rs.Scan(&f.code, &f.module, &sub, &nm, &f.status, &f.prodSince); err != nil {
 			rs.Close()
 			return nil, err
 		}

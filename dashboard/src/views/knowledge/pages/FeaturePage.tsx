@@ -38,6 +38,7 @@ export default function FeaturePage({ ctx, e, index }: { ctx: PageCtx; e: Featur
       details={[
         ['Release', e.release_status],
         ['Status as of', e.status_as_of],
+        ['Prod since', e.prod_since],
         ['Module', mod ? `${mod.code} ${mod.name}` : e.module_code],
         ['Sub-module', sub ? `${sub.code} ${sub.name}` : e.submodule_code],
         ['Repo entry', e.repo_entry && <span className="font-mono text-xs break-all">{e.repo_entry}</span>],

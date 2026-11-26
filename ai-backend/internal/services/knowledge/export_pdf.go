@@ -161,6 +161,11 @@ func (d *pdfDoc) title() {
 		sub += " (commit " + sha[:7] + ")"
 	}
 	p.CellFormat(pdfUsable, 6, d.t(sub), "", 1, "L", false, 0, "")
+	if s := scopeText(d.snap); s != "" {
+		p.SetFont("Helvetica", "B", 9)
+		d.teal()
+		p.MultiCell(pdfUsable, 5, d.t(s), "", "L", false)
+	}
 	p.Ln(4)
 }
 
@@ -369,11 +374,11 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 	}
 }
 
-var modWidths = []float64{18, 38, 80, 28, 18}
+var modWidths = []float64{18, 32, 60, 28, 30, 14} // Prod sejak fits "Des 2025–Jan 2026" at 8 pt
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
 	p := d.p
-	labels := []string{"ID", "Sub-modul", "Fitur", "Status", "Cek"}
+	labels := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
 	// Heading, the table header and at least one row stay together.
 	d.ensure(7 + 6 + pdfLineH*2 + pdfRowPad)
 	d.pages["m:"+m.Code] = p.PageNo()
@@ -421,8 +426,11 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 			p.CellFormat(modWidths[3]-2, pdfLineH, d.sinceText(r), "", 0, "L", false, 0, "")
 		}
 		p.SetTextColor(0, 0, 0)
+		p.SetFont("Helvetica", "", 8)
+		p.SetXY(sx+modWidths[3]+1, y+pdfRowPad/2)
+		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(prodSinceText(r.ProdSince), modWidths[4]-2), "", 0, "L", false, 0, "")
 		// Empty check square, centred in the Cek column.
-		cx := sx + modWidths[3] + (modWidths[4]-3.6)/2
+		cx := sx + modWidths[3] + modWidths[4] + (modWidths[5]-3.6)/2
 		p.SetDrawColor(60, 60, 60)
 		p.Rect(cx, y+(h-3.6)/2, 3.6, 3.6, "D")
 		p.SetDrawColor(180, 186, 192)

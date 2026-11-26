@@ -4,7 +4,7 @@
 
 Layout (the same as a real automation repo's `docs/`):
 
-- `docs/modules/{A,B,C}-*.md`: one file per part. `### <code> — <name>` headings open modules; 12-column feature rows hold the ID (with an `<a id>` anchor), sub-module, name, repo, release status, status-as-of, evidence and notes. `README.md`, `traceability.md` and `unmapped-stories.md` are there for realism and are not parsed.
+- `docs/modules/{A,B,C}-*.md`: one file per part. `### <code> — <name>` headings open modules; 12-column feature rows hold the ID (with an `<a id>` anchor), sub-module, name, repo, release status, status-as-of, evidence and notes. `C-partner-api.md` uses the 13-column layout with `Prod since` after status-as-of (`<2026-05`, a `..` range, `?`, `—`); A and B keep 12 columns, so both layouts are parsed. `README.md`, `traceability.md` and `unmapped-stories.md` are there for realism and are not parsed.
 - `docs/test-catalog/<service>/[<area>/]<epic>.md`: one epic per file, with a `## User stories` list and a 10-column test-case table. Services are `clinic-backend/` and `vendor-api/`; `vendor-api/partners/claims.md` is the nested area. `README.md` and `_template.md` contain story/case lines on purpose: the parser must skip them.
 
 What it covers: 2- and 3-digit feature ids and a `.NN` sub-feature (`B01.003.01`), every release status, an as-of of `—`, rows without a sub-module, sub-module names that differ only in case (`Patient Master` / `patient master` share one code), stories linking one or several features, two unmapped stories, every case status, automated cases with spec paths (plain and inside a link), and reasons of several categories.

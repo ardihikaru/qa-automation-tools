@@ -21,7 +21,9 @@ func init() { register(testCatalog{}) }
 const TestCatalogFormatName = "test-catalog-v1"
 
 func (testCatalog) Name() string { return TestCatalogFormatName }
-func (testCatalog) Version() int { return 1 }
+
+// Version 2: optional 13th column "Prod since" (MODULE_CHECKLIST_EXPORT.md, Amendment 1).
+func (testCatalog) Version() int { return 2 }
 
 const (
 	modulesDir = "docs/modules/"
@@ -133,9 +135,15 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 				continue
 			}
 			fid := idm[1]
-			if len(c) != 12 {
-				prob(file, i+1, "feature row needs 12 columns, found %d", len(c))
+			// 12 columns, or 13 with "Prod since" after "Status as of" (MODULE_CHECKLIST_EXPORT.md).
+			if len(c) != 12 && len(c) != 13 {
+				prob(file, i+1, "feature row needs 12 or 13 columns, found %d", len(c))
 				continue
+			}
+			prodSince := ""
+			if len(c) == 13 {
+				prodSince = c[6]
+				c = append(c[:6:6], c[7:]...)
 			}
 			if _, dup := features[fid]; dup {
 				prob(file, i+1, "duplicate feature %s", fid)
@@ -156,9 +164,18 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 			if asOf == "—" {
 				asOf = ""
 			}
+			if prodSince == "—" {
+				prodSince = ""
+			}
+			if prodSince != "" {
+				if _, err := ParseProdSince(prodSince); err != nil {
+					prob(file, i+1, "%s: %v", fid, err)
+					prodSince = ""
+				}
+			}
 			f := Feature{
 				Code: fid, ModuleCode: modCode, Name: c[2], RepoEntry: c[3], ReleaseStatus: status,
-				StatusAsOf: asOf, Evidence: c[6], Notes: c[7], SourceFile: file, SourceLine: i + 1,
+				StatusAsOf: asOf, ProdSince: prodSince, Evidence: c[6], Notes: c[7], SourceFile: file, SourceLine: i + 1,
 			}
 			if sub := strings.TrimSpace(c[1]); sub != "" {
 				code := submoduleCode(modCode, sub)
@@ -357,6 +374,7 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 		fit(k, "repo_entry", &x.RepoEntry, 300)
 		fit(k, "evidence", &x.Evidence, 500)
 		fit(k, "status_as_of", &x.StatusAsOf, 20)
+		fit(k, "prod_since", &x.ProdSince, 20)
 		features[k] = x
 	}
 	for k, x := range epics {

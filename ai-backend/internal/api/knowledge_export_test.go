@@ -110,6 +110,13 @@ func TestChecklistExportValidation(t *testing.T) {
 		{"GET", "?format=pdf&last_update=yes", 400, "last_update must be 0, 1, true or false"},
 		{"GET", "?format=pdf&force=2", 400, "force must be 0, 1, true or false"},
 		{"GET", "?format=pdf&force=", 400, "force must be 0, 1, true or false"},
+		{"GET", "?format=pdf&scope=PROD", 400, "scope must be all or prod"},
+		{"GET", "?format=pdf&scope=prod&scope=all", 400, "scope must be given once"},
+		{"GET", "?format=pdf&scope=prod&since_from=2026-5", 400, "since_from and since_to must be YYYY-MM"},
+		{"GET", "?format=pdf&scope=prod&since_to=2026-13", 400, "since_from and since_to must be YYYY-MM"},
+		{"GET", "?format=pdf&since_from=2026-05", 400, "since_from and since_to need scope=prod"},
+		{"GET", "?format=pdf&scope=all&since_to=2026-05", 400, "since_from and since_to need scope=prod"},
+		{"GET", "?format=pdf&scope=prod&since_from=2026-11&since_to=2026-05", 400, "since_from must not be after since_to"},
 	}
 	for _, c := range cases {
 		w := callExport(r, c.method, c.query)
@@ -240,5 +247,21 @@ func TestChecklistExportDB(t *testing.T) {
 	r.exports.Wait()
 	if w := get(pid); w.Header().Get("X-Export-Cache") != "hit" {
 		t.Errorf("second request: %s", w.Header().Get("X-Export-Cache"))
+	}
+}
+
+func TestChecklistExportScopedFilename(t *testing.T) {
+	r, _ := exportRouter(fakeExportSrc{name: "SUT"}, &memStore{objs: map[string][]byte{}})
+	cases := map[string]string{
+		"?format=csv&scope=all":  "SUT-MODULE-CHECKLIST.csv",
+		"?format=csv&scope=prod": "SUT-MODULE-CHECKLIST-PROD.csv",
+		"?format=csv&scope=prod&since_from=2026-05&since_to=2026-11": "SUT-MODULE-CHECKLIST-PROD-202605-202611.csv",
+		"?format=csv&scope=prod&since_from=2026-05":                  "SUT-MODULE-CHECKLIST-PROD-202605-X.csv",
+	}
+	for q, want := range cases {
+		w := callExport(r, "GET", q)
+		if w.Code != 200 || w.Header().Get("Content-Disposition") != `attachment; filename="`+want+`"` {
+			t.Errorf("%s: %d %q", q, w.Code, w.Header().Get("Content-Disposition"))
+		}
 	}
 }
