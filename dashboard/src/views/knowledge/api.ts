@@ -171,11 +171,31 @@ type WithCov<T> = T & { coverage?: Coverage };
 export type PartDetail = WithCov<Part> & { modules: WithCov<Ref>[] };
 export type ModuleDetail = WithCov<Module> & { part: Ref[]; submodules: WithCov<Ref>[]; features: WithCov<Feature>[] };
 export type SubmoduleDetail = WithCov<Submodule> & { module: Ref[]; features: WithCov<Feature>[] };
+/** One piece of evidence of a feature row, parsed from its Evidence cell (Amendment 3). */
+export interface EvidenceItem {
+  kind: string; // GIT, SRV, DOC, RN, S, BRD or TEXT
+  raw: string;
+  label: string;
+  repo?: string;
+  sha?: string;
+  date?: string;
+  url?: string;
+}
+/** A sync as referenced from an entity: when it finished and on which catalogue commit. */
+export interface SyncRef {
+  id: number;
+  finished_at?: string;
+  commit_sha?: string;
+}
 export type FeatureDetail = WithCov<Feature> & {
   module: Ref[];
   submodule: Ref[];
   stories: (WithCov<Story> & { test_cases: TestCase[] })[];
   stats: FeatureStats;
+  evidence_items?: EvidenceItem[];
+  /** The sync that last changed this row (its catalogue data); first_sync = when it appeared. */
+  changed_sync?: SyncRef | null;
+  first_sync?: SyncRef | null;
 };
 export type EpicDetail = WithCov<Epic> & { stories: WithCov<Story>[]; test_cases: Ref[] };
 export type StoryDetail = WithCov<Story> & { epic: Ref[]; features: WithCov<Ref>[]; test_cases: TestCase[]; feature_codes: string[] };

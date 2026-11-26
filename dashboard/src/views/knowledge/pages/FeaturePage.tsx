@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { EvidenceList, SyncStamp } from '../EvidenceList';
 import { Link } from 'react-router-dom';
 import { FeatureDetail, TestCase, entityHref, periodText } from '../api';
 import { ReleaseChip } from '../ui';
@@ -43,7 +44,9 @@ export default function FeaturePage({ ctx, e, index }: { ctx: PageCtx; e: Featur
         ['Module', mod ? `${mod.code} ${mod.name}` : e.module_code],
         ['Sub-module', sub ? `${sub.code} ${sub.name}` : e.submodule_code],
         ['Repo entry', e.repo_entry && <span className="font-mono text-xs break-all">{e.repo_entry}</span>],
-        ['Evidence', e.evidence],
+        ['Evidence', <EvidenceList items={e.evidence_items} raw={e.evidence} />],
+        ['Last updated', <SyncStamp s={e.changed_sync} />],
+        ['First synced', <SyncStamp s={e.first_sync} />],
         ['Notes', e.notes],
       ]}
     >

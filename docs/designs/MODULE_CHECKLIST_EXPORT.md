@@ -532,3 +532,9 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
 **Export.** `dev_period=0|1` (`strictBool`, default 0, any scope) adds a `Periode pelaksanaan` column after `Prod sejak` in all three formats (shown like `Jul–Des 2024`, `Jul 2024–Apr 2025`); the PDF also prints `Periode pelaksanaan modul: …` under each module heading. PDF widths: Sub-modul and Fitur give room. Cache variant `/devperiod`. The dialog has an "Add the Periode pelaksanaan column" checkbox (off by default).
 
 **Dashboard.** The feature page and panel show *Periode pelaksanaan*; module and sub-module pages show the rolled-up period.
+
+## Amendment 3: evidence nodes and "last updated" (2026-11-26)
+
+**Evidence nodes.** The feature detail (`GET …/knowledge/features/{code}`) adds `evidence_items`: the Evidence cell parsed into items (`ParseEvidence`, `evidence.go`), one per tag: `GIT:main` / `GIT:stg` / `GIT:main@YYYY-MM-DD` / **`GIT:<repo>@<sha>/<YYYY-MM-DD>`** (the merge commit that put the code on `main`, first-parent), `SRV:<yyyymmdd>` (release survey), `DOC:<name>` (planning document), `RN:<yyyymmdd>` (release note), `S:<WBS>`, `BRD:<Dn>`; text without a tag is one `TEXT` item. A `GIT:<repo>@<sha>` item links to `https://github.com/<owner>/<repo>/commit/<sha>`, `<owner>` read from the product's automation repository URL (no names in code). The raw cell stays the source of truth (no extra table, nothing to drift).
+
+**Last updated.** Each row already records the sync that last changed it (`changed_sync_id`) and the one that first imported it (`first_sync_id`). The detail now adds `changed_sync` / `first_sync` = `{id, finished_at (RFC 3339 UTC), commit_sha}` (the catalogue commit), and the feature page/panel show **Last updated** and **First synced**.
