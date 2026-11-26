@@ -121,5 +121,12 @@ func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) strin
 	if f.IncludeUndated && f.Scope != knowledge.ScopeProd {
 		return "include_undated needs scope=prod"
 	}
+	check, ok := strictBool(req, "check_column")
+	if !ok {
+		return "check_column must be 0, 1, true or false"
+	}
+	if _, present := req.URL.Query()["check_column"]; present && !check {
+		f.HideCheck = true
+	}
 	return ""
 }

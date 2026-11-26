@@ -72,6 +72,8 @@ type ChecklistFilter struct {
 	// IncludeUndated keeps, in a ranged PROD export, the PROD rows without a known period; their
 	// Prod sejak cell reads "Before <From>" (or "?" when From is open).
 	IncludeUndated bool
+	// HideCheck leaves out the Cek (manual tick box) column in every format. Any scope.
+	HideCheck bool
 }
 
 // Ranged reports whether the filter has a Prod since range.
@@ -79,6 +81,14 @@ func (f ChecklistFilter) Ranged() bool { return f.From != "" || f.To != "" }
 
 // variant is the filter's part of the cache key; "" for the full export (keeps old keys valid).
 func (f ChecklistFilter) variant() string {
+	v := f.scopeVariant()
+	if f.HideCheck {
+		v += "/nocheck"
+	}
+	return v
+}
+
+func (f ChecklistFilter) scopeVariant() string {
 	if f.Scope != ScopeProd {
 		return ""
 	}

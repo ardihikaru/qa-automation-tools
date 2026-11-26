@@ -200,7 +200,9 @@ func (d *pdfDoc) legend() {
 	}
 	p.SetTextColor(0, 0, 0)
 	p.SetFont("Helvetica", "", 8)
-	p.CellFormat(pdfUsable, pdfLineH, d.t("Kolom Cek dikosongkan untuk dicentang manual saat pengecekan."), "", 1, "L", false, 0, "")
+	if !d.snap.Filter.HideCheck {
+		p.CellFormat(pdfUsable, pdfLineH, d.t("Kolom Cek dikosongkan untuk dicentang manual saat pengecekan."), "", 1, "L", false, 0, "")
+	}
 	if d.withUpd {
 		p.CellFormat(pdfUsable, pdfLineH, d.t(pdfApproxFN), "", 1, "L", false, 0, "")
 	}
@@ -257,7 +259,13 @@ func (d *pdfDoc) summaryTable(first string, withMods bool, rows []sumRow, total 
 	labels = append(labels, "Fitur")
 	widths = append(widths, 16)
 	cols := d.snap.statusColumns()
-	rest := (pdfUsable - sumF(widths)) / float64(len(cols))
+	if len(cols) == 0 {
+		widths[0] += pdfUsable - sumF(widths) // PROD export: no status columns, the name takes the room
+	}
+	rest := 0.0
+	if len(cols) > 0 {
+		rest = (pdfUsable - sumF(widths)) / float64(len(cols))
+	}
 	for _, st := range cols {
 		labels = append(labels, st)
 		widths = append(widths, rest)
@@ -378,11 +386,16 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 	}
 }
 
-var modWidths = []float64{18, 32, 60, 28, 30, 14} // Prod sejak fits "Des 2025–Jan 2026" at 8 pt
+var modWidthsCek = []float64{18, 32, 60, 28, 30, 14} // Prod sejak fits "Des 2025–Jan 2026" at 8 pt
+var modWidthsNoCek = []float64{18, 32, 74, 28, 30}   // without Cek, Fitur takes its 14 mm
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
 	p := d.p
 	labels := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
+	modWidths := modWidthsCek
+	if d.snap.Filter.HideCheck {
+		labels, modWidths = labels[:5], modWidthsNoCek
+	}
 	// Heading, the table header and at least one row stay together.
 	d.ensure(7 + 6 + pdfLineH*2 + pdfRowPad)
 	d.pages["m:"+m.Code] = p.PageNo()
@@ -433,11 +446,13 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		p.SetFont("Helvetica", "", 8)
 		p.SetXY(sx+modWidths[3]+1, y+pdfRowPad/2)
 		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(rowProdSince(r), modWidths[4]-2), "", 0, "L", false, 0, "")
-		// Empty check square, centred in the Cek column.
-		cx := sx + modWidths[3] + modWidths[4] + (modWidths[5]-3.6)/2
-		p.SetDrawColor(60, 60, 60)
-		p.Rect(cx, y+(h-3.6)/2, 3.6, 3.6, "D")
-		p.SetDrawColor(180, 186, 192)
+		if len(modWidths) > 5 {
+			// Empty check square, centred in the Cek column.
+			cx := sx + modWidths[3] + modWidths[4] + (modWidths[5]-3.6)/2
+			p.SetDrawColor(60, 60, 60)
+			p.Rect(cx, y+(h-3.6)/2, 3.6, 3.6, "D")
+			p.SetDrawColor(180, 186, 192)
+		}
 		p.SetY(y + h)
 	}
 	p.Ln(5)
