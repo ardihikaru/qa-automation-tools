@@ -150,6 +150,31 @@ func TestOperationsPreferTheSpecsOwnService(t *testing.T) {
 	}
 }
 
+// The operations whose words appear in the spec rank first (DEF-922: editMedicationDispense behind
+// five unrelated names of the same service).
+func TestOperationsAreRankedByTheSpecsWords(t *testing.T) {
+	f := newFake(t)
+	s, _, _ := newSyncer(t, f)
+	op := func(n string) string {
+		return "const q = `mutation " + n + "($d: In!) { " + n + "(data: $d) { status } }`;\n"
+	}
+	files := map[string]string{
+		"tests/api/graphql/svc/a.spec.ts": "import { K } from './k';\nawait kit.editDispense(tx);",
+		"tests/api/graphql/svc/k.ts":      "import { O } from './ops';",
+		"tests/api/graphql/svc/ops.ts":    op("alphaOne") + op("alphaTwo") + op("alphaThree") + op("alphaFour") + op("alphaFive") + op("editMedicationDispense"),
+	}
+	s.SetSpecReader(func(_ context.Context, _ int, rel string) ([]byte, error) {
+		if v, ok := files[rel]; ok {
+			return []byte(v), nil
+		}
+		return nil, fmt.Errorf("no file")
+	})
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	if len(got) != 5 || got[0] != "editMedicationDispense" {
+		t.Errorf("operations = %v; the one the spec names must be first of five", got)
+	}
+}
+
 func TestFitDefectsSplitsByCountAndBytes(t *testing.T) {
 	items := make([]defectItem, 120)
 	for i := range items {

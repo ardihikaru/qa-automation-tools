@@ -205,10 +205,19 @@ func (s *Syncer) loadTargets(ctx context.Context, productID int) (repos map[stri
 // operationsOf lists up to five GraphQL operation names and REST route names the code calls,
 // in order of appearance. Names that GAOS would refuse are dropped.
 func operationsOf(sources ...string) []string {
+	all := allOperations(sources...)
+	if len(all) > maxOperations {
+		all = all[:maxOperations]
+	}
+	return all
+}
+
+// allOperations is every distinct valid name in the sources, in order of appearance (at most 400).
+func allOperations(sources ...string) []string {
 	out := []string{}
 	seen := map[string]bool{}
 	add := func(n string) {
-		if len(out) >= maxOperations || seen[n] || !operationRe.MatchString(n) {
+		if len(out) >= 400 || seen[n] || !operationRe.MatchString(n) {
 			return
 		}
 		seen[n] = true
@@ -316,7 +325,38 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 	for _, f := range files {
 		sources = append(sources, f.text)
 	}
-	return operationsOf(sources...)
+	all := allOperations(sources...)
+	if len(sources) > 0 { // the spec is the first file read
+		all = rankByHint(all, sources[0])
+	}
+	if len(all) > maxOperations {
+		all = all[:maxOperations]
+	}
+	return all
+}
+
+var camelWordRe = regexp.MustCompile(`[A-Z]?[a-z]{3,}`)
+
+// rankByHint puts the operations whose words appear in the spec first ("editMedicationDispense"
+// for a spec that calls editDispense), keeping the order of appearance among equals. Found live:
+// the first five names of a service's helper files were unrelated to the defect's spec.
+func rankByHint(ops []string, spec string) []string {
+	words := map[string]bool{}
+	for _, w := range camelWordRe.FindAllString(spec, -1) {
+		words[strings.ToLower(w)] = true
+	}
+	score := func(op string) int {
+		n := 0
+		for _, w := range camelWordRe.FindAllString(op, -1) {
+			if words[strings.ToLower(w)] {
+				n++
+			}
+		}
+		return n
+	}
+	out := append([]string(nil), ops...)
+	sort.SliceStable(out, func(i, j int) bool { return score(out[i]) > score(out[j]) })
+	return out
 }
 
 // serviceSegment is the directory after graphql/ or rest/ in a spec path ("his-backend" for
