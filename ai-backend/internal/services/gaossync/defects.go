@@ -24,7 +24,7 @@ const (
 	defectBodyMax    = 240 << 10 // GAOS reads 256 KiB; the margin covers the envelope
 	maxTargetRepos   = 8
 	maxOperations    = 5
-	maxSpecFiles     = 8
+	maxSpecFiles     = 24
 	maxSpecFileBytes = 256 << 10
 	unsupportedWait  = 30 * time.Minute // an older GAOS without the route (404/405)
 	capWait          = time.Hour        // GAOS's per-day cap on new defect keys
@@ -275,7 +275,8 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 		return []string{}
 	}
 	aliases := s.tsAliases(ctx, productID)
-	var sources []string
+	type srcFile struct{ path, text string }
+	var files []srcFile
 	seen := map[string]bool{}
 	queue := []string{spec}
 	for len(queue) > 0 && len(seen) < maxSpecFiles {
@@ -290,7 +291,7 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 			continue
 		}
 		src := string(b)
-		sources = append(sources, src)
+		files = append(files, srcFile{f, src})
 		for _, m := range importRe.FindAllStringSubmatch(src, -1) {
 			p := resolveImport(path.Dir(f), m[1], aliases)
 			if p == "" || p == "." || strings.HasPrefix(p, "..") {
@@ -304,7 +305,30 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 			}
 		}
 	}
+	// The files of the spec's own service come first: a spec also imports shared fixtures and
+	// utilities, whose calls are not the defect's operations (found live: with the shared files
+	// first, the five-name cap was spent before the service's operations file was reached).
+	svc := serviceSegment(spec)
+	sort.SliceStable(files, func(i, j int) bool {
+		return svc != "" && strings.Contains(files[i].path, "/"+svc+"/") && !strings.Contains(files[j].path, "/"+svc+"/")
+	})
+	sources := make([]string, 0, len(files))
+	for _, f := range files {
+		sources = append(sources, f.text)
+	}
 	return operationsOf(sources...)
+}
+
+// serviceSegment is the directory after graphql/ or rest/ in a spec path ("his-backend" for
+// tests/api/graphql/his-backend/pharmacy/x.spec.ts), or "".
+func serviceSegment(spec string) string {
+	segs := strings.Split(spec, "/")
+	for i, g := range segs {
+		if (g == "graphql" || g == "rest") && i+2 < len(segs) {
+			return segs[i+1]
+		}
+	}
+	return ""
 }
 
 // ---- the push ----
