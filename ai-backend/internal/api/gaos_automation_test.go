@@ -365,3 +365,41 @@ func TestGAOSCancel(t *testing.T) {
 		t.Errorf("db-only row: %s %s %v", st, er, err)
 	}
 }
+
+// The job status carries the pull request the job opened and the job's page, each only when known.
+func TestGAOSJobStatusCarriesThePullRequestAndThePage(t *testing.T) {
+	r, d := gaosAutomationFixture(t)
+	bearer := "Bearer " + inboundTok
+	get := func(id string) map[string]any {
+		w := inboundCall(r, "GET", "/api/v1/gaos/jobs/"+id, bearer, ``)
+		if w.Code != http.StatusOK {
+			t.Fatalf("got %d %s", w.Code, w.Body)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, created_at) VALUES ('job-n','case_create','running','{"product_id":1,"case_code":"TC-AUTH-001"}', NOW(3))`)
+	r.dashboardOrigin = ""
+	if m := get("job-n"); m["pr_url"] != nil || m["job_url"] != nil {
+		t.Errorf("a job with no pull request and no origin: %v", m)
+	}
+	must(t, d, `UPDATE job_runs SET payload = '{"product_id":1,"case_code":"TC-AUTH-001","pr_url":"https://github.com/acme-org/sample-automation/pull/7"}' WHERE id = 'job-n'`)
+	r.dashboardOrigin = "https://qa.example.test/"
+	m := get("job-n")
+	if m["pr_url"] != "https://github.com/acme-org/sample-automation/pull/7" || m["job_url"] != "https://qa.example.test/jobs/job-n" {
+		t.Errorf("a running job with a pull request: %v", m)
+	}
+	// After the job ends the url is in the result.
+	must(t, d, `INSERT INTO job_runs (id, type, status, payload, result, created_at) VALUES ('job-r','case_create','succeeded','{"product_id":1}','{"pr_url":"https://github.com/acme-org/sample-automation/pull/8"}', NOW(3))`)
+	if m := get("job-r"); m["pr_url"] != "https://github.com/acme-org/sample-automation/pull/8" {
+		t.Errorf("a finished job: %v", m)
+	}
+	// A wildcard origin is no origin.
+	r.dashboardOrigin = "*"
+	if m := get("job-n"); m["job_url"] != nil {
+		t.Errorf("a wildcard origin gave a link: %v", m)
+	}
+}
