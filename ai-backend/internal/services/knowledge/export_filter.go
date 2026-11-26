@@ -69,9 +69,6 @@ func ParseProdSince(s string) (ProdSince, error) {
 type ChecklistFilter struct {
 	Scope    string // ScopeAll ("" means the same) or ScopeProd
 	From, To string
-	// IncludeUndated keeps, in a ranged PROD export, the PROD rows without a known period; their
-	// Prod sejak cell reads "Before <From>" (or "?" when From is open).
-	IncludeUndated bool
 	// HideCheck leaves out the Cek (manual tick box) column in every format. Any scope.
 	HideCheck bool
 }
@@ -95,9 +92,6 @@ func (f ChecklistFilter) scopeVariant() string {
 	v := "/prod"
 	if f.Ranged() {
 		v += "-" + strings.ReplaceAll(orDash(f.From), "-", "") + "-" + strings.ReplaceAll(orDash(f.To), "-", "")
-		if f.IncludeUndated {
-			v += "-u"
-		}
 	}
 	return v
 }
@@ -125,7 +119,7 @@ func FilterChecklist(snap *ChecklistSnapshot, f ChecklistFilter) *ChecklistSnaps
 		return &out
 	}
 	out.Parts = nil
-	out.ExcludedUnknown, out.IncludedUndated = 0, 0
+	out.ExcludedUnknown = 0
 	for _, p := range snap.Parts {
 		np := ChecklistPart{Code: p.Code, Name: p.Name}
 		for _, m := range p.Modules {
@@ -136,14 +130,11 @@ func FilterChecklist(snap *ChecklistSnapshot, f ChecklistFilter) *ChecklistSnaps
 				}
 				if f.Ranged() {
 					ps, err := ParseProdSince(r.ProdSince)
+					// A period is a hard filter: a PROD row without a known period cannot be shown
+					// to fall inside it, so it is left out (and counted). Without a period every
+					// PROD row is listed, undated ones as "?".
 					if r.ProdSince == "" || err != nil || ps.Unknown {
-						if !f.IncludeUndated {
-							out.ExcludedUnknown++
-							continue
-						}
-						out.IncludedUndated++
-						r.ProdSinceLabel = undatedLabel(f)
-						nm.Rows = append(nm.Rows, r)
+						out.ExcludedUnknown++
 						continue
 					}
 					if !f.overlaps(ps) {
@@ -214,21 +205,5 @@ func scopeText(snap *ChecklistSnapshot) string {
 	if snap.ExcludedUnknown > 0 {
 		s += fmt.Sprintf(" (%d fitur PROD tanpa tanggal tidak disertakan)", snap.ExcludedUnknown)
 	}
-	if snap.IncludedUndated > 0 {
-		s += fmt.Sprintf(" (termasuk %d fitur PROD tanpa tanggal, ditandai \"%s\")", snap.IncludedUndated, undatedLabel(f))
-	}
 	return s
-}
-
-var enMonths = [...]string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
-
-// undatedLabel is the Prod sejak text of an undated PROD row kept by IncludeUndated: "Before May 2026"
-// for since_from=2026-05 (the owner's wording), "?" when the range has no start.
-func undatedLabel(f ChecklistFilter) string {
-	if f.From == "" {
-		return "?"
-	}
-	var y, m int
-	fmt.Sscanf(f.From, "%d-%d", &y, &m)
-	return fmt.Sprintf("Before %s %d", enMonths[m-1], y)
 }

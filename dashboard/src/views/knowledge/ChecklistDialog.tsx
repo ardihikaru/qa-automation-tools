@@ -33,7 +33,6 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   const [scope, setScope] = useState<ChecklistScope>('all');
   const [sinceFrom, setSinceFrom] = useState('');
   const [sinceTo, setSinceTo] = useState('');
-  const [includeUndated, setIncludeUndated] = useState(true);
   const [checkColumn, setCheckColumn] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
@@ -65,7 +64,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
     const ac = new AbortController();
     abort.current = ac;
     try {
-      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, includeUndated, checkColumn: scope === 'prod' ? checkColumn : true, lastUpdate, force }, ac.signal);
+      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, checkColumn: scope === 'prod' ? checkColumn : true, lastUpdate, force }, ac.signal);
       setNote(cache ? CACHE_NOTE[cache] : 'Downloaded');
     } catch (err) {
       if (!isAbort(err)) setError(errorText(err, 'Could not download the checklist'));
@@ -126,19 +125,8 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
                 )}
               </div>
               <p id="checklist-since-help" className="text-xs text-gray-500">
-                Leave both empty for every PROD feature. With a period, a feature is listed when its &ldquo;Prod sejak&rdquo; overlaps it.
+                Leave both empty for every PROD feature (undated ones shown as &ldquo;?&rdquo;). With a period, only features whose &ldquo;Prod sejak&rdquo; overlaps it are listed; PROD features without a date are left out and counted in the file header.
               </p>
-              {(sinceFrom || sinceTo) && (
-                <div>
-                  <label className="inline-flex items-center gap-2 text-sm text-gray-800">
-                    <input type="checkbox" checked={includeUndated} onChange={(e) => setIncludeUndated(e.target.checked)} aria-describedby="checklist-undated-help" />
-                    Also include PROD features without a Prod sejak date
-                  </label>
-                  <p id="checklist-undated-help" className="text-xs text-gray-500 ml-6">
-                    {sinceFrom ? `They are shown as “Before ${monthLabel(sinceFrom)}”.` : 'They are shown as “?”.'} Unchecked, they are left out and only counted in the file header.
-                  </p>
-                </div>
-              )}
               <div>
                 <label className="inline-flex items-center gap-2 text-sm text-gray-800">
                   <input type="checkbox" checked={checkColumn} onChange={(e) => setCheckColumn(e.target.checked)} aria-describedby="checklist-cek-help" />
@@ -197,13 +185,4 @@ function checkRange(from: string, to: string): string | null {
   if ((from && !MONTH.test(from)) || (to && !MONTH.test(to))) return 'Months must be YYYY-MM.';
   if (from && to && from > to) return 'The "from" month must not be after the "to" month.';
   return null;
-}
-
-const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "2026-05" -> "May 2026" (the wording the export uses for undated features). */
-function monthLabel(m: string): string {
-  if (!MONTH.test(m)) return m;
-  const [y, mo] = m.split('-');
-  return `${EN_MONTHS[Number(mo) - 1]} ${y}`;
 }

@@ -162,36 +162,24 @@ func TestPDFHidesStatusDateWhenProdSinceKnown(t *testing.T) {
 	}
 }
 
-func TestFilterIncludeUndated(t *testing.T) {
-	f := ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11", IncludeUndated: true}
-	got := FilterChecklist(filterFixture(), f)
-	if ids(got) != "A01.02,A01.03,A01.04,A01.05,A01.06" || got.IncludedUndated != 2 || got.ExcludedUnknown != 0 {
-		t.Fatalf("rows %q included %d excluded %d", ids(got), got.IncludedUndated, got.ExcludedUnknown)
+// A ranged PROD export never lists undated PROD rows, whatever the client asks; an unranged one does.
+func TestRangedExportExcludesUndated(t *testing.T) {
+	ranged := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"})
+	for _, p := range ranged.Parts {
+		for _, m := range p.Modules {
+			for _, r := range m.Rows {
+				if r.ProdSince == "" || r.ProdSince == "?" || strings.HasPrefix(r.ProdSince, "<") {
+					t.Errorf("%s (%q) is in a May-Nov export", r.ID, r.ProdSince)
+				}
+			}
+		}
 	}
-	labels := map[string]string{}
-	for _, r := range got.Parts[0].Modules[0].Rows {
-		labels[r.ID] = rowProdSince(r)
+	if ranged.ExcludedUnknown != 2 {
+		t.Errorf("excluded = %d", ranged.ExcludedUnknown)
 	}
-	if labels["A01.05"] != "Before May 2026" || labels["A01.06"] != "Before May 2026" || labels["A01.03"] != "Jul–Agu 2026" {
-		t.Errorf("labels = %v", labels)
-	}
-	want := "Hanya fitur PROD yang periode Prod sejak-nya beririsan dengan Mei 2026 s.d. Nov 2026 (termasuk 2 fitur PROD tanpa tanggal, ditandai \"Before May 2026\")"
-	if s := scopeText(got); s != want {
-		t.Errorf("scopeText = %q", s)
-	}
-	if undatedLabel(ChecklistFilter{Scope: ScopeProd, To: "2026-11"}) != "?" || undatedLabel(ChecklistFilter{From: "2025-12"}) != "Before Dec 2025" {
-		t.Error("undatedLabel")
-	}
-	// IncludeUndated does nothing without a range, and the key differs only for a ranged export.
-	if ids(FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd, IncludeUndated: true})) != "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06" {
-		t.Error("unranged include_undated changed the rows")
-	}
-	if f.variant() == (ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"}).variant() {
-		t.Error("include_undated shares the cache key")
-	}
-	csv := csvRecords(t, render(t, got, "csv", false))
-	if csv[4][4] != "Before May 2026" {
-		t.Errorf("csv row = %v", csv[4])
+	all := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd})
+	if ids(all) != "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06" || all.ExcludedUnknown != 0 {
+		t.Errorf("unranged PROD export = %q", ids(all))
 	}
 }
 
