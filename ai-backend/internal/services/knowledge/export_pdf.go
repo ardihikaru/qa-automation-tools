@@ -386,20 +386,48 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 	}
 }
 
-var modWidthsCek = []float64{18, 32, 60, 28, 30, 14} // Prod sejak fits "Des 2025–Jan 2026" at 8 pt
-var modWidthsNoCek = []float64{18, 32, 74, 28, 30}   // without Cek, Fitur takes its 14 mm
+// Module table widths (sum 182 mm). Prod sejak fits "Des 2025–Jan 2026" at 8 pt; the Periode
+// pelaksanaan column takes its room from Sub-modul and Fitur.
+var (
+	modWidthsCek      = []float64{18, 32, 60, 28, 30, 14}
+	modWidthsNoCek    = []float64{18, 32, 74, 28, 30}
+	modWidthsDevCek   = []float64{18, 26, 48, 26, 28, 24, 12}
+	modWidthsDevNoCek = []float64{18, 26, 60, 26, 28, 24}
+)
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
 	p := d.p
-	labels := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
-	modWidths := modWidthsCek
-	if d.snap.Filter.HideCheck {
-		labels, modWidths = labels[:5], modWidthsNoCek
+	dev, cek := d.snap.Filter.ShowDevPeriod, !d.snap.Filter.HideCheck
+	labels := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak"}
+	var modWidths []float64
+	switch {
+	case dev && cek:
+		modWidths = modWidthsDevCek
+	case dev:
+		modWidths = modWidthsDevNoCek
+	case cek:
+		modWidths = modWidthsCek
+	default:
+		modWidths = modWidthsNoCek
+	}
+	if dev {
+		labels = append(labels, "Periode pelaksanaan")
+	}
+	if cek {
+		labels = append(labels, "Cek")
 	}
 	// Heading, the table header and at least one row stay together.
 	d.ensure(7 + 6 + pdfLineH*2 + pdfRowPad)
 	d.pages["m:"+m.Code] = p.PageNo()
 	d.heading(m.Code + " — " + m.Name)
+	if dev {
+		if r := devPeriodRollup(m.Rows); r != "" {
+			p.SetFont("Helvetica", "", 8)
+			p.SetTextColor(107, 114, 128)
+			p.CellFormat(pdfUsable, pdfLineH, d.t("Periode pelaksanaan modul: "+prodSinceText(r)), "", 1, "L", false, 0, "")
+			p.SetTextColor(0, 0, 0)
+		}
+	}
 	d.tableHead(labels, modWidths)
 	for _, r := range m.Rows {
 		p.SetFont("Helvetica", "", 9)
@@ -446,9 +474,15 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		p.SetFont("Helvetica", "", 8)
 		p.SetXY(sx+modWidths[3]+1, y+pdfRowPad/2)
 		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(rowProdSince(r), modWidths[4]-2), "", 0, "L", false, 0, "")
-		if len(modWidths) > 5 {
+		nx := sx + modWidths[3] + modWidths[4] // left edge of the column after Prod sejak
+		if dev {
+			p.SetXY(nx+1, y+pdfRowPad/2)
+			p.CellFormat(modWidths[5]-2, pdfLineH, d.fit(prodSinceText(r.DevPeriod), modWidths[5]-2), "", 0, "L", false, 0, "")
+			nx += modWidths[5]
+		}
+		if cek {
 			// Empty check square, centred in the Cek column.
-			cx := sx + modWidths[3] + modWidths[4] + (modWidths[5]-3.6)/2
+			cx := nx + (modWidths[len(modWidths)-1]-3.6)/2
 			p.SetDrawColor(60, 60, 60)
 			p.Rect(cx, y+(h-3.6)/2, 3.6, 3.6, "D")
 			p.SetDrawColor(180, 186, 192)

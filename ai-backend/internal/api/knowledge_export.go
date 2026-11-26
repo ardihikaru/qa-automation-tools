@@ -135,5 +135,8 @@ func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) strin
 	if _, present := req.URL.Query()["check_column"]; present && !check {
 		f.HideCheck = true
 	}
+	if f.ShowDevPeriod, ok = strictBool(req, "dev_period"); !ok {
+		return "dev_period must be 0, 1, true or false"
+	}
 	return ""
 }

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { FeatureDetail, TestCase, entityHref } from '../api';
+import { FeatureDetail, TestCase, entityHref, periodText } from '../api';
 import { ReleaseChip } from '../ui';
 import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
@@ -39,6 +39,7 @@ export default function FeaturePage({ ctx, e, index }: { ctx: PageCtx; e: Featur
         ['Release', e.release_status],
         ['Status as of', e.status_as_of],
         ['Prod since', e.prod_since],
+        ['Periode pelaksanaan', periodText(e.dev_period)],
         ['Module', mod ? `${mod.code} ${mod.name}` : e.module_code],
         ['Sub-module', sub ? `${sub.code} ${sub.name}` : e.submodule_code],
         ['Repo entry', e.repo_entry && <span className="font-mono text-xs break-all">{e.repo_entry}</span>],

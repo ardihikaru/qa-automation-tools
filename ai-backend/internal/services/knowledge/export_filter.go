@@ -72,6 +72,8 @@ type ChecklistFilter struct {
 	// UndatedOnly keeps only the PROD rows without a known Prod since period (?, empty or
 	// unparsable). ScopeProd only, never together with a range.
 	UndatedOnly bool
+	// ShowDevPeriod adds the "Periode pelaksanaan" (development period) column. Any scope.
+	ShowDevPeriod bool
 	// HideCheck leaves out the Cek (manual tick box) column in every format. Any scope.
 	HideCheck bool
 }
@@ -84,6 +86,9 @@ func (f ChecklistFilter) variant() string {
 	v := f.scopeVariant()
 	if f.HideCheck {
 		v += "/nocheck"
+	}
+	if f.ShowDevPeriod {
+		v += "/devperiod"
 	}
 	return v
 }

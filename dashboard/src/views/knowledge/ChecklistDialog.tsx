@@ -43,6 +43,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   const [sinceTo, setSinceTo] = useState('');
   const [prodSel, setProdSel] = useState<ProdSelection>('all');
   const [checkColumn, setCheckColumn] = useState(true);
+  const [devPeriod, setDevPeriod] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -84,6 +85,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
           sinceTo: period ? sinceTo : '',
           prodSince: prod && prodSel === 'unknown' ? 'unknown' : undefined,
           checkColumn: prod ? checkColumn : true,
+          devPeriod,
           lastUpdate,
           force,
         },
@@ -176,6 +178,16 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
             </div>
           )}
         </fieldset>
+
+        <div>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+            <input type="checkbox" checked={devPeriod} disabled={busy} onChange={(e) => setDevPeriod(e.target.checked)} aria-describedby="checklist-dev-period-help" />
+            Add the Periode pelaksanaan column
+          </label>
+          <p id="checklist-dev-period-help" className="text-xs text-gray-500 mt-1 ml-6">
+            When each feature was developed (not all features have it yet). The PDF also shows each module&rsquo;s period.
+          </p>
+        </div>
 
         <div className="space-y-3">
           <div>

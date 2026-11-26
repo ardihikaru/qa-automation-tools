@@ -10,10 +10,12 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF")
 	w := csv.NewWriter(&buf)
-	head := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
-	noCek := snap.Filter.HideCheck
-	if noCek {
-		head = head[:5]
+	head := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak"}
+	if snap.Filter.ShowDevPeriod {
+		head = append(head, "Periode pelaksanaan")
+	}
+	if !snap.Filter.HideCheck {
+		head = append(head, "Cek")
 	}
 	if withLastUpdate {
 		head = append(head, "Status tercatat", "Sumber tanggal")
@@ -24,9 +26,12 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	for _, p := range snap.Parts {
 		for _, m := range p.Modules {
 			for _, r := range m.Rows {
-				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, guardFormula(rowProdSince(r)), ""}
-				if noCek {
-					rec = rec[:5]
+				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, guardFormula(rowProdSince(r))}
+				if snap.Filter.ShowDevPeriod {
+					rec = append(rec, guardFormula(prodSinceText(r.DevPeriod)))
+				}
+				if !snap.Filter.HideCheck {
+					rec = append(rec, "")
 				}
 				if withLastUpdate {
 					since := ""

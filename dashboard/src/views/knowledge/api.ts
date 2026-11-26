@@ -103,6 +103,8 @@ export interface Feature extends EntityBase {
   status_as_of: string;
   /** Raw catalogue "Prod since" (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ?); '' when absent or not PROD. */
   prod_since?: string;
+  /** Raw catalogue "Periode pelaksanaan" (development period: YYYY-MM or YYYY-MM..YYYY-MM); '' when unknown. */
+  dev_period?: string;
   evidence: string;
   notes: string;
 }
@@ -274,6 +276,8 @@ export interface TreeFeature {
   status_as_of: string;
   /** Raw catalogue "Prod since" (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ?); '' when absent or not PROD. */
   prod_since?: string;
+  /** Raw catalogue "Periode pelaksanaan" (development period: YYYY-MM or YYYY-MM..YYYY-MM); '' when unknown. */
+  dev_period?: string;
   origin: Origin;
   removed_at: string | null;
   stories: number;
@@ -656,6 +660,8 @@ export interface ChecklistOptions {
   prodSince?: 'unknown';
   /** false leaves out the Cek (manual tick box) column; default true. */
   checkColumn?: boolean;
+  /** true adds the "Periode pelaksanaan" (development period) column. */
+  devPeriod?: boolean;
   lastUpdate: boolean;
   force: boolean;
 }
@@ -674,6 +680,7 @@ export async function downloadChecklist(pid: number, opts: ChecklistOptions, sig
     if (opts.prodSince === 'unknown') qs.set('prod_since', 'unknown');
   }
   if (opts.checkColumn === false) qs.set('check_column', '0');
+  if (opts.devPeriod) qs.set('dev_period', '1');
   const res = await fetch(`/api/products/${pid}/knowledge/exports/modules-checklist?${qs}`, { credentials: 'include', signal });
   if (!res.ok) {
     let body: Record<string, unknown> = {};
@@ -703,4 +710,37 @@ export async function downloadChecklist(pid: number, opts: ChecklistOptions, sig
   }
   const cache = res.headers.get('X-Export-Cache');
   return cache === 'hit' || cache === 'miss' || cache === 'regenerated' || cache === 'bypass' ? cache : null;
+}
+
+const ID_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+function monthText(m: string): string {
+  const x = MONTH_RE.exec(m);
+  return x ? `${ID_MONTHS[Number(x[2]) - 1]} ${x[1]}` : m;
+}
+
+/** "2024-07..2025-04" -> "Jul 2024 – Apr 2025", "2024-07..2024-12" -> "Jul – Des 2024", "2024-09" -> "Sep 2024"; '' stays ''. */
+export function periodText(raw?: string | null): string {
+  if (!raw) return '';
+  const [a, b] = raw.split('..');
+  if (!b || a === b) return monthText(a);
+  if (a.slice(0, 4) === b.slice(0, 4)) return `${monthText(a).split(' ')[0]} – ${monthText(b)}`;
+  return `${monthText(a)} – ${monthText(b)}`;
+}
+
+/** Development period of a module or sub-module: earliest start to latest end of its features ('' when none has one). */
+export function devPeriodRollup(features: { dev_period?: string | null }[]): string {
+  let from = '';
+  let to = '';
+  for (const f of features) {
+    const raw = f.dev_period;
+    if (!raw) continue;
+    const [a, b = a] = raw.split('..');
+    if (!MONTH_RE.test(a) || !MONTH_RE.test(b)) continue;
+    if (!from || a < from) from = a;
+    if (b > to) to = b;
+  }
+  if (!from) return '';
+  return from === to ? from : `${from}..${to}`;
 }

@@ -1,4 +1,4 @@
-import { ModuleDetail } from '../api';
+import { ModuleDetail, devPeriodRollup, periodText } from '../api';
 import { ReleaseChip } from '../ui';
 import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
@@ -25,6 +25,7 @@ export default function ModulePage({ ctx, e, index }: { ctx: PageCtx; e: ModuleD
         ['Part', part ? `${part.code} ${part.name}` : e.part_code],
         ['Sub-modules', <span className="tabular-nums">{subs.length}</span>],
         ['Features', <span className="tabular-nums">{features.length}</span>],
+        ['Periode pelaksanaan', periodText(devPeriodRollup(features))],
         ['No sub-module', noSub > 0 && <span className="tabular-nums">{noSub}</span>],
       ]}
     >

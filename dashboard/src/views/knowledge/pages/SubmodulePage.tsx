@@ -1,4 +1,4 @@
-import { SubmoduleDetail } from '../api';
+import { SubmoduleDetail, devPeriodRollup, periodText } from '../api';
 import { ReleaseChip } from '../ui';
 import { CaseGridSection } from './CaseGrid';
 import EntityShell from './EntityShell';
@@ -26,6 +26,7 @@ export default function SubmodulePage({ ctx, e, index }: { ctx: PageCtx; e: Subm
       details={[
         ['Module', mod ? `${mod.code} ${mod.name}` : e.module_code],
         ['Features', <span className="tabular-nums">{features.length}</span>],
+        ['Periode pelaksanaan', periodText(devPeriodRollup(features))],
       ]}
     >
       {e.coverage?.test_cases === 0 ? (
