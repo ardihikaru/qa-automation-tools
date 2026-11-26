@@ -358,7 +358,7 @@ func TestGoldenHashes(t *testing.T) {
 	want := map[string]string{
 		"csv":  "cae38973f5b0a4e4a893e59731c2464f2f72a4f6c58dd17e5501d85af2c2ceba",
 		"xlsx": "b95fa43fa4ffaa328630cbc9022a34403f8b827bfdc71ca5b9951c5a98ab134b",
-		"pdf":  "fc3de898c89a18a3022f22b559141a7b23d4381efa4c8f20d01cb1844b0aa590",
+		"pdf":  "0145be67d65591f0d0c5ca979ebcb01e562c5a5f611ac727ed649086f22bbf73",
 	}
 	for k, v := range got {
 		if want[k] != v {

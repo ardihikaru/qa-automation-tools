@@ -374,7 +374,7 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 	}
 }
 
-var modWidths = []float64{18, 34, 68, 28, 22, 12}
+var modWidths = []float64{18, 32, 60, 28, 30, 14} // Prod sejak fits "Des 2025–Jan 2026" at 8 pt
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
 	p := d.p

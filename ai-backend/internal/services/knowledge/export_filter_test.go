@@ -103,7 +103,7 @@ func TestFilterChecklist(t *testing.T) {
 
 func TestScopeInRenders(t *testing.T) {
 	snap := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"})
-	want := "Hanya fitur PROD, Prod sejak Mei 2026 s.d. Nov 2026 (2 fitur PROD tanpa tanggal tidak disertakan)"
+	want := "Hanya fitur PROD yang periode Prod sejak-nya beririsan dengan Mei 2026 s.d. Nov 2026 (2 fitur PROD tanpa tanggal tidak disertakan)"
 	if got := scopeText(snap); got != want {
 		t.Fatalf("scopeText = %q", got)
 	}

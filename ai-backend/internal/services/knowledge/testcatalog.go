@@ -21,6 +21,7 @@ func init() { register(testCatalog{}) }
 const TestCatalogFormatName = "test-catalog-v1"
 
 func (testCatalog) Name() string { return TestCatalogFormatName }
+
 // Version 2: optional 13th column "Prod since" (MODULE_CHECKLIST_EXPORT.md, Amendment 1).
 func (testCatalog) Version() int { return 2 }
 

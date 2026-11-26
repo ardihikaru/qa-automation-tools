@@ -184,11 +184,11 @@ func scopeText(snap *ChecklistSnapshot) string {
 	case f.From != "" && f.To != "":
 		r = monthID(f.From) + " s.d. " + monthID(f.To)
 	case f.From != "":
-		r = "sejak " + monthID(f.From)
+		r = monthID(f.From) + " dan sesudahnya"
 	default:
-		r = "s.d. " + monthID(f.To)
+		r = monthID(f.To) + " dan sebelumnya"
 	}
-	s := "Hanya fitur PROD, Prod sejak " + r
+	s := "Hanya fitur PROD yang periode Prod sejak-nya beririsan dengan " + r
 	if snap.ExcludedUnknown > 0 {
 		s += fmt.Sprintf(" (%d fitur PROD tanpa tanggal tidak disertakan)", snap.ExcludedUnknown)
 	}
