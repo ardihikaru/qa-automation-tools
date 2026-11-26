@@ -5,7 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
+	_ "time/tzdata" // zone database for time.LoadLocation on hosts without one
 )
+
+// DefaultTimezone is the system timezone until app_settings says otherwise.
+const DefaultTimezone = "Asia/Jakarta"
 
 // SettingsInfo is the NON-SECRET configuration snapshot exposed at
 // GET /api/settings. Never add credentials, tokens or DSNs here.
@@ -38,6 +44,72 @@ type settingsResponse struct {
 	AI       settingsAI        `json:"ai"`
 	Executor map[string]string `json:"executor"`
 	Database string            `json:"database"`
+	Timezone string            `json:"timezone"`
+}
+
+// systemTimezone reads app_settings.timezone; a missing table, row or an unknown zone gives
+// DefaultTimezone.
+func (r *Router) systemTimezone(ctx context.Context) string {
+	d := r.getDB()
+	if d == nil {
+		return DefaultTimezone
+	}
+	var tz string
+	if err := d.QueryRow(ctx, `SELECT v FROM app_settings WHERE k = 'timezone'`).Scan(&tz); err != nil {
+		return DefaultTimezone
+	}
+	if validTimezone(tz) != nil {
+		return DefaultTimezone
+	}
+	return tz
+}
+
+func validTimezone(tz string) error {
+	if tz == "" || strings.EqualFold(tz, "local") {
+		return errBadZone
+	}
+	_, err := time.LoadLocation(tz)
+	return err
+}
+
+type zoneError struct{}
+
+func (zoneError) Error() string { return "unknown timezone" }
+
+var errBadZone error = zoneError{}
+
+// handleSettingsTimezone serves PUT /api/settings/timezone {timezone} (Admin, DevOps).
+func (r *Router) handleSettingsTimezone(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPut {
+		writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !canToggleWork(req) {
+		writeJSONError(w, http.StatusForbidden, "only Admin or DevOps can change the timezone")
+		return
+	}
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	if !decodeStrictJSON(w, req, 1<<10, &body) {
+		return
+	}
+	body.Timezone = strings.TrimSpace(body.Timezone)
+	if validTimezone(body.Timezone) != nil {
+		writeJSONError(w, http.StatusBadRequest, "timezone must be an IANA zone name such as Asia/Jakarta")
+		return
+	}
+	d := r.getDB()
+	if d == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+	if _, err := d.Exec(req.Context(), `INSERT INTO app_settings (k, v, updated_by, updated_at) VALUES ('timezone', ?, ?, UTC_TIMESTAMP())
+ON DUPLICATE KEY UPDATE v = VALUES(v), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)`, body.Timezone, userID(req)); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"timezone": body.Timezone})
 }
 
 // hostOnly strips scheme, userinfo, path and query so nothing sensitive leaks.
@@ -96,6 +168,7 @@ func (r *Router) handleSettings(w http.ResponseWriter, req *http.Request) {
 			"status": execStatus,
 		},
 		Database: db,
+		Timezone: r.systemTimezone(ctx),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

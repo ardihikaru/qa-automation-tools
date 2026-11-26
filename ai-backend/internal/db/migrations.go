@@ -1052,6 +1052,41 @@ ALTER TABLE kb_features ADD COLUMN prod_since VARCHAR(20) NOT NULL DEFAULT '' AF
 	// (development period), raw; modules and sub-modules roll it up from their features.
 	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'kb_features' AND column_name = 'dev_period'
 ALTER TABLE kb_features ADD COLUMN dev_period VARCHAR(20) NOT NULL DEFAULT '' AFTER prod_since;`,
+	// CASE_VERIFICATION_AND_EPIC_TAB.md: the latest human verdict of a test case. Kept apart from
+	// kb_test_cases so a knowledge sync never overwrites it.
+	`CREATE TABLE IF NOT EXISTS kb_case_verifications (
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  verdict ENUM('valid','invalid') NOT NULL,
+  note VARCHAR(500) NOT NULL DEFAULT '',
+  verified_by CHAR(36) NOT NULL,
+  verified_by_name VARCHAR(191) NOT NULL DEFAULT '',
+  verified_at DATETIME NOT NULL,
+  PRIMARY KEY (product_id, case_code),
+  INDEX idx_kb_case_verifications_by (product_id, verified_by),
+  CONSTRAINT fk_kb_case_verifications_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// Append-only history of every verification change ('cleared' = the verdict was removed).
+	`CREATE TABLE IF NOT EXISTS kb_case_verification_events (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  verdict ENUM('valid','invalid','cleared') NOT NULL,
+  note VARCHAR(500) NOT NULL DEFAULT '',
+  verified_by CHAR(36) NOT NULL,
+  verified_by_name VARCHAR(191) NOT NULL DEFAULT '',
+  verified_at DATETIME NOT NULL,
+  INDEX idx_kb_case_verification_events_case (product_id, case_code, id),
+  CONSTRAINT fk_kb_case_verification_events_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// System-wide settings (key/value). timezone is the zone the dashboard formats times in.
+	`CREATE TABLE IF NOT EXISTS app_settings (
+  k VARCHAR(64) NOT NULL PRIMARY KEY,
+  v TEXT NOT NULL,
+  updated_by CHAR(36) NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	`INSERT IGNORE INTO app_settings (k, v) VALUES ('timezone', 'Asia/Jakarta');`,
 }
 
 const skipIfPrefix = "-- skip-if:"

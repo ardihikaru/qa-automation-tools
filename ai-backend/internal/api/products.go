@@ -477,7 +477,7 @@ func (r *Router) handleProducts(w http.ResponseWriter, req *http.Request) {
 
 	parts := strings.Split(rest, "/")
 	id, err := strconv.Atoi(parts[0])
-	if err != nil || id <= 0 || len(parts) > 5 {
+	if err != nil || id <= 0 || len(parts) > 6 {
 		writeJSONError(w, http.StatusNotFound, "not found")
 		return
 	}
