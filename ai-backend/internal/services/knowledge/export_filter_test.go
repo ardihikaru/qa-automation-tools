@@ -305,3 +305,16 @@ func TestFixtureDevPeriod(t *testing.T) {
 		t.Error("default CSV shows the development period")
 	}
 }
+
+// A cross-year development period is not cut off in the PDF.
+func TestPDFDevPeriodFits(t *testing.T) {
+	one := &ChecklistSnapshot{ProductName: "P", Filter: ChecklistFilter{ShowDevPeriod: true}, Parts: []ChecklistPart{{Code: "A", Name: "PA", Modules: []ChecklistModule{{Code: "A01", Name: "M", Rows: []ChecklistRow{
+		{ID: "A01.01", Feature: "x", Status: "PROD", ProdSince: "2025-12..2026-01", DevPeriod: "2024-07..2025-04"},
+	}}}}}}
+	pdf := string(render(t, one, "pdf", false))
+	for _, s := range []string{"Jul 2024\x96Apr 2025", "Des 2025\x96Jan 2026"} {
+		if !strings.Contains(pdf, s) {
+			t.Errorf("PDF cuts %q", s)
+		}
+	}
+}
