@@ -697,7 +697,7 @@ export interface Verifier {
 export const listVerifiers = (pid: number, signal?: AbortSignal) =>
   api<{ verifiers?: Verifier[] }>(`${kb(pid)}/test-cases/verifiers`, { signal }).then((r) => r?.verifiers ?? []);
 export const putVerification = (pid: number, code: string, verdict: Verdict | null, note?: string) =>
-  api<{ verification: Verification | null }>(`${caseUrl(pid, code)}/verification`, json('PUT', { verdict, ...(note ? { note } : {}) })).then((r) => r?.verification ?? null);
+  api<Verification | null>(`${caseUrl(pid, code)}/verification`, json('PUT', { verdict, ...(note ? { note } : {}) })).then((r) => r ?? null);
 
 export interface VerificationEvent {
   id: number | string;
