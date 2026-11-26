@@ -100,6 +100,30 @@ func TestOperationsFollowImportsInTheSameRepo(t *testing.T) {
 	}
 }
 
+// The automation repo imports its helpers through tsconfig "paths" aliases (found live: DEF-922's
+// spec reaches the GraphQL operation only through "@api/..."), so a relative-only walk found none.
+func TestOperationsFollowTsconfigAliases(t *testing.T) {
+	f := newFake(t)
+	s, _, _ := newSyncer(t, f)
+	files := map[string]string{
+		"tsconfig.json":                       "{\n // comment\n \"compilerOptions\": {\"paths\": {\"@api/*\": [\"./src/api/*\"], \"@fixtures\": [\"./src/fixtures/index.ts\"]}}}",
+		"tests/api/graphql/svc/a.spec.ts":     "import { Kit } from '@api/graphql/svc/x.kit';\nimport { test } from '@fixtures';",
+		"src/api/graphql/svc/x.kit.ts":        "import { Op } from './x.operations';",
+		"src/api/graphql/svc/x.operations.ts": "const q = `mutation editThing($d: In!) { editThing(data: $d) { status } }`;",
+		"src/fixtures/index.ts":               "await request.post('/from/fixtures');",
+	}
+	s.SetSpecReader(func(_ context.Context, _ int, rel string) ([]byte, error) {
+		if v, ok := files[rel]; ok {
+			return []byte(v), nil
+		}
+		return nil, fmt.Errorf("no file")
+	})
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	if strings.Join(got, "|") != "editThing|from/fixtures" {
+		t.Errorf("operations = %v", got)
+	}
+}
+
 func TestFitDefectsSplitsByCountAndBytes(t *testing.T) {
 	items := make([]defectItem, 120)
 	for i := range items {

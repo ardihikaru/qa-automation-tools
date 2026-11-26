@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -35,7 +36,8 @@ var (
 	operationRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.\-/]{0,80}$`)
 	gqlOpRe     = regexp.MustCompile(`\b(?:query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)\s*[({]`)
 	restCallRe  = regexp.MustCompile("\\.(?:get|post|put|patch|delete|head)\\s*(?:<[^>]*>)?\\(\\s*(['\"`])([^'\"`]+)['\"`]")
-	importRe    = regexp.MustCompile(`(?:from\s+|require\(\s*|import\(\s*)['"](\.{1,2}/[^'"]+)['"]`)
+	importRe    = regexp.MustCompile(`(?:from\s+|require\(\s*|import\(\s*)['"]([^'"]+)['"]`)
+	lineCmtRe   = regexp.MustCompile(`(?m)^\s*//.*$`)
 	tmplRe      = regexp.MustCompile(`\$\{[^}]*\}`)
 	badOpCharRe = regexp.MustCompile(`[^A-Za-z0-9_.\-/]`)
 	repoURLRe   = regexp.MustCompile(`[:/]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$`)
@@ -272,6 +274,7 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 	if s.specReader == nil {
 		return []string{}
 	}
+	aliases := s.tsAliases(ctx, productID)
 	var sources []string
 	seen := map[string]bool{}
 	queue := []string{spec}
@@ -289,8 +292,8 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 		src := string(b)
 		sources = append(sources, src)
 		for _, m := range importRe.FindAllStringSubmatch(src, -1) {
-			p := path.Join(path.Dir(f), m[1])
-			if p == "." || strings.HasPrefix(p, "..") {
+			p := resolveImport(path.Dir(f), m[1], aliases)
+			if p == "" || p == "." || strings.HasPrefix(p, "..") {
 				continue
 			}
 			for _, cand := range []string{p, p + ".ts", p + ".js", p + "/index.ts"} {
@@ -498,4 +501,53 @@ func fitDefects(items []defectItem, n int) []defectItem {
 		}
 	}
 	return items[:min(n, len(items))]
+}
+
+// tsAlias is one tsconfig "paths" entry, "@api/*" -> "src/api/*", as a prefix pair.
+type tsAlias struct{ from, to string }
+
+// tsAliases reads compilerOptions.paths of the automation repo's tsconfig.json. The spec reaches
+// its helpers through these aliases ("@api/..."), so the relative imports alone find nothing.
+// Any failure means no aliases; a wildcard-free entry ("@fixtures") maps the exact name.
+func (s *Syncer) tsAliases(ctx context.Context, productID int) []tsAlias {
+	b, err := s.specReader(ctx, productID, "tsconfig.json")
+	if err != nil || len(b) > maxSpecFileBytes {
+		return nil
+	}
+	var cfg struct {
+		CompilerOptions struct {
+			Paths map[string][]string `json:"paths"`
+		} `json:"compilerOptions"`
+	}
+	if json.Unmarshal([]byte(lineCmtRe.ReplaceAllString(string(b), "")), &cfg) != nil {
+		return nil
+	}
+	var out []tsAlias
+	for k, v := range cfg.CompilerOptions.Paths {
+		if len(v) == 0 {
+			continue
+		}
+		out = append(out, tsAlias{strings.TrimSuffix(k, "*"), strings.TrimSuffix(path.Clean(strings.TrimSuffix(v[0], "*")), "/")})
+		if strings.HasSuffix(k, "*") {
+			out[len(out)-1].to += "/"
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return len(out[i].from) > len(out[j].from) })
+	return out
+}
+
+// resolveImport turns an import specifier into a repo-relative path, or "" for a package.
+func resolveImport(dir, spec string, aliases []tsAlias) string {
+	if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") {
+		return path.Join(dir, spec)
+	}
+	for _, a := range aliases {
+		if strings.HasSuffix(a.from, "/") && strings.HasPrefix(spec, a.from) {
+			return path.Join(a.to, strings.TrimPrefix(spec, a.from))
+		}
+		if a.from == spec {
+			return a.to
+		}
+	}
+	return ""
 }
