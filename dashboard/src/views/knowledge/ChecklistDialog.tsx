@@ -19,6 +19,14 @@ const SCOPES: { id: ChecklistScope; label: string; help: string }[] = [
   { id: 'prod', label: 'Production only', help: 'Only PROD features; optionally only those in production since a period.' },
 ];
 
+type ProdSelection = 'all' | 'period' | 'unknown';
+
+const PROD_SELECTIONS: { id: ProdSelection; label: string; help: string }[] = [
+  { id: 'all', label: 'All PROD features', help: 'Every feature in production; undated ones show \u201c?\u201d in Prod sejak.' },
+  { id: 'period', label: 'Released in a period', help: 'Only features whose Prod sejak overlaps the months below. Features without a date are left out.' },
+  { id: 'unknown', label: 'Release date unknown', help: 'Only features in production whose Prod sejak is not known yet (\u201c?\u201d), e.g. to fill in the dates.' },
+];
+
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const CACHE_NOTE: Record<ChecklistCache, string> = {
@@ -33,6 +41,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   const [scope, setScope] = useState<ChecklistScope>('all');
   const [sinceFrom, setSinceFrom] = useState('');
   const [sinceTo, setSinceTo] = useState('');
+  const [prodSel, setProdSel] = useState<ProdSelection>('all');
   const [checkColumn, setCheckColumn] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
@@ -51,7 +60,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (inflight.current) return;
-    const rangeError = scope === 'prod' ? checkRange(sinceFrom, sinceTo) : null;
+    const rangeError = scope === 'prod' && prodSel === 'period' ? checkRange(sinceFrom, sinceTo) : null;
     if (rangeError) {
       setError(rangeError);
       setNote(null);
@@ -64,7 +73,22 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
     const ac = new AbortController();
     abort.current = ac;
     try {
-      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, checkColumn: scope === 'prod' ? checkColumn : true, lastUpdate, force }, ac.signal);
+      const prod = scope === 'prod';
+      const period = prod && prodSel === 'period';
+      const cache = await downloadChecklist(
+        pid,
+        {
+          format,
+          scope,
+          sinceFrom: period ? sinceFrom : '',
+          sinceTo: period ? sinceTo : '',
+          prodSince: prod && prodSel === 'unknown' ? 'unknown' : undefined,
+          checkColumn: prod ? checkColumn : true,
+          lastUpdate,
+          force,
+        },
+        ac.signal,
+      );
       setNote(cache ? CACHE_NOTE[cache] : 'Downloaded');
     } catch (err) {
       if (!isAbort(err)) setError(errorText(err, 'Could not download the checklist'));
@@ -108,25 +132,38 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
             </div>
           ))}
           {scope === 'prod' && (
-            <div className="ml-6 space-y-1">
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="text-sm text-gray-800">
-                  <span className="block text-xs text-gray-600 mb-1">In production since: from</span>
-                  <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceFrom} onChange={(e) => setSinceFrom(e.target.value)} aria-describedby="checklist-since-help" />
-                </label>
-                <label className="text-sm text-gray-800">
-                  <span className="block text-xs text-gray-600 mb-1">to</span>
-                  <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceTo} onChange={(e) => setSinceTo(e.target.value)} aria-describedby="checklist-since-help" />
-                </label>
-                {(sinceFrom || sinceTo) && (
-                  <button type="button" className="text-xs text-teal-700 underline" onClick={() => { setSinceFrom(''); setSinceTo(''); }}>
-                    Clear period
-                  </button>
-                )}
-              </div>
-              <p id="checklist-since-help" className="text-xs text-gray-500">
-                Leave both empty for every PROD feature (undated ones shown as &ldquo;?&rdquo;). With a period, only features whose &ldquo;Prod sejak&rdquo; overlaps it are listed; PROD features without a date are left out and counted in the file header.
-              </p>
+            <div className="ml-6 space-y-3">
+              <fieldset className="space-y-1.5">
+                <legend className="block text-xs font-medium text-gray-700 mb-1">Which PROD features</legend>
+                {PROD_SELECTIONS.map((o) => (
+                  <div key={o.id}>
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+                      <input type="radio" name="checklist-prod-selection" value={o.id} checked={prodSel === o.id} onChange={() => setProdSel(o.id)} aria-describedby={`checklist-prod-${o.id}-help`} />
+                      {o.label}
+                    </label>
+                    <p id={`checklist-prod-${o.id}-help`} className="text-xs text-gray-500 ml-6">
+                      {o.help}
+                    </p>
+                    {o.id === 'period' && prodSel === 'period' && (
+                      <div className="ml-6 mt-1 flex flex-wrap items-end gap-3">
+                        <label className="text-sm text-gray-800">
+                          <span className="block text-xs text-gray-600 mb-1">From</span>
+                          <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceFrom} onChange={(e) => setSinceFrom(e.target.value)} />
+                        </label>
+                        <label className="text-sm text-gray-800">
+                          <span className="block text-xs text-gray-600 mb-1">To</span>
+                          <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceTo} onChange={(e) => setSinceTo(e.target.value)} />
+                        </label>
+                        {(sinceFrom || sinceTo) && (
+                          <button type="button" className="text-xs text-teal-700 underline" onClick={() => { setSinceFrom(''); setSinceTo(''); }}>
+                            Clear period
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </fieldset>
               <div>
                 <label className="inline-flex items-center gap-2 text-sm text-gray-800">
                   <input type="checkbox" checked={checkColumn} onChange={(e) => setCheckColumn(e.target.checked)} aria-describedby="checklist-cek-help" />

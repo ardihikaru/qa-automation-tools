@@ -86,10 +86,11 @@ func (r *Router) handleChecklistExport(w http.ResponseWriter, req *http.Request,
 }
 
 // parseChecklistFilter reads scope (all|prod, default all), since_from and since_to (YYYY-MM,
-// optional, only with scope=prod, from <= to). It returns a 400 message, or "" when valid.
+// optional, only with scope=prod, from <= to), prod_since=unknown (only with scope=prod and no
+// range: PROD rows without a known date) and check_column. It returns a 400 message, or "".
 func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) string {
 	qv := req.URL.Query()
-	for _, k := range []string{"scope", "since_from", "since_to"} {
+	for _, k := range []string{"scope", "since_from", "since_to", "prod_since"} {
 		if len(qv[k]) > 1 {
 			return k + " must be given once"
 		}
@@ -113,6 +114,19 @@ func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) strin
 	}
 	if f.From != "" && f.To != "" && f.From > f.To {
 		return "since_from must not be after since_to"
+	}
+	switch qv.Get("prod_since") {
+	case "":
+	case "unknown":
+		if f.Scope != knowledge.ScopeProd {
+			return "prod_since=unknown needs scope=prod"
+		}
+		if f.Ranged() {
+			return "prod_since=unknown cannot be combined with since_from or since_to"
+		}
+		f.UndatedOnly = true
+	default:
+		return "prod_since must be unknown"
 	}
 	check, ok := strictBool(req, "check_column")
 	if !ok {
