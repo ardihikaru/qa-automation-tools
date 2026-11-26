@@ -312,7 +312,7 @@ func TestPDFDevPeriodFits(t *testing.T) {
 		{ID: "A01.01", Feature: "x", Status: "PROD", ProdSince: "2025-12..2026-01", DevPeriod: "2024-07..2025-04"},
 	}}}}}}
 	pdf := string(render(t, one, "pdf", false))
-	for _, s := range []string{"Jul 2024\x96Apr 2025", "Des 2025\x96Jan 2026"} {
+	for _, s := range []string{"Jul 2024\x96Apr 2025", "Des 2025\x96Jan 2026", "(Periode pelaksanaan)"} {
 		if !strings.Contains(pdf, s) {
 			t.Errorf("PDF cuts %q", s)
 		}
