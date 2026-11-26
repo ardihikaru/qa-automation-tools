@@ -208,7 +208,7 @@ func TestRenderRowCounts(t *testing.T) {
 func TestRenderLastUpdate(t *testing.T) {
 	cs, _ := fixtureSnapshot(t, true)
 	recs := csvRecords(t, render(t, cs, "csv", true))
-	if got := recs[0]; len(got) != 8 || got[6] != "Status sejak" || got[7] != "Sumber tanggal" {
+	if got := recs[0]; len(got) != 8 || got[6] != "Status tercatat" || got[7] != "Sumber tanggal" {
 		t.Fatalf("header: %v", got)
 	}
 	seen := map[string]int{}
@@ -235,16 +235,15 @@ func TestRenderLastUpdate(t *testing.T) {
 		t.Errorf("csv dates: %v", r)
 	}
 	pdf := string(render(t, one, "pdf", true))
-	for _, s := range []string{"sejak 01 Sep 2026", "sejak ~01 Sep 2026", "sejak —"} {
+	for _, s := range []string{"tercatat 01 Sep 2026", "tercatat ~01 Sep 2026", "tercatat —"} {
 		if !strings.Contains(pdf, strings.ReplaceAll(s, "—", "\x97")) {
 			t.Errorf("PDF lacks %q", s)
 		}
 	}
-	if !strings.Contains(pdf, "tanggal perkiraan") {
+	if !strings.Contains(pdf, "bukan tanggal rilis") || !strings.Contains(pdf, "perkiraan") {
 		t.Error("PDF lacks the ~ footnote")
 	}
-	// "Prod sejak" is a column header of every PDF; the status dates are "sejak <date>" / "sejak —".
-	if plain := string(render(t, one, "pdf", false)); strings.Contains(plain, "sejak 01") || strings.Contains(plain, "sejak \x97") || strings.Contains(plain, "tanggal perkiraan") {
+	if plain := string(render(t, one, "pdf", false)); strings.Contains(plain, "tercatat") || strings.Contains(plain, "perkiraan") {
 		t.Error("PDF without the option must not mention dates")
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(render(t, one, "xlsx", true)))
@@ -356,9 +355,9 @@ func TestGoldenHashes(t *testing.T) {
 		"pdf":  hashHex(render(t, cs, "pdf", true)),
 	}
 	want := map[string]string{
-		"csv":  "cae38973f5b0a4e4a893e59731c2464f2f72a4f6c58dd17e5501d85af2c2ceba",
-		"xlsx": "b95fa43fa4ffaa328630cbc9022a34403f8b827bfdc71ca5b9951c5a98ab134b",
-		"pdf":  "0145be67d65591f0d0c5ca979ebcb01e562c5a5f611ac727ed649086f22bbf73",
+		"csv":  "26fb26f116442947daeb000ce244d4ae9ba2cd4d8fa1e04b1a43db1b1e19acf2",
+		"xlsx": "f23a1cef6ce795bd43f68291363f2e2fabd9eb267f1bc4537383a1fc941858d1",
+		"pdf":  "a61bc8b59e4e2306fc70f456a3a213b7a2761ae16799f1f5c00d2803c9a02d86",
 	}
 	for k, v := range got {
 		if want[k] != v {

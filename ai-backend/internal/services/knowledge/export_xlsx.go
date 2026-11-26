@@ -164,10 +164,10 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	_ = f.SetColWidth(sum, "B", "B", 44)
 	_ = f.SetColWidth(sum, "C", "I", 13)
 
-	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Prod sejak | Cek [| Status sejak | Sumber tanggal].
+	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Prod sejak | Cek [| Status tercatat | Sumber tanggal].
 	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
 	if withLastUpdate {
-		cols = append(cols, "Status sejak", "Sumber tanggal")
+		cols = append(cols, "Status tercatat", "Sumber tanggal")
 	}
 	for _, p := range snap.Parts {
 		sh := sheetName(p.Code+" "+p.Name, used)
