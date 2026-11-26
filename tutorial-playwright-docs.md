@@ -1,0 +1,291 @@
+# Tutorial: Running Playwright Docs
+
+This tutorial explains how to use the Playwright Documentation Generator to explore and document the HIS V3 staging application.
+
+## Prerequisites
+
+- **Node.js**: >= 18.0.0 (LTS recommended) - Already available via fnm at `/run/user/1000/fnm_multishells/*/bin/node`
+- **npm**: >= 9.0.0
+- **Google Chrome**: Installed at `/usr/bin/google-chrome` (used by Playwright)
+- **config.yaml**: Configured with staging credentials
+
+## Starting Node Environment
+
+### Option 1: Using existing Node (fnm)
+The environment already has Node.js available via fnm. You can verify:
+
+```bash
+node --version
+# Expected output: v24.14.1 or similar
+
+which node
+# Expected: /run/user/1000/fnm_multishells/*/bin/node
+```
+
+### Option 2: Using nvm (if available)
+If you prefer nvm:
+
+```bash
+# For fish shell:
+nvm use lts
+
+# For bash shell:
+nvm use --lts
+```
+
+> **Note**: This project uses Node in the root `qa-automation-tools` directory. All Playwright commands should be run from there or from the `playwright-docs` subdirectory.
+
+## Project Structure
+
+```
+qa-automation-tools/
+├── config.yaml                    # Central configuration (credentials, API endpoints)
+├── playwright-docs/               # Documentation generator
+│   ├── src/
+│   │   ├── index.ts              # Main entry point
+│   │   ├── exploreSystem.ts      # System explorer for comprehensive route testing
+│   │   ├── flows/                # Flow definitions
+│   │   └── recorder/             # Recording utilities
+│   ├── config/
+│   │   └── credentials.yaml      # Role-based credentials
+│   └── output/                   # Generated documentation
+└── lib/
+    └── config.ts                 # Shared config loader
+```
+
+## Setup
+
+### 1. Configure Credentials
+
+The credentials are stored in `config.yaml` under the `credentials` section. Make sure you have valid credentials for the roles you want to test.
+
+Example credentials from config.yaml:
+
+```yaml
+credentials:
+  doctor_sp:
+    username: "KGDS2025029"
+    password: "Bismillah1!"
+    role_code: "DoctorSp"
+  
+  nurse:
+    username: "KG2024003"
+    password: "Bismillah1!"
+    role_code: "Nurse"
+```
+
+### 2. Configure Playwright Docs
+
+In `config.yaml`, under `playwright_docs.flows.roles`, specify which roles to test:
+
+```yaml
+playwright_docs:
+  flows:
+    roles: ["doctor_sp", "doctor_gp", "nurse"]
+    max_steps: 50
+    continue_on_error: true
+```
+
+## Running the Tool
+
+### Option 1: Run with npm script
+
+```bash
+cd playwright-docs
+npm run dev
+```
+
+### Option 2: Run with ts-node directly
+
+```bash
+cd playwright-docs
+npx ts-node src/index.ts
+```
+
+## Running System Exploration
+
+For comprehensive exploration of all routes, use the system explorer script:
+
+```bash
+cd playwright-docs
+npx ts-node src/exploreSystem.ts
+```
+
+This will:
+1. Login using the configured credentials
+2. Explore all defined routes
+3. Capture screenshots of each page
+4. Save output to `output/exploration/`
+
+## Configuration Options
+
+### Browser Settings
+
+```yaml
+playwright_docs:
+  browser:
+    type: "chromium"  # chromium, firefox, or webkit
+    headless: true    # Run in headless mode
+    slow_mo: 0        # Slow down actions (ms)
+    viewport:
+      width: 1280
+      height: 720
+```
+
+### Output Settings
+
+```yaml
+playwright_docs:
+  output:
+    video_dir: "output/videos"
+    docs_dir: "output/docs"
+    screenshots_dir: "output/screenshots"
+    record_video: false
+    video_format: "webm"
+```
+
+## Understanding the Output
+
+### Screenshots
+
+Screenshots are saved to `playwright-docs/output/screenshots/` with naming convention:
+- `{flow-id}-step-{step-number}.png` - Screenshots after each step
+- `{flow-id}-final.png` - Final screenshot
+
+### System Exploration Output
+
+Screenshots from exploration are saved to `playwright-docs/output/exploration/`:
+- `route-{route-name}.png` - Each visited route
+- `error-{route-name}.png` - Failed routes
+
+## Defining Custom Flows
+
+Edit `playwright-docs/src/flows/flowLoader.ts` to add custom flows:
+
+```typescript
+const doctorFlows: FlowDefinition[] = [
+  {
+    id: 'doctor-custom-flow',
+    name: 'Custom Doctor Flow',
+    role: 'doctor',
+    description: 'Description of the flow',
+    steps: [
+      { action: 'navigate', selector: '/emr/outpatient' },
+      { action: 'wait', wait: 3000 },
+      // Add more steps...
+    ],
+  },
+];
+```
+
+### Flow Actions
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `navigate` | Navigate to a URL | `selector`: URL path |
+| `click` | Click an element | `selector`: CSS selector |
+| `type` | Type text into input | `selector`: CSS selector, `value`: text |
+| `select` | Select dropdown option | `selector`: CSS selector, `value`: option value |
+| `wait` | Wait for specified time | `wait`: milliseconds |
+
+## Testing Different Roles
+
+### Super Admin
+```yaml
+playwright_docs:
+  flows:
+    roles: ["super_admin"]
+```
+
+### Doctor
+```yaml
+playwright_docs:
+  flows:
+    roles: ["doctor_sp", "doctor_gp"]
+```
+
+### Nurse
+```yaml
+playwright_docs:
+  flows:
+    roles: ["nurse"]
+```
+
+### Administration
+```yaml
+playwright_docs:
+  flows:
+    roles: ["admission", "cashier"]
+```
+
+## Troubleshooting
+
+### Login Fails
+
+If login fails, check:
+1. Credentials are correct in `config.yaml`
+2. Password is up to date
+3. User account is active in the staging database
+
+### Timeout Errors
+
+If you get timeout errors:
+1. Increase `timeout` in staging config
+2. Check if staging application is accessible
+3. Run with `headless: false` to see browser behavior
+
+### Network Issues
+
+If network errors occur:
+1. Verify staging URL is accessible
+2. Check internet connection
+3. Try increasing navigation timeout
+
+## Advanced Usage
+
+### Running with Custom Credentials
+
+You can override credentials in `playwright-docs/config/credentials.yaml`:
+
+```yaml
+credentials:
+  custom_role:
+    username: "YOUR_USERNAME"
+    password: "YOUR_PASSWORD"
+    role_code: "CustomRole"
+```
+
+### Adding New Routes to Explorer
+
+Edit `exploreSystem.ts` to add more routes:
+
+```typescript
+const additionalRoutes = [
+  '/your/new/route',
+  '/another/route',
+];
+
+const allRoutes = [...new Set([...doctorRoutes, ...additionalRoutes])];
+```
+
+## API Integration
+
+The tool can integrate with the backend AI system at:
+- URL: `https://ai-backend-1087642958941.asia-southeast1.run.app`
+
+Available endpoints:
+- `POST /api/flows` - Create flow record
+- `GET /api/flows` - List flows
+- `GET /api/issues` - List issues
+- `GET /api/skills` - List QA skills
+
+## Summary
+
+The Playwright Documentation Generator is a powerful tool for:
+1. ✅ Automated system exploration
+2. ✅ Screenshot capture for documentation
+3. ✅ Route testing across different roles
+4. ✅ Visual regression testing
+5. ✅ QA automation workflows
+
+Run the tool regularly to maintain up-to-date system documentation!
