@@ -230,6 +230,8 @@ func (d *pdfDoc) tableHead(labels []string, widths []float64) {
 		if i > 0 && len(labels) > 3 && widths[i] < 25 {
 			al = "C"
 			p.SetFont("Helvetica", "B", 7) // narrow numeric columns: statuses must fit
+		} else if p.GetStringWidth(d.t(l)) > widths[i]-2 {
+			p.SetFont("Helvetica", "B", 7) // a long label ("Periode pelaksanaan") shrinks rather than being cut
 		}
 		p.CellFormat(widths[i], 6, d.t(l), "1", 0, al, true, 0, "")
 	}
@@ -391,8 +393,8 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 var (
 	modWidthsCek      = []float64{18, 32, 60, 28, 30, 14}
 	modWidthsNoCek    = []float64{18, 32, 74, 28, 30}
-	modWidthsDevCek   = []float64{18, 24, 46, 26, 28, 28, 12}
-	modWidthsDevNoCek = []float64{18, 24, 58, 26, 28, 28}
+	modWidthsDevCek   = []float64{18, 25, 45, 26, 28, 28, 12}
+	modWidthsDevNoCek = []float64{18, 25, 57, 26, 28, 28}
 )
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
