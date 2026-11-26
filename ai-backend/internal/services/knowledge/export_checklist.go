@@ -15,7 +15,7 @@ import (
 // TemplateVersion is part of the export cache key. Raise it on any change that alters the output
 // of any renderer (layout, columns, colours, wording, time zone); the golden-hash test fails when
 // the output changes without a bump, including after a library upgrade.
-const TemplateVersion = 8
+const TemplateVersion = 9
 
 // maxExportFeatures is the largest catalogue the export accepts.
 const maxExportFeatures = 20000

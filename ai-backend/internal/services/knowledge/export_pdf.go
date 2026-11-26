@@ -391,8 +391,8 @@ func (d *pdfDoc) partSection(part ChecklistPart) {
 var (
 	modWidthsCek      = []float64{18, 32, 60, 28, 30, 14}
 	modWidthsNoCek    = []float64{18, 32, 74, 28, 30}
-	modWidthsDevCek   = []float64{18, 26, 48, 26, 28, 24, 12}
-	modWidthsDevNoCek = []float64{18, 26, 60, 26, 28, 24}
+	modWidthsDevCek   = []float64{18, 24, 46, 26, 28, 28, 12}
+	modWidthsDevNoCek = []float64{18, 24, 58, 26, 28, 28}
 )
 
 func (d *pdfDoc) moduleTable(m ChecklistModule) {
@@ -476,6 +476,7 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(rowProdSince(r), modWidths[4]-2), "", 0, "L", false, 0, "")
 		nx := sx + modWidths[3] + modWidths[4] // left edge of the column after Prod sejak
 		if dev {
+			p.SetFont("Helvetica", "", 7) // "Jul 2024–Apr 2025" fits 26 mm at 7 pt
 			p.SetXY(nx+1, y+pdfRowPad/2)
 			p.CellFormat(modWidths[5]-2, pdfLineH, d.fit(prodSinceText(r.DevPeriod), modWidths[5]-2), "", 0, "L", false, 0, "")
 			nx += modWidths[5]
