@@ -189,6 +189,15 @@ func (r *Router) gaosJobStatus(w http.ResponseWriter, req *http.Request, jobID s
 		"error":    job.Error,
 		"report":   jobReportCounts(job),
 	}
+	// The pull request the job opened, once it has one (the payload while the job runs, the result
+	// after it), and the job's page; both only when known. GAOS lists the pull request on its
+	// Pull requests page and accepts the page link only on the host it is configured to trust.
+	if u := gaosPRURL(job); u != "" {
+		out["pr_url"] = u
+	}
+	if o := strings.TrimRight(r.dashboardOrigin, "/"); o != "" && o != "*" {
+		out["job_url"] = o + "/jobs/" + job.ID
+	}
 	// A running create that waits for a human is not "running" to GAOS: its poll must not time out.
 	if job.Status == jobStatusRunning {
 		if age, open := latestApprovalOpen(ctx, d, jobID); open {
@@ -446,4 +455,15 @@ func (r *Router) rejectOpenApprovals(ctx context.Context, d *db.DB, jobID string
 		}
 	}
 	return nil
+}
+
+// gaosPRURL is the pull request url a job recorded: payload.pr_url while it runs (caseauto sets it
+// when it opens the pull request), result.pr_url once it ends. "" when there is none or it is not a string.
+func gaosPRURL(job *jobRecord) string {
+	for _, m := range []map[string]interface{}{job.Payload, job.Result} {
+		if u, ok := m["pr_url"].(string); ok && u != "" {
+			return u
+		}
+	}
+	return ""
 }

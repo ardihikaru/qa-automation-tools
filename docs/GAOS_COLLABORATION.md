@@ -136,13 +136,14 @@ automation for the case) or `run` (run the spec the case already has). Answer: `
 
 ### `GET /api/v1/gaos/jobs/{id}`
 
-The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"}}`.
+The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"},"pr_url"?,"job_url"?}`.
 
 * `status` is `queued`, `running`, `awaiting_approval` (a running `create` whose spec waits for a human; the answer adds `waiting_s`), `succeeded` or `failed` (the job page's `completed` is `succeeded` here; failing
   tests are in `report`, not in `status`); `phase` is the step the job is in (`prepare`, `generate`, `write`, `run`,
   `repair`, `approval`, `push`, `pr`, `done`; a run-all shows `run <case> (n/total)`); `job_type` is `create` or
   `run`; `error` is empty until the job fails.
 * `report` holds the counts of the last run of the spec (`0`, `0`, `0` before the first run).
+* `pr_url` is the pull request the job opened (from the job payload while it runs, from its result after); `job_url` is the job's page (`DASHBOARD_ORIGIN` + `/jobs/<id>`; absent when the origin is unset or `*`). Both are absent when unknown. GAOS lists the pull request on its Pull requests page, and accepts `job_url` as a link only on the host it is configured to trust (`GAOS_QA_ORIGIN`).
 * An unknown job id is `404`.
 
 The job id is the one the `202` answered. The numbers, the phase and the error are the ones the job page shows, so a
