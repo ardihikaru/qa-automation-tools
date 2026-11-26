@@ -44,4 +44,4 @@ HTTPS calls to GAOS; writes `product_settings.gaos_last_sync_at/status/note` and
 
 **Defect cases.** `readCatalog` also reads the case codes of `qa_defect_state`; `buildPlan` sends a `blocked` case that is in that set and has a usable spec, as an implemented `planned` case, so GAOS knows the case when its defect arrives.
 
-**Operation names.** `operationsFor` walks the spec's imports (relative ones and the aliases of the repo's `tsconfig.json` `paths`), at most 8 files, and lists up to 5 GraphQL operation or REST route names for the defect push.
+**Operation names.** `operationsFor` walks the spec's imports (relative ones and the aliases of the repo's `tsconfig.json` `paths`), at most 24 files, those of the spec's own service first, and lists up to 5 GraphQL operation or REST route names for the defect push.

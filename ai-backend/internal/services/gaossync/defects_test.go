@@ -124,6 +124,32 @@ func TestOperationsFollowTsconfigAliases(t *testing.T) {
 	}
 }
 
+// A spec imports shared fixtures and utilities before its service's helpers; those must not spend the
+// operation cap or the file budget (found live on DEF-922).
+func TestOperationsPreferTheSpecsOwnService(t *testing.T) {
+	f := newFake(t)
+	s, _, _ := newSyncer(t, f)
+	files := map[string]string{
+		"tsconfig.json":                       `{"compilerOptions":{"paths":{"@api/*":["./src/api/*"],"@utils/*":["./src/utils/*"]}}}`,
+		"tests/api/graphql/svc/a.spec.ts":     "import { u1 } from '@utils/u1';\nimport { u2 } from '@utils/u2';\nimport { u3 } from '@utils/u3';\nimport { k } from '@api/graphql/svc/k';",
+		"src/api/graphql/svc/k.ts":            "import { O } from './k.operations';",
+		"src/api/graphql/svc/k.operations.ts": "const q = `mutation theOperation($d: In!) { theOperation(data: $d) { status } }`;",
+	}
+	for _, n := range []string{"u1", "u2", "u3"} {
+		files["src/utils/"+n+".ts"] = "await r.get('/noise/" + n + "a'); await r.get('/noise/" + n + "b'); await r.get('/noise/" + n + "c');"
+	}
+	s.SetSpecReader(func(_ context.Context, _ int, rel string) ([]byte, error) {
+		if v, ok := files[rel]; ok {
+			return []byte(v), nil
+		}
+		return nil, fmt.Errorf("no file")
+	})
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	if len(got) == 0 || got[0] != "theOperation" {
+		t.Errorf("the service's operation must come first: %v", got)
+	}
+}
+
 func TestFitDefectsSplitsByCountAndBytes(t *testing.T) {
 	items := make([]defectItem, 120)
 	for i := range items {
