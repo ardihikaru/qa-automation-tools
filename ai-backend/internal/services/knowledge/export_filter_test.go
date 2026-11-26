@@ -231,3 +231,22 @@ func TestHideCheckColumn(t *testing.T) {
 		t.Error("nocheck variant")
 	}
 }
+
+// prod_since=unknown keeps only the undated PROD rows.
+func TestUndatedOnly(t *testing.T) {
+	f := ChecklistFilter{Scope: ScopeProd, UndatedOnly: true}
+	got := FilterChecklist(filterFixture(), f)
+	if ids(got) != "A01.05,A01.06" || got.ExcludedUnknown != 0 || len(got.Parts) != 1 {
+		t.Errorf("rows %q excluded %d parts %d", ids(got), got.ExcludedUnknown, len(got.Parts))
+	}
+	if s := scopeText(got); s != "Hanya fitur PROD yang tanggal rilisnya (Prod sejak) belum diketahui" {
+		t.Errorf("scopeText = %q", s)
+	}
+	if f.variant() != "/prod-undated" || (ChecklistFilter{Scope: ScopeProd, UndatedOnly: true, HideCheck: true}).variant() != "/prod-undated/nocheck" {
+		t.Error("variant")
+	}
+	recs := csvRecords(t, render(t, got, "csv", false))
+	if len(recs) != 3 || recs[1][4] != "?" || recs[2][4] != "" {
+		t.Errorf("csv = %v", recs)
+	}
+}

@@ -69,6 +69,9 @@ func ParseProdSince(s string) (ProdSince, error) {
 type ChecklistFilter struct {
 	Scope    string // ScopeAll ("" means the same) or ScopeProd
 	From, To string
+	// UndatedOnly keeps only the PROD rows without a known Prod since period (?, empty or
+	// unparsable). ScopeProd only, never together with a range.
+	UndatedOnly bool
 	// HideCheck leaves out the Cek (manual tick box) column in every format. Any scope.
 	HideCheck bool
 }
@@ -90,6 +93,9 @@ func (f ChecklistFilter) scopeVariant() string {
 		return ""
 	}
 	v := "/prod"
+	if f.UndatedOnly {
+		return v + "-undated"
+	}
 	if f.Ranged() {
 		v += "-" + strings.ReplaceAll(orDash(f.From), "-", "") + "-" + strings.ReplaceAll(orDash(f.To), "-", "")
 	}
@@ -128,7 +134,11 @@ func FilterChecklist(snap *ChecklistSnapshot, f ChecklistFilter) *ChecklistSnaps
 				if r.Status != "PROD" {
 					continue
 				}
-				if f.Ranged() {
+				if f.UndatedOnly {
+					if ps, err := ParseProdSince(r.ProdSince); r.ProdSince != "" && err == nil && !ps.Unknown {
+						continue
+					}
+				} else if f.Ranged() {
 					ps, err := ParseProdSince(r.ProdSince)
 					// A period is a hard filter: a PROD row without a known period cannot be shown
 					// to fall inside it, so it is left out (and counted). Without a period every
@@ -188,6 +198,9 @@ func scopeText(snap *ChecklistSnapshot) string {
 	f := snap.Filter
 	if f.Scope != ScopeProd {
 		return ""
+	}
+	if f.UndatedOnly {
+		return "Hanya fitur PROD yang tanggal rilisnya (Prod sejak) belum diketahui"
 	}
 	if !f.Ranged() {
 		return "Hanya fitur PROD"
