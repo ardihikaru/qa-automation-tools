@@ -717,6 +717,11 @@ func (s *Syncer) Entity(ctx context.Context, pid int, et, code string) (Item, er
 			}
 		}
 		set("stories", stories, err)
+		// Amendment 3: the Evidence cell as evidence nodes, and the sync that last changed the row.
+		ev, _ := it["evidence"].(string)
+		it["evidence_items"] = ParseEvidence(ev, s.repoOwner(ctx, pid))
+		it["changed_sync"] = s.syncRef(ctx, pid, it["changed_sync_id"])
+		it["first_sync"] = s.syncRef(ctx, pid, it["first_sync_id"])
 		stats, err := s.featureStats(ctx, pid, code)
 		if err == nil {
 			x := Item{}

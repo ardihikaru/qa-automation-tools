@@ -1,4 +1,5 @@
 import { FormEvent, KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { EvidenceList, SyncStamp } from './EvidenceList';
 import { Link } from 'react-router-dom';
 import { Bot, ExternalLink, Lock, Maximize2, Pencil, Trash2, X } from 'lucide-react';
 import SubmitButton from '../../components/SubmitButton';
@@ -379,7 +380,8 @@ function Body({ e, onOpen }: { e: EntityDetail; onOpen: (t: Target) => void }) {
               ['Module', x.module?.[0] ? <RefButton type="module" r={x.module[0]} onOpen={onOpen} /> : x.module_code],
               ['Sub-module', x.submodule?.[0] ? <RefButton type="submodule" r={x.submodule[0]} onOpen={onOpen} /> : x.submodule_code],
               ['Repo entry', x.repo_entry && <span className="font-mono text-xs break-all">{x.repo_entry}</span>],
-              ['Evidence', x.evidence],
+              ['Evidence', <EvidenceList key="ev" items={x.evidence_items} raw={x.evidence} />],
+              ['Last updated', <SyncStamp key="lu" s={x.changed_sync} />],
               ['Notes', x.notes],
               [
                 'Coverage',
