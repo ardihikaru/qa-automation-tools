@@ -161,3 +161,58 @@ func TestPDFHidesStatusDateWhenProdSinceKnown(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterIncludeUndated(t *testing.T) {
+	f := ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11", IncludeUndated: true}
+	got := FilterChecklist(filterFixture(), f)
+	if ids(got) != "A01.02,A01.03,A01.04,A01.05,A01.06" || got.IncludedUndated != 2 || got.ExcludedUnknown != 0 {
+		t.Fatalf("rows %q included %d excluded %d", ids(got), got.IncludedUndated, got.ExcludedUnknown)
+	}
+	labels := map[string]string{}
+	for _, r := range got.Parts[0].Modules[0].Rows {
+		labels[r.ID] = rowProdSince(r)
+	}
+	if labels["A01.05"] != "Before May 2026" || labels["A01.06"] != "Before May 2026" || labels["A01.03"] != "Jul–Agu 2026" {
+		t.Errorf("labels = %v", labels)
+	}
+	want := "Hanya fitur PROD yang periode Prod sejak-nya beririsan dengan Mei 2026 s.d. Nov 2026 (termasuk 2 fitur PROD tanpa tanggal, ditandai \"Before May 2026\")"
+	if s := scopeText(got); s != want {
+		t.Errorf("scopeText = %q", s)
+	}
+	if undatedLabel(ChecklistFilter{Scope: ScopeProd, To: "2026-11"}) != "?" || undatedLabel(ChecklistFilter{From: "2025-12"}) != "Before Dec 2025" {
+		t.Error("undatedLabel")
+	}
+	// IncludeUndated does nothing without a range, and the key differs only for a ranged export.
+	if ids(FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd, IncludeUndated: true})) != "A01.01,A01.02,A01.03,A01.04,A01.05,A01.06" {
+		t.Error("unranged include_undated changed the rows")
+	}
+	if f.variant() == (ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"}).variant() {
+		t.Error("include_undated shares the cache key")
+	}
+	csv := csvRecords(t, render(t, got, "csv", false))
+	if csv[4][4] != "Before May 2026" {
+		t.Errorf("csv row = %v", csv[4])
+	}
+}
+
+// A PROD export has no status legend and only a PROD column in the summaries.
+func TestProdOnlyLegendAndSummary(t *testing.T) {
+	prod := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd})
+	pdf := string(render(t, prod, "pdf", false))
+	if strings.Contains(pdf, "Legenda Status") || strings.Contains(pdf, "DEV-DONE") || strings.Contains(pdf, "NOT-STARTED") || !strings.Contains(pdf, "Ringkasan Total") {
+		t.Error("PROD PDF still shows the legend or non-PROD status columns")
+	}
+	_, rows := xlsxDump(t, render(t, prod, "xlsx", false))
+	if h := strings.Join(rows["Ringkasan"][3], ","); h != "Kode,Nama,Modul,Fitur,PROD" {
+		t.Errorf("PROD xlsx summary head = %q", h)
+	}
+	all := FilterChecklist(filterFixture(), ChecklistFilter{})
+	pdf = string(render(t, all, "pdf", false))
+	if !strings.Contains(pdf, "Legenda Status") || !strings.Contains(pdf, "NOT-STARTED") {
+		t.Error("full PDF lost the legend")
+	}
+	_, rows = xlsxDump(t, render(t, all, "xlsx", false))
+	if h := strings.Join(rows["Ringkasan"][3], ","); h != "Kode,Nama,Modul,Fitur,PROD,DEV-DONE,IN-PROGRESS,NOT-STARTED,UNKNOWN" {
+		t.Errorf("full xlsx summary head = %q", h)
+	}
+}

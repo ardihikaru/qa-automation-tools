@@ -652,6 +652,8 @@ export interface ChecklistOptions {
   /** YYYY-MM, only with scope 'prod'; empty = open. */
   sinceFrom?: string;
   sinceTo?: string;
+  /** With a period: also list PROD features without a known Prod sejak (shown as "Before <from>"). */
+  includeUndated?: boolean;
   lastUpdate: boolean;
   force: boolean;
 }
@@ -667,6 +669,7 @@ export async function downloadChecklist(pid: number, opts: ChecklistOptions, sig
     qs.set('scope', 'prod');
     if (opts.sinceFrom) qs.set('since_from', opts.sinceFrom);
     if (opts.sinceTo) qs.set('since_to', opts.sinceTo);
+    if ((opts.sinceFrom || opts.sinceTo) && opts.includeUndated) qs.set('include_undated', '1');
   }
   const res = await fetch(`/api/products/${pid}/knowledge/exports/modules-checklist?${qs}`, { credentials: 'include', signal });
   if (!res.ok) {

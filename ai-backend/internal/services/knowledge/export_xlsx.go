@@ -107,7 +107,8 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	if s := scopeText(snap); s != "" {
 		_ = f.SetCellStr(sum, "A3", s)
 	}
-	head := append([]string{"Kode", "Nama", "Modul", "Fitur"}, ReleaseStatuses...)
+	stCols := snap.statusColumns()
+	head := append([]string{"Kode", "Nama", "Modul", "Fitur"}, stCols...)
 	row := 4
 	writeHead := func(r int) error {
 		for i, h := range head {
@@ -127,7 +128,7 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 		_ = f.SetCellStr(sum, fmt.Sprintf("B%d", r), name)
 		_ = f.SetCellInt(sum, fmt.Sprintf("C%d", r), mods)
 		_ = f.SetCellInt(sum, fmt.Sprintf("D%d", r), len(rows))
-		for i, n := range statusCounts(rows) {
+		for i, n := range statusCountsFor(rows, stCols) {
 			c, _ := excelize.CoordinatesToCellName(5+i, r)
 			_ = f.SetCellInt(sum, c, n)
 		}
@@ -190,7 +191,7 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 				_ = f.SetCellStr(sh, cell(3), x.Feature)
 				_ = f.SetCellStr(sh, cell(4), x.Status)
 				_ = f.SetCellStyle(sh, cell(4), cell(4), statusStyle[ReleaseStatuses[statusIndex(x.Status)]])
-				if ps := prodSinceText(x.ProdSince); ps != "" {
+				if ps := rowProdSince(x); ps != "" {
 					_ = f.SetCellStr(sh, cell(5), ps)
 				}
 				if withLastUpdate && x.StatusSince != nil {

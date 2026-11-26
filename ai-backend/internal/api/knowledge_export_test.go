@@ -117,6 +117,8 @@ func TestChecklistExportValidation(t *testing.T) {
 		{"GET", "?format=pdf&since_from=2026-05", 400, "since_from and since_to need scope=prod"},
 		{"GET", "?format=pdf&scope=all&since_to=2026-05", 400, "since_from and since_to need scope=prod"},
 		{"GET", "?format=pdf&scope=prod&since_from=2026-11&since_to=2026-05", 400, "since_from must not be after since_to"},
+		{"GET", "?format=pdf&scope=prod&include_undated=yes", 400, "include_undated must be 0, 1, true or false"},
+		{"GET", "?format=pdf&include_undated=1", 400, "include_undated needs scope=prod"},
 	}
 	for _, c := range cases {
 		w := callExport(r, c.method, c.query)
@@ -255,8 +257,9 @@ func TestChecklistExportScopedFilename(t *testing.T) {
 	cases := map[string]string{
 		"?format=csv&scope=all":  "SUT-MODULE-CHECKLIST.csv",
 		"?format=csv&scope=prod": "SUT-MODULE-CHECKLIST-PROD.csv",
-		"?format=csv&scope=prod&since_from=2026-05&since_to=2026-11": "SUT-MODULE-CHECKLIST-PROD-202605-202611.csv",
-		"?format=csv&scope=prod&since_from=2026-05":                  "SUT-MODULE-CHECKLIST-PROD-202605-X.csv",
+		"?format=csv&scope=prod&since_from=2026-05&since_to=2026-11":  "SUT-MODULE-CHECKLIST-PROD-202605-202611.csv",
+		"?format=csv&scope=prod&since_from=2026-05":                   "SUT-MODULE-CHECKLIST-PROD-202605-X.csv",
+		"?format=csv&scope=prod&since_from=2026-05&include_undated=1": "SUT-MODULE-CHECKLIST-PROD-202605-X-U.csv",
 	}
 	for q, want := range cases {
 		w := callExport(r, "GET", q)

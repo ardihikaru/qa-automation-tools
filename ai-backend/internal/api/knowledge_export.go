@@ -114,5 +114,12 @@ func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) strin
 	if f.From != "" && f.To != "" && f.From > f.To {
 		return "since_from must not be after since_to"
 	}
+	var ok bool
+	if f.IncludeUndated, ok = strictBool(req, "include_undated"); !ok {
+		return "include_undated must be 0, 1, true or false"
+	}
+	if f.IncludeUndated && f.Scope != knowledge.ScopeProd {
+		return "include_undated needs scope=prod"
+	}
 	return ""
 }
