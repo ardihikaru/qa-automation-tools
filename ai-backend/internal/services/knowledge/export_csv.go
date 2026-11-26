@@ -12,7 +12,7 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	w := csv.NewWriter(&buf)
 	head := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
 	if withLastUpdate {
-		head = append(head, "Status sejak", "Sumber tanggal")
+		head = append(head, "Status tercatat", "Sumber tanggal")
 	}
 	if err := w.Write(head); err != nil {
 		return nil, err

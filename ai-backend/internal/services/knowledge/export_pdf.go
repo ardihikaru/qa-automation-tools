@@ -22,7 +22,7 @@ const (
 	pdfTealR    = 0x00
 	pdfTealG    = 0x7E
 	pdfTealB    = 0x82
-	pdfApproxFN = "~ = tanggal perkiraan (dari backfill, sebelum pelacakan perubahan status dimulai)"
+	pdfApproxFN = "\"tercatat\" = tanggal QA tool mencatat status ini, bukan tanggal rilis (lihat kolom Prod sejak); ~ = perkiraan (dari backfill, sebelum pelacakan perubahan status dimulai)"
 )
 
 // cp1252Extra are the characters of 0x80-0x9F in cp1252 that fpdf's core-font translator supports.
@@ -390,7 +390,7 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		feat := d.split(r.Feature, modWidths[2]-2)
 		lines := max(len(sub), len(feat), 1)
 		h := float64(lines)*pdfLineH + pdfRowPad
-		if d.withUpd {
+		if d.withUpd && showsStatusDate(r) {
 			h = max(h, 2*pdfLineH+pdfRowPad)
 		}
 		if d.ensure(h) {
@@ -419,7 +419,7 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		p.SetFont("Helvetica", "B", 9)
 		p.SetXY(sx+1, y+pdfRowPad/2)
 		p.CellFormat(modWidths[3]-2, pdfLineH, d.t(r.Status), "", 0, "L", false, 0, "")
-		if d.withUpd {
+		if d.withUpd && showsStatusDate(r) {
 			p.SetFont("Helvetica", "", 7)
 			p.SetTextColor(107, 114, 128)
 			p.SetXY(sx+1, y+pdfRowPad/2+pdfLineH)
@@ -495,9 +495,20 @@ func (d *pdfDoc) split(s string, w float64) []string {
 func (d *pdfDoc) sinceText(r ChecklistRow) string {
 	switch {
 	case r.StatusSince == nil:
-		return d.t("sejak —")
+		return d.t("tercatat —")
 	case r.DateSource == DateSourceBackfill:
-		return d.t("sejak ~" + dateID(*r.StatusSince))
+		return d.t("tercatat ~" + dateID(*r.StatusSince))
 	}
-	return d.t("sejak " + dateID(*r.StatusSince))
+	return d.t("tercatat " + dateID(*r.StatusSince))
+}
+
+// showsStatusDate reports whether the PDF prints the "tercatat" (status recorded) date under a row's
+// status. A PROD row with a known Prod since period does not: its go-live is in the Prod sejak
+// column, and a second, unrelated date there reads as the release date.
+func showsStatusDate(r ChecklistRow) bool {
+	if r.Status != "PROD" {
+		return true
+	}
+	t := prodSinceText(r.ProdSince)
+	return t == "" || t == "?"
 }

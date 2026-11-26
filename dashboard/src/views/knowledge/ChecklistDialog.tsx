@@ -94,7 +94,11 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
           {SCOPES.map((sc) => (
             <div key={sc.id}>
               <label className="inline-flex items-center gap-2 text-sm text-gray-800">
-                <input type="radio" name="checklist-scope" value={sc.id} checked={scope === sc.id} onChange={() => setScope(sc.id)} aria-describedby={`checklist-scope-${sc.id}-help`} />
+                <input type="radio" name="checklist-scope" value={sc.id} checked={scope === sc.id} onChange={() => {
+                    setScope(sc.id);
+                    // The recorded-status date is not a go-live date; off by default for a PROD checklist.
+                    setLastUpdate(sc.id === 'all');
+                  }} aria-describedby={`checklist-scope-${sc.id}-help`} />
                 {sc.label}
               </label>
               <p id={`checklist-scope-${sc.id}-help`} className="text-xs text-gray-500 ml-6">
@@ -130,10 +134,10 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
           <div>
             <label className="inline-flex items-center gap-2 text-sm text-gray-800">
               <input type="checkbox" checked={lastUpdate} disabled={busy} onChange={(e) => setLastUpdate(e.target.checked)} aria-describedby="checklist-last-update-help" />
-              Add last update to Status column
+              Add the date each status was recorded
             </label>
             <p id="checklist-last-update-help" className="text-xs text-gray-500 mt-1 ml-6">
-              Dates marked ~ are approximate: they come from the first tracking of this product, not from the exact change.
+              When this tool recorded the current status (&ldquo;tercatat&rdquo;), not when the feature went live: that is the Prod sejak column. PROD features with a known Prod sejak don&rsquo;t show it in the PDF. Dates marked ~ are approximate (first tracking of this product).
             </p>
           </div>
           <label className="inline-flex items-center gap-2 text-sm text-gray-800">

@@ -3,6 +3,7 @@ package knowledge
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseProdSince(t *testing.T) {
@@ -138,5 +139,25 @@ func TestFixtureProdSince(t *testing.T) {
 	}
 	if n := ids(FilterChecklist(cs, ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"})); n != "C01.02" {
 		t.Errorf("ranged fixture rows = %q", n)
+	}
+}
+
+// A PROD row with a known Prod since period has no "tercatat" date under its status in the PDF.
+func TestPDFHidesStatusDateWhenProdSinceKnown(t *testing.T) {
+	at := time.Date(2026, 11, 14, 3, 0, 0, 0, time.UTC)
+	one := &ChecklistSnapshot{ProductName: "P", Parts: []ChecklistPart{{Code: "A", Name: "PA", Modules: []ChecklistModule{{Code: "A01", Name: "M", Rows: []ChecklistRow{
+		{ID: "A01.01", Feature: "x", Status: "PROD", ProdSince: "2026-07", StatusSince: &at, DateSource: DateSourceBackfill},
+	}}}}}}
+	if pdf := string(render(t, one, "pdf", true)); strings.Contains(pdf, "tercatat ~14 Nov 2026") || !strings.Contains(pdf, "Jul 2026") {
+		t.Error("known Prod since: the PDF must show Jul 2026 and no tercatat date")
+	}
+	one.Parts[0].Modules[0].Rows[0].ProdSince = "?"
+	if pdf := string(render(t, one, "pdf", true)); !strings.Contains(pdf, "tercatat ~14 Nov 2026") {
+		t.Error("unknown Prod since: the PDF must keep the tercatat date")
+	}
+	for in, want := range map[ChecklistRow]bool{{Status: "PROD", ProdSince: "<2026-05"}: false, {Status: "PROD"}: true, {Status: "DEV-DONE"}: true, {Status: "PROD", ProdSince: "bad"}: true} {
+		if showsStatusDate(in) != want {
+			t.Errorf("showsStatusDate(%+v) != %v", in, want)
+		}
 	}
 }
