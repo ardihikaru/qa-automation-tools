@@ -46,4 +46,4 @@ HTTPS calls to GAOS; writes `product_settings.gaos_last_sync_at/status/note` and
 
 **Operation names.** `operationsFor` walks the spec's imports (relative ones and the aliases of the repo's `tsconfig.json` `paths`), at most 24 files, those of the spec's own service first, and lists up to 5 GraphQL operation or REST route names for the defect push.
 
-The operations are ranked by words shared with the spec's source (`rankByHint`) before the five-name cap.
+The operations are ranked by the words of the case's own block of the spec (`caseBlock`, `rankByHint`) before the five-name cap.

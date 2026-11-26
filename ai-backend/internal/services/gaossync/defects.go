@@ -279,7 +279,7 @@ func routeName(u string) string {
 }
 
 // operationsFor reads the spec and the files it imports from the same repo (at most maxSpecFiles).
-func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) []string {
+func (s *Syncer) operationsFor(ctx context.Context, productID int, spec, caseCode string) []string {
 	if s.specReader == nil {
 		return []string{}
 	}
@@ -317,6 +317,10 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 	// The files of the spec's own service come first: a spec also imports shared fixtures and
 	// utilities, whose calls are not the defect's operations (found live: with the shared files
 	// first, the five-name cap was spent before the service's operations file was reached).
+	specText := ""
+	if len(files) > 0 {
+		specText = files[0].text // the spec is the first file read; the sort below moves it
+	}
 	svc := serviceSegment(spec)
 	sort.SliceStable(files, func(i, j int) bool {
 		return svc != "" && strings.Contains(files[i].path, "/"+svc+"/") && !strings.Contains(files[j].path, "/"+svc+"/")
@@ -326,8 +330,8 @@ func (s *Syncer) operationsFor(ctx context.Context, productID int, spec string) 
 		sources = append(sources, f.text)
 	}
 	all := allOperations(sources...)
-	if len(sources) > 0 { // the spec is the first file read
-		all = rankByHint(all, sources[0])
+	if specText != "" {
+		all = rankByHint(all, caseBlock(specText, caseCode))
 	}
 	if len(all) > maxOperations {
 		all = all[:maxOperations]
@@ -345,14 +349,20 @@ func rankByHint(ops []string, spec string) []string {
 	for _, w := range camelWordRe.FindAllString(spec, -1) {
 		words[strings.ToLower(w)] = true
 	}
+	// The share of the name's words the spec uses, then the count: "editMedicationDispense" (all
+	// three words) outranks a long name that shares only "dispense" with the spec.
 	score := func(op string) int {
+		ws := camelWordRe.FindAllString(op, -1)
+		if len(ws) == 0 {
+			return 0
+		}
 		n := 0
-		for _, w := range camelWordRe.FindAllString(op, -1) {
+		for _, w := range ws {
 			if words[strings.ToLower(w)] {
 				n++
 			}
 		}
-		return n
+		return n*1000/len(ws)*100 + n
 	}
 	out := append([]string(nil), ops...)
 	sort.SliceStable(out, func(i, j int) bool { return score(out[i]) > score(out[j]) })
@@ -451,7 +461,7 @@ func (s *Syncer) buildDefectItem(ctx context.Context, productID int, p pendingDe
 	it := defectItem{
 		CaseID: p.code, DefectID: p.defectID, Kind: p.kind, Level: p.level, AutomationType: autoType,
 		Backend: BackendKind(spec), TargetRepos: targetsFor(spec, autoType, repos, mapping),
-		Operations: s.operationsFor(ctx, productID, spec), Spec: spec, Title: title,
+		Operations: s.operationsFor(ctx, productID, spec, p.code), Spec: spec, Title: title,
 		Excerpt: clipBytes(p.excerpt, maxExcerpt), RunAt: p.runAt,
 	}
 	if ref := p.runRef; ref != "" && len(ref) <= maxRunRef && printableASCII(ref) {
@@ -614,4 +624,23 @@ func resolveImport(dir, spec string, aliases []tsAlias) string {
 		}
 	}
 	return ""
+}
+
+var caseCodeInTextRe = regexp.MustCompile(`TC-[A-Z0-9]+-[0-9]+`)
+
+// caseBlock is the part of a spec that belongs to one case: from its code to the next other case
+// code. A whole spec shares most of its vocabulary with every operation of the service, so only the
+// case's own block says what this defect calls. No code, or none found, gives the whole text.
+func caseBlock(text, code string) string {
+	i := strings.Index(text, code)
+	if code == "" || i < 0 {
+		return text
+	}
+	rest := text[i+len(code):]
+	for _, m := range caseCodeInTextRe.FindAllStringIndex(rest, -1) {
+		if rest[m[0]:m[1]] != code {
+			return text[i : i+len(code)+m[0]]
+		}
+	}
+	return text[i:]
 }
