@@ -17,7 +17,7 @@ Status: Draft. Author: ardihikaru. Components: ai-backend, dashboard.
 
 ## Interfaces
 - `PUT /api/products/{id}/knowledge/test-cases/{code}/verification` body `{ "verdict": "valid" | "invalid" | null, "note": "<=500 chars, optional" }`. 200 returns the item `verification`. 403 for roles without `canVerify`; 404 for unknown or removed TC; 400 for other verdicts or unknown fields.
-- Test case list and detail items gain `verification: { verdict, verified_by_name, verified_at, note } | null`. The list gains `?verified=valid|invalid|none`.
+- Test case list and detail items gain `verification: { verdict, verified_by_name, verified_at, note } | null`. The list gains two filters that combine with the existing ones: `?verified=any|valid|invalid|none` (`any` = verified by someone, valid or invalid; `none` = not verified by any human yet) and `?verified_by=<user id>` (verified by that person; implies `any`). `GET /api/products/{id}/knowledge/test-cases/verifiers` returns the distinct verifiers `[{id, name, count}]` of the product to fill the person selector.
 - `GET /api/settings` gains `timezone`. `PUT /api/settings/timezone` body `{ "timezone": "Asia/Jakarta" }`.
 
 ## Schema (appended to `migrations.go`, idempotent)
@@ -27,7 +27,7 @@ Status: Draft. Author: ardihikaru. Components: ai-backend, dashboard.
 ## Dashboard
 - Job page: started, ended, elapsed (ticks while running) and an "Other runs of this TC" list.
 - TC page: "Run history" (`✓ N · ✗ M`, compact rows with status icon, datetime, job link) and a verification control.
-- TC tab: columns Verified (✓ / ✗ / –), Verified by (name, datetime in system zone), Action (Mark valid, Mark invalid, Clear; hidden without write rights) and a `verified` filter.
+- TC tab: columns Verified (✓ / ✗ / –), Verified by (name, datetime in system zone), Action (Mark valid, Mark invalid, Clear; hidden without write rights) and filters: Verification (All, Verified by anyone, Valid, Invalid, Not verified yet) and Verified by (person selector, from the `verifiers` endpoint; disabled for Not verified yet). Both filters are kept in the URL like the existing ones.
 - Epics tab: code, title, TC count, coverage bar, verified valid/invalid/total, last run pass/fail.
 - Settings page: timezone selector for Admin and DevOps.
 
