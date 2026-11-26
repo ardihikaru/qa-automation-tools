@@ -14,13 +14,17 @@ import {
   answerApproval,
   entityHref,
   errorText,
+  getJob,
   getJobEvents,
+  JobInfo,
   isAbort,
   isTerminalJob,
 } from './knowledge/api';
 import { JOB_CHIP_CLASS, jobChipStatus } from './knowledge/CaseAutomation';
 import JobConversationCard from './conversations/JobConversationCard';
 import { answerSourceLabel } from './history/api';
+import JobHistory from './knowledge/JobHistory';
+import { formatElapsed, formatInZone, useSystemTimezone } from '../lib/time';
 
 const POLL_MS = 2000;
 const AFTER_TERMINAL_MS = 30_000;
@@ -139,8 +143,33 @@ export default function JobView() {
     };
   }, [id, poll]);
 
-  const code = meta.case_code ?? hint.code;
-  const pid = meta.product_id ?? hint.pid;
+  const tz = useSystemTimezone();
+  const [info, setInfo] = useState<JobInfo | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Timing and case link from GET /api/jobs/{id}; reloaded when the status changes.
+  useEffect(() => {
+    if (!id) return;
+    const ac = new AbortController();
+    getJob(id, ac.signal)
+      .then((j) => !ac.signal.aborted && setInfo(j))
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [id, meta.status]);
+  useEffect(() => setInfo(null), [id]);
+
+  const code = info?.case_code ?? meta.case_code ?? hint.code;
+  const pid = info?.product_id ?? meta.product_id ?? hint.pid;
+  const startedAt = info?.started_at ?? null;
+  const endedAt = info?.completed_at ?? null;
+  const running = !isTerminalJob(meta.status ?? info?.status) && !!(info?.started_at ?? info?.created_at);
+  useEffect(() => {
+    if (!running) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [running]);
+  const startMs = Date.parse(info?.started_at ?? info?.created_at ?? '');
+  const elapsedMs = running && !Number.isNaN(startMs) ? Math.max(0, now - startMs) : (info?.elapsed_ms ?? info?.duration_ms ?? null);
   const status = jobChipStatus(meta.status ?? (loaded ? 'unknown' : 'loading'), meta.outcome);
   const terminal = isTerminalJob(meta.status);
   const caseHref = pid !== undefined && code ? entityHref(pid, 'test_case', code) : null;
@@ -207,6 +236,21 @@ export default function JobView() {
               )}
             </span>
           )}
+          {startedAt && (
+            <span className="text-sm text-gray-600">
+              Started <time dateTime={startedAt} className="text-gray-900 tabular-nums">{formatInZone(startedAt, tz)}</time>
+            </span>
+          )}
+          {endedAt && (
+            <span className="text-sm text-gray-600">
+              Ended <time dateTime={endedAt} className="text-gray-900 tabular-nums">{formatInZone(endedAt, tz)}</time>
+            </span>
+          )}
+          {elapsedMs !== null && formatElapsed(elapsedMs) && (
+            <span className="text-sm text-gray-600">
+              Elapsed <span className="text-gray-900 tabular-nums">{formatElapsed(elapsedMs)}</span>
+            </span>
+          )}
           {meta.branch && (
             <span className="inline-flex items-center gap-1 text-sm text-gray-600 min-w-0">
               <GitBranch className="w-4 h-4 shrink-0" aria-hidden="true" />
@@ -264,6 +308,19 @@ export default function JobView() {
               )}
             </div>
           </section>
+
+          {pid !== undefined && code && (
+            <section aria-labelledby="job-others" className="card">
+              <div className="card-header">
+                <h2 id="job-others" className="font-medium text-gray-900">
+                  Other runs of this TC
+                </h2>
+              </div>
+              <div className="card-body">
+                <JobHistory pid={pid} code={code} excludeId={id} showSummary={false} emptyText="No other runs." reloadKey={terminal ? 1 : 0} />
+              </div>
+            </section>
+          )}
 
           <section aria-labelledby="job-spec" className="card">
             <div className="card-header">

@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Bot, Search, StickyNote } from 'lucide-react';
-import { Enums, Epic, Page, TestCase, entityHref, listTestCases } from './api';
+import { Enums, Epic, Page, TestCase, Verification, entityHref, listTestCases, listVerifiers } from './api';
+import { VerdictIcon, useVerify } from './Verification';
+import { formatInZone, useSystemTimezone } from '../../lib/time';
+import SubmitButton from '../../components/SubmitButton';
 import { useDebounced, useLoad } from './hooks';
 import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { inputCls, selectCls } from './styles';
@@ -23,6 +26,52 @@ interface Props {
   hasRepo?: boolean;
 }
 
+const VERIFIED_OPTS = [
+  ['', 'Verification: all'],
+  ['any', 'Verified by anyone'],
+  ['valid', 'Valid'],
+  ['invalid', 'Invalid'],
+  ['none', 'Not verified yet'],
+] as const;
+
+function VerifyActions({ pid, c, onChanged }: { pid: number; c: TestCase; onChanged: () => void }) {
+  const { busy, error, run } = useVerify(pid, c.code, () => onChanged());
+  const cur = c.verification?.verdict;
+  const btn = 'h-7 px-2 rounded border border-gray-300 bg-white text-xs hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500';
+  return (
+    <div className="flex items-center gap-1" title={error ?? undefined}>
+      {cur !== 'valid' && (
+        <SubmitButton loading={busy === 'valid'} disabled={busy !== null} onClick={() => run('valid')} className={btn} aria-label={`Mark ${c.code} valid`}>
+          Valid
+        </SubmitButton>
+      )}
+      {cur !== 'invalid' && (
+        <SubmitButton loading={busy === 'invalid'} disabled={busy !== null} onClick={() => run('invalid')} className={btn} aria-label={`Mark ${c.code} invalid`}>
+          Invalid
+        </SubmitButton>
+      )}
+      {cur && (
+        <SubmitButton loading={busy === 'clear'} disabled={busy !== null} onClick={() => run(null)} className={btn} aria-label={`Clear verification of ${c.code}`}>
+          Clear
+        </SubmitButton>
+      )}
+      {error && <span role="alert" className="text-xs text-red-700 truncate">{error}</span>}
+    </div>
+  );
+}
+
+function VerifiedBy({ v, tz }: { v: Verification | null | undefined; tz: string }) {
+  if (!v) return <span className="text-gray-400">—</span>;
+  return (
+    <div className="min-w-0 leading-tight" title={v.note || undefined}>
+      <p className="truncate text-xs text-gray-800">{v.verified_by_name}</p>
+      <time dateTime={v.verified_at} className="block truncate text-[11px] text-gray-500 tabular-nums">
+        {formatInZone(v.verified_at, tz)}
+      </time>
+    </div>
+  );
+}
+
 const flat = (s: string) => s.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
 
 export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, selected, onOpen, canWrite = false, hasRepo = false }: Props) {
@@ -35,16 +84,34 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
   const [origin, setOrigin] = useState('');
   const [tag, setTag] = useState('');
   const [includeRemoved, setIncludeRemoved] = useState(false);
+  const [bump, setBump] = useState(0);
+  const tz = useSystemTimezone();
+  // Verification filters live in the URL (?verified=, ?verified_by=) so a link or reload keeps them.
+  const [sp, setSp] = useSearchParams();
+  const verified = VERIFIED_OPTS.some(([v]) => v === sp.get('verified')) ? (sp.get('verified') as string) : '';
+  const verifiedBy = verified === 'none' ? '' : (sp.get('verified_by') ?? '');
+  const setUrlFilter = (k: 'verified' | 'verified_by', v: string) =>
+    setSp(
+      (cur) => {
+        const n = new URLSearchParams(cur);
+        if (v) n.set(k, v);
+        else n.delete(k);
+        if (k === 'verified' && v === 'none') n.delete('verified_by');
+        return n;
+      },
+      { replace: true },
+    );
+  const { data: verifiers } = useLoad(`${pid}:verifiers:${refreshKey}:${bump}`, (s) => listVerifiers(pid, s).catch(() => []));
   const { page, size } = paging;
   const q = useDebounced(query.trim(), 300);
   const t = useDebounced(tag.trim(), 300);
 
-  useResetOnChange(JSON.stringify([q, status, level, priority, epic, automated, origin, t, includeRemoved]), () => paging.setPage(1, true));
+  useResetOnChange(JSON.stringify([q, status, level, priority, epic, automated, origin, t, includeRemoved, verified, verifiedBy]), () => paging.setPage(1, true));
 
-  const filter = { q, status, level, priority, epic, automated, origin, tag: t, include_removed: includeRemoved, page, page_size: size };
-  const { data, loading, error, reload } = useLoad<Page<TestCase>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}`, (s) => listTestCases(pid, filter, s));
+  const filter = { q, status, level, priority, epic, automated, origin, tag: t, include_removed: includeRemoved, verified, verified_by: verifiedBy, page, page_size: size };
+  const { data, loading, error, reload } = useLoad<Page<TestCase>>(`${pid}:${JSON.stringify(filter)}:${refreshKey}:${bump}`, (s) => listTestCases(pid, filter, s));
   useClampPage(paging, data?.total);
-  const filtered = !!(q || status || level || priority || epic || automated || origin || t);
+  const filtered = !!(q || status || level || priority || epic || automated || origin || t || verified || verifiedBy);
 
   const enumSelect = (label: string, value: string, set: (v: string) => void, opts: string[]) => (
     <select value={value} onChange={(e) => set(e.target.value)} aria-label={label} className={selectCls}>
@@ -86,6 +153,22 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
           <option value="sync">Synced</option>
           <option value="local">Local drafts</option>
         </select>
+        <select value={verified} onChange={(e) => setUrlFilter('verified', e.target.value)} aria-label="Verification" className={selectCls}>
+          {VERIFIED_OPTS.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+        <select value={verifiedBy} onChange={(e) => setUrlFilter('verified_by', e.target.value)} disabled={verified === 'none'} aria-label="Verified by" className={`${selectCls} max-w-[12rem]`}>
+          <option value="">Verified by: anyone</option>
+          {verifiedBy && !verifiers?.some((x) => x.id === verifiedBy) && <option value={verifiedBy}>{verifiedBy}</option>}
+          {(verifiers ?? []).map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.name} ({x.count})
+            </option>
+          ))}
+        </select>
         <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Tag" aria-label="Tag" className={`${inputCls} w-28`} />
         <label className="inline-flex items-center gap-2 text-sm text-gray-700 min-h-8">
           <input type="checkbox" checked={includeRemoved} onChange={(e) => setIncludeRemoved(e.target.checked)} />
@@ -101,7 +184,7 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
 
       {data && data.items.length > 0 && (
         <div className={`card overflow-x-auto ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
-          <table className="w-full min-w-[72rem] table-fixed text-sm">
+          <table className="w-full min-w-[96rem] table-fixed text-sm">
             <colgroup>
               <col className="w-[11rem]" />
               <col />
@@ -111,6 +194,9 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
               <col className="w-[3rem]" />
               <col className="w-[8rem]" />
               <col className="w-[13rem]" />
+              <col className="w-[4.5rem]" />
+              <col className="w-[10rem]" />
+              <col className="w-[10rem]" />
               <col className="w-[3rem]" />
             </colgroup>
             <thead className="bg-gray-50 text-left text-gray-600">
@@ -123,6 +209,11 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
                 <th className="px-3 py-2 font-medium" title="Polarity">±</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Automation</th>
+                <th className="px-3 py-2 font-medium">Verified</th>
+                <th className="px-3 py-2 font-medium">Verified by</th>
+                <th className="px-3 py-2 font-medium">
+                  {canWrite ? 'Action' : <span className="sr-only">Action</span>}
+                </th>
                 <th className="px-1 py-2 font-medium">
                   <span className="sr-only">Quick peek</span>
                 </th>
@@ -161,6 +252,16 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
                     <td className="px-3 py-1.5">
                       <CaseAutomation pid={pid} code={c.code} specPaths={c.spec_paths} hasRepo={hasRepo} canWrite={canWrite} removed={removed} compact />
                     </td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1">
+                        <VerdictIcon verdict={c.verification?.verdict} />
+                        {(c.verification_count ?? 0) > 1 && <span className="text-[11px] text-gray-500 tabular-nums" title="Times verified">×{c.verification_count}</span>}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <VerifiedBy v={c.verification} tz={tz} />
+                    </td>
+                    <td className="px-3 py-1.5">{canWrite && !removed && <VerifyActions pid={pid} c={c} onChanged={() => setBump((n) => n + 1)} />}</td>
                     <td className="px-1 py-1">
                       <PeekButton label={`Quick peek at test case ${c.code}`} active={selected === c.code} onClick={() => onOpen({ type: 'test_case', code: c.code })} />
                     </td>
