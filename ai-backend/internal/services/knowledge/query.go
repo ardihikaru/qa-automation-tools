@@ -138,6 +138,9 @@ func (s *Syncer) decorate(ctx context.Context, pid int, et string, items []Item)
 			it["automated"] = it["automated"] == int64(1)
 		}
 	}
+	if et == TypeTestCase {
+		return s.attachVerification(ctx, pid, items)
+	}
 	return nil
 }
 
@@ -428,10 +431,12 @@ type Filter struct {
 	// Release filters features; Coverage (comma-separated states) filters features and stories.
 	Release, Coverage string
 	// Sort orders features: "tested" (default, items with test cases first) or "code".
-	Sort           string
-	Automated      string // "", "1", "0"
-	IncludeRemoved bool
-	Page, PageSize int
+	Sort      string
+	Automated string // "", "1", "0"
+	// Verified (any|valid|invalid|none) and VerifiedBy (user id) filter test cases by human verification.
+	Verified, VerifiedBy string
+	IncludeRemoved       bool
+	Page, PageSize       int
 }
 
 func likeArg(q string) string {
@@ -571,6 +576,14 @@ func (s *Syncer) TestCases(ctx context.Context, pid int, f Filter) (Item, error)
 	default:
 		return nil, badInput("automated must be 1 or 0")
 	}
+	vw, va, err := verificationFilter(f.Verified, f.VerifiedBy)
+	if err != nil {
+		return nil, err
+	}
+	if vw != "" {
+		where = and(where, vw)
+		args = append(args, va...)
+	}
 	if f.Story != "" {
 		where = and(where, "t.story_code = ?")
 		args = append(args, f.Story)
@@ -628,7 +641,18 @@ func (s *Syncer) Epics(ctx context.Context, pid int, includeRemoved bool) ([]Ite
 		it["case_counts"] = c
 		it["test_cases"] = total
 	}
-	return items, rs.Err()
+	if err := rs.Err(); err != nil {
+		return nil, err
+	}
+	ev, err := s.epicVerifications(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		v := ev[it["code"].(string)]
+		it["verified_valid"], it["verified_invalid"], it["last_pass"], it["last_fail"] = v.valid, v.invalid, v.pass, v.fail
+	}
+	return items, nil
 }
 
 // ---------------------------------------------------------------- detail
@@ -749,6 +773,14 @@ func (s *Syncer) Entity(ctx context.Context, pid int, et, code string) (Item, er
 		set("story", v, err)
 		v, err = s.refs(ctx, pid, TypeFeature, "t.code IN (SELECT feature_code FROM kb_story_features WHERE product_id = t.product_id AND story_code = ?)", it["story_code"])
 		set("features", v, err)
+		if err == nil {
+			var n int
+			n, err = s.verificationCount(ctx, pid, code)
+			it["verification_count"] = n
+			if err != nil && e == nil {
+				e = err
+			}
+		}
 	}
 	if e != nil {
 		return nil, e

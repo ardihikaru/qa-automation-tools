@@ -23,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -311,12 +312,25 @@ func executorEnvFile(prefix string, pid int) string {
 }
 
 func (r *Router) listCaseJobs(w http.ResponseWriter, req *http.Request, d *db.DB, pid int, code string) {
+	limit := 10
+	if n, err := strconv.Atoi(req.URL.Query().Get("limit")); err == nil && n > 0 {
+		limit = min(n, 50)
+	}
+	const where = `FROM job_runs WHERE type IN ('case_run','case_create')
+		AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.case_code')) = ? AND CAST(JSON_EXTRACT(payload, '$.product_id') AS UNSIGNED) = ?`
+	// success: completed and verdict not fail; failed: failed, or a verdict of fail. Queued and
+	// running jobs are not counted.
+	const outcome = `COALESCE(JSON_UNQUOTE(JSON_EXTRACT(result, '$.verdict.result')), '')`
+	var success, failed int
+	if err := d.QueryRow(req.Context(), `SELECT COALESCE(SUM(status = 'completed' AND `+outcome+` <> 'fail'), 0),
+		COALESCE(SUM(status = 'failed' OR `+outcome+` = 'fail'), 0) `+where, code, pid).Scan(&success, &failed); err != nil {
+		log.Printf("case automation: job summary: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	rows, err := d.Query(req.Context(), `SELECT id, type, status, COALESCE(error, ''), created_at, started_at, completed_at,
 		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.pr_url')), ''), COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.branch')), ''),
-		COALESCE(JSON_UNQUOTE(JSON_EXTRACT(result, '$.verdict.result')), '')
-		FROM job_runs WHERE type IN ('case_run','case_create')
-		AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.case_code')) = ? AND CAST(JSON_EXTRACT(payload, '$.product_id') AS UNSIGNED) = ?
-		ORDER BY created_at DESC LIMIT 10`, code, pid)
+		`+outcome+` `+where+` ORDER BY created_at DESC LIMIT ?`, code, pid, limit)
 	if err != nil {
 		log.Printf("case automation: list jobs: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -351,7 +365,8 @@ func (r *Router) listCaseJobs(w http.ResponseWriter, req *http.Request, d *db.DB
 		}
 		out = append(out, it)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"jobs": out})
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": out,
+		"summary": map[string]int{"total": success + failed, "success": success, "failed": failed}})
 }
 
 // ---- case_run ----

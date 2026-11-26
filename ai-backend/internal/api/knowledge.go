@@ -32,6 +32,17 @@ func userID(req *http.Request) string {
 	return ""
 }
 
+// userDisplayName is the name stored with a verification: full name, else username.
+func userDisplayName(req *http.Request) string {
+	if u, ok := auth.GetUser(req.Context()); ok {
+		if u.FullName != "" {
+			return u.FullName
+		}
+		return u.Username
+	}
+	return ""
+}
+
 // writeKnowledgeError maps knowledge errors to HTTP statuses.
 func writeKnowledgeError(w http.ResponseWriter, err error) {
 	var in *knowledge.InputError
@@ -186,6 +197,37 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 	case seg == "epics" && len(rest) == 3 && (rest[2] == "automation" || rest[2] == "automate"):
 		// EPIC_AUTOMATION.md. GET is open to any reader; POST needs canWrite (= canVerify).
 		r.handleEpicAutomation(w, req, pid, rest[1], rest[2], canWrite)
+	case seg == "test-cases" && len(rest) == 2 && rest[1] == "verifiers":
+		if method != http.MethodGet {
+			bad()
+			return
+		}
+		out, err := s.Verifiers(ctx, pid)
+		respond(w, map[string]any{"verifiers": out}, err)
+
+	case seg == "test-cases" && len(rest) == 3 && rest[2] == "verification":
+		if method != http.MethodPut {
+			bad()
+			return
+		}
+		if deny() {
+			return
+		}
+		var body knowledge.VerificationBody
+		if !decodeStrictJSON(w, req, 1<<12, &body) {
+			return
+		}
+		out, err := s.PutVerification(ctx, pid, rest[1], userID(req), userDisplayName(req), body)
+		respond(w, out, err)
+
+	case seg == "test-cases" && len(rest) == 4 && rest[2] == "verification" && rest[3] == "history":
+		if method != http.MethodGet {
+			bad()
+			return
+		}
+		out, err := s.VerificationHistory(ctx, pid, rest[1], intParam(req, "limit"))
+		respond(w, out, err)
+
 	case seg == "test-cases" && len(rest) == 3 && (rest[2] == "run" || rest[2] == "create-automation" || rest[2] == "jobs"):
 		r.handleCaseAction(w, req, pid, rest[1], rest[2], canWrite)
 
@@ -285,6 +327,7 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 		Page: intParam(req, "page"), PageSize: intParam(req, "page_size"),
 		Part: q.Get("part"), Module: q.Get("module"), Submodule: q.Get("submodule"),
 		Release: q.Get("release"), Coverage: q.Get("coverage"), Sort: q.Get("sort"),
+		Verified: q.Get("verified"), VerifiedBy: q.Get("verified_by"),
 	}
 	ctx := req.Context()
 	switch et {

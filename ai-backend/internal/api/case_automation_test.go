@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -255,5 +256,49 @@ func TestExecutorEnvFileName(t *testing.T) {
 	r.SetExecutorEnvPrefix("personal")
 	if got := executorEnvFile(r.executorEnvPrefix, 1); got != "automation-personal-1.env" {
 		t.Errorf("router: %q", got)
+	}
+}
+
+func TestListCaseJobsSummaryAndLimit(t *testing.T) {
+	r := newDBRouter(t)
+	ctx := context.Background()
+	ins := func(id, typ, status, caseCode, result string, ago int) {
+		t.Helper()
+		pay := fmt.Sprintf(`{"case_code":%q,"product_id":5}`, caseCode)
+		if _, err := r.db.Exec(ctx, `INSERT INTO job_runs (id, type, status, payload, result, created_at) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP() - INTERVAL ? SECOND)`,
+			id, typ, status, pay, result, ago); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ins("j1", "case_run", "completed", "TC-A-001", `{"verdict":{"result":"pass"}}`, 60)
+	ins("j2", "case_run", "completed", "TC-A-001", `{"verdict":{"result":"fail"}}`, 50)
+	ins("j3", "case_run", "failed", "TC-A-001", `{}`, 40)
+	ins("j4", "case_create", "completed", "TC-A-001", `{}`, 30)
+	ins("j5", "case_run", "running", "TC-A-001", `{}`, 20)
+	ins("j6", "case_run", "completed", "TC-A-002", `{"verdict":{"result":"pass"}}`, 10)
+
+	get := func(q string) (jobs []any, sum map[string]any) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		r.listCaseJobs(rec, httptest.NewRequest(http.MethodGet, "/x"+q, nil), r.db, 5, "TC-A-001")
+		if rec.Code != 200 {
+			t.Fatalf("%d %s", rec.Code, rec.Body)
+		}
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out["jobs"].([]any), out["summary"].(map[string]any)
+	}
+	jobs, sum := get("")
+	if len(jobs) != 5 || sum["success"] != float64(2) || sum["failed"] != float64(2) || sum["total"] != float64(4) {
+		t.Fatalf("jobs=%d summary=%v", len(jobs), sum)
+	}
+	if jobs[0].(map[string]any)["id"] != "j5" {
+		t.Fatalf("newest first: %v", jobs[0])
+	}
+	if jobs, sum = get("?limit=2"); len(jobs) != 2 || sum["total"] != float64(4) {
+		t.Fatalf("limit: %d %v", len(jobs), sum)
+	}
+	if jobs, _ = get("?limit=9999"); len(jobs) != 5 {
+		t.Fatalf("max limit: %d", len(jobs))
 	}
 }

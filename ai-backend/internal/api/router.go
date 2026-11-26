@@ -273,6 +273,41 @@ func (r *Router) enqueueJobID(id, jobType string, payload map[string]interface{}
 	return job, nil
 }
 
+// jobDetail is GET /api/jobs/{id}: the job plus the case it ran for and its elapsed time.
+type jobDetail struct {
+	jobRecord
+	CaseCode  string `json:"case_code,omitempty"`
+	ProductID int    `json:"product_id,omitempty"`
+	ElapsedMs int64  `json:"elapsed_ms"`
+}
+
+// newJobDetail derives case_code and product_id from the payload and elapsed_ms as
+// (completed_at, or now) minus started_at (created_at when the job never started).
+func newJobDetail(j jobRecord, now time.Time) jobDetail {
+	d := jobDetail{jobRecord: j}
+	d.CaseCode, _ = j.Payload["case_code"].(string)
+	switch v := j.Payload["product_id"].(type) {
+	case float64:
+		d.ProductID = int(v)
+	case int:
+		d.ProductID = v
+	case int64:
+		d.ProductID = int(v)
+	}
+	start := j.CreatedAt
+	if j.StartedAt != nil {
+		start = *j.StartedAt
+	}
+	end := now
+	if j.CompletedAt != nil {
+		end = *j.CompletedAt
+	}
+	if ms := end.Sub(start).Milliseconds(); ms > 0 {
+		d.ElapsedMs = ms
+	}
+	return d
+}
+
 func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID string) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -286,7 +321,10 @@ func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID st
 	r.jobs.mu.RUnlock()
 
 	if ok {
-		json.NewEncoder(w).Encode(job)
+		r.jobs.mu.RLock()
+		cp := *job
+		r.jobs.mu.RUnlock()
+		json.NewEncoder(w).Encode(newJobDetail(cp, time.Now().UTC()))
 		return
 	}
 
@@ -312,7 +350,7 @@ func (r *Router) handleGetJob(w http.ResponseWriter, req *http.Request, jobID st
 		return
 	}
 
-	json.NewEncoder(w).Encode(jobFromDB)
+	json.NewEncoder(w).Encode(newJobDetail(jobFromDB, time.Now().UTC()))
 }
 
 func (r *Router) handleListJobs(w http.ResponseWriter, req *http.Request) {
@@ -726,6 +764,8 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 	// Settings (read-only, non-secret)
 	case "/api/settings":
 		r.handleSettings(w, req)
+	case "/api/settings/timezone":
+		r.handleSettingsTimezone(w, req)
 
 	// Skill endpoints
 	case "/api/skills":
