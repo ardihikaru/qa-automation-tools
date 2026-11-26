@@ -373,6 +373,7 @@ function Body({ e, onOpen }: { e: EntityDetail; onOpen: (t: Target) => void }) {
             rows={[
               ['Release', <ReleaseChip key="r" status={x.release_status} asOf={x.status_as_of} />],
               ['Status as of', x.status_as_of],
+              ['Prod since', x.prod_since],
               ['Module', x.module?.[0] ? <RefButton type="module" r={x.module[0]} onOpen={onOpen} /> : x.module_code],
               ['Sub-module', x.submodule?.[0] ? <RefButton type="submodule" r={x.submodule[0]} onOpen={onOpen} /> : x.submodule_code],
               ['Repo entry', x.repo_entry && <span className="font-mono text-xs break-all">{x.repo_entry}</span>],

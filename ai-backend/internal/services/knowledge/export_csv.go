@@ -10,7 +10,7 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF")
 	w := csv.NewWriter(&buf)
-	head := []string{"ID", "Sub-modul", "Fitur", "Status", "Cek"}
+	head := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
 	if withLastUpdate {
 		head = append(head, "Status sejak", "Sumber tanggal")
 	}
@@ -20,7 +20,7 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	for _, p := range snap.Parts {
 		for _, m := range p.Modules {
 			for _, r := range m.Rows {
-				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, ""}
+				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, guardFormula(prodSinceText(r.ProdSince)), ""}
 				if withLastUpdate {
 					since := ""
 					if r.StatusSince != nil {

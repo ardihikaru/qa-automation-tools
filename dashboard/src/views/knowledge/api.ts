@@ -101,6 +101,8 @@ export interface Feature extends EntityBase {
   repo_entry: string;
   release_status: string;
   status_as_of: string;
+  /** Raw catalogue "Prod since" (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ?); '' when absent or not PROD. */
+  prod_since?: string;
   evidence: string;
   notes: string;
 }
@@ -270,6 +272,8 @@ export interface TreeFeature {
   name: string;
   release_status: string;
   status_as_of: string;
+  /** Raw catalogue "Prod since" (YYYY-MM, YYYY-MM..YYYY-MM, <YYYY-MM, ?); '' when absent or not PROD. */
+  prod_since?: string;
   origin: Origin;
   removed_at: string | null;
   stories: number;
@@ -638,10 +642,16 @@ export const cancelEpicBatch = (id: string) => api<EpicBatch>(`/api/epic-batches
 // ---- module checklist export (docs/designs/MODULE_CHECKLIST_EXPORT.md) ----
 
 export type ChecklistFormat = 'pdf' | 'xlsx' | 'csv';
+/** all = every feature; prod = PROD features only, optionally those whose "Prod since" overlaps [sinceFrom, sinceTo]. */
+export type ChecklistScope = 'all' | 'prod';
 export type ChecklistCache = 'hit' | 'miss' | 'regenerated' | 'bypass';
 
 export interface ChecklistOptions {
   format: ChecklistFormat;
+  scope?: ChecklistScope;
+  /** YYYY-MM, only with scope 'prod'; empty = open. */
+  sinceFrom?: string;
+  sinceTo?: string;
   lastUpdate: boolean;
   force: boolean;
 }
@@ -653,6 +663,11 @@ export interface ChecklistOptions {
  */
 export async function downloadChecklist(pid: number, opts: ChecklistOptions, signal?: AbortSignal): Promise<ChecklistCache | null> {
   const qs = new URLSearchParams({ format: opts.format, last_update: opts.lastUpdate ? '1' : '0', force: opts.force ? '1' : '0' });
+  if (opts.scope === 'prod') {
+    qs.set('scope', 'prod');
+    if (opts.sinceFrom) qs.set('since_from', opts.sinceFrom);
+    if (opts.sinceTo) qs.set('since_to', opts.sinceTo);
+  }
   const res = await fetch(`/api/products/${pid}/knowledge/exports/modules-checklist?${qs}`, { credentials: 'include', signal });
   if (!res.ok) {
     let body: Record<string, unknown> = {};

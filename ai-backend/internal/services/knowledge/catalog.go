@@ -54,6 +54,7 @@ type Feature struct {
 	RepoEntry     string `json:"repo_entry"`
 	ReleaseStatus string `json:"release_status"`
 	StatusAsOf    string `json:"status_as_of"`
+	ProdSince     string `json:"prod_since"` // raw "Prod since" cell, "" when the catalogue has no such column (ParseProdSince)
 	Evidence      string `json:"evidence"`
 	Notes         string `json:"notes"`
 	SourceFile    string `json:"source_file"`

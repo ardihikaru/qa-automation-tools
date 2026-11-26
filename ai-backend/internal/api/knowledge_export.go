@@ -56,6 +56,10 @@ func (r *Router) handleChecklistExport(w http.ResponseWriter, req *http.Request,
 		writeJSONError(w, http.StatusBadRequest, "force must be 0, 1, true or false")
 		return
 	}
+	if msg := parseChecklistFilter(req, &q.Filter); msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
+		return
+	}
 	if r.exports == nil {
 		// 404 comes before 503: an unknown product is not "storage not configured".
 		if err := r.kb.ProductExists(req.Context(), pid); errors.Is(err, knowledge.ErrNotFound) {
@@ -79,4 +83,36 @@ func (r *Router) handleChecklistExport(w http.ResponseWriter, req *http.Request,
 	h.Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(res.Body)
+}
+
+// parseChecklistFilter reads scope (all|prod, default all), since_from and since_to (YYYY-MM,
+// optional, only with scope=prod, from <= to). It returns a 400 message, or "" when valid.
+func parseChecklistFilter(req *http.Request, f *knowledge.ChecklistFilter) string {
+	qv := req.URL.Query()
+	for _, k := range []string{"scope", "since_from", "since_to"} {
+		if len(qv[k]) > 1 {
+			return k + " must be given once"
+		}
+	}
+	switch qv.Get("scope") {
+	case "", knowledge.ScopeAll:
+		f.Scope = knowledge.ScopeAll
+	case knowledge.ScopeProd:
+		f.Scope = knowledge.ScopeProd
+	default:
+		return "scope must be all or prod"
+	}
+	f.From, f.To = qv.Get("since_from"), qv.Get("since_to")
+	for _, m := range []string{f.From, f.To} {
+		if m != "" && !knowledge.ValidMonth(m) {
+			return "since_from and since_to must be YYYY-MM"
+		}
+	}
+	if f.Ranged() && f.Scope != knowledge.ScopeProd {
+		return "since_from and since_to need scope=prod"
+	}
+	if f.From != "" && f.To != "" && f.From > f.To {
+		return "since_from must not be after since_to"
+	}
+	return ""
 }

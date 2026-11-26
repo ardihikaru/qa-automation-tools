@@ -46,7 +46,7 @@ func TestStatusDatesIgnoreOtherStatuses(t *testing.T) {
 	parts, _ := buildChecklist(checklistInput{
 		parts:    []codeName{{"A", "P"}},
 		modules:  []checklistModuleIn{{"A01", "A", "M"}},
-		features: []checklistFeatureIn{{"A01.01", "A01", "", "F", "PROD"}},
+		features: []checklistFeatureIn{{"A01.01", "A01", "", "F", "PROD", ""}},
 		dates:    d,
 	})
 	r := parts[0].Modules[0].Rows[0]
@@ -75,10 +75,10 @@ func TestBuildChecklistOrphans(t *testing.T) {
 		modules:    []checklistModuleIn{{"A01", "A", "M1"}, {"B01", "B", "orphan module"}},
 		submodules: map[string]string{"S1": "Sub one"},
 		features: []checklistFeatureIn{
-			{"A01.01", "A01", "S1", "f1", "PROD"},
-			{"A01.02", "A01", "GONE", "f2", "UNKNOWN"}, // inactive sub-module: kept, empty cell
-			{"B01.01", "B01", "", "f3", "PROD"},        // module not active
-			{"Z.01", "Z01", "", "f4", "PROD"},          // module unknown
+			{"A01.01", "A01", "S1", "f1", "PROD", ""},
+			{"A01.02", "A01", "GONE", "f2", "UNKNOWN", ""}, // inactive sub-module: kept, empty cell
+			{"B01.01", "B01", "", "f3", "PROD", ""},        // module not active
+			{"Z.01", "Z01", "", "f4", "PROD", ""},          // module unknown
 		},
 	})
 	if skipped != 3 {
@@ -110,7 +110,7 @@ func fixtureSnapshot(t *testing.T, dates bool) (*ChecklistSnapshot, *Snapshot) {
 		in.submodules[s.Code] = s.Name
 	}
 	for _, x := range snap.Features {
-		in.features = append(in.features, checklistFeatureIn{x.Code, x.ModuleCode, x.SubmoduleCode, x.Name, x.ReleaseStatus})
+		in.features = append(in.features, checklistFeatureIn{x.Code, x.ModuleCode, x.SubmoduleCode, x.Name, x.ReleaseStatus, x.ProdSince})
 	}
 	if dates {
 		in.dates = statusDates{}
@@ -182,7 +182,7 @@ func TestRenderRowCounts(t *testing.T) {
 	if len(recs)-1 != want {
 		t.Errorf("CSV rows = %d, want %d", len(recs)-1, want)
 	}
-	if strings.Join(recs[0], ",") != "ID,Sub-modul,Fitur,Status,Cek" {
+	if strings.Join(recs[0], ",") != "ID,Sub-modul,Fitur,Status,Prod sejak,Cek" {
 		t.Errorf("CSV header = %v", recs[0])
 	}
 	sheets, rows := xlsxDump(t, render(t, cs, "xlsx", false))
@@ -208,17 +208,17 @@ func TestRenderRowCounts(t *testing.T) {
 func TestRenderLastUpdate(t *testing.T) {
 	cs, _ := fixtureSnapshot(t, true)
 	recs := csvRecords(t, render(t, cs, "csv", true))
-	if got := recs[0]; len(got) != 7 || got[5] != "Status sejak" || got[6] != "Sumber tanggal" {
+	if got := recs[0]; len(got) != 8 || got[6] != "Status sejak" || got[7] != "Sumber tanggal" {
 		t.Fatalf("header: %v", got)
 	}
 	seen := map[string]int{}
 	for _, r := range recs[1:] {
-		seen[r[6]]++
-		if (r[6] == "") != (r[5] == "") {
+		seen[r[7]]++
+		if (r[7] == "") != (r[6] == "") {
 			t.Fatalf("date and source disagree: %v", r)
 		}
-		if r[5] != "" && (len(r[5]) != 10 || r[5][4] != '-') {
-			t.Fatalf("date format: %q", r[5])
+		if r[6] != "" && (len(r[6]) != 10 || r[6][4] != '-') {
+			t.Fatalf("date format: %q", r[6])
 		}
 	}
 	if seen["sync"] == 0 || seen["backfill"] == 0 || seen[""] == 0 {
@@ -231,7 +231,7 @@ func TestRenderLastUpdate(t *testing.T) {
 		{ID: "A01.03", Feature: "z", Status: "UNKNOWN"},
 	}}}}}}
 	r := csvRecords(t, render(t, one, "csv", true))
-	if r[1][5] != "2026-09-01" || r[1][6] != "sync" || r[2][6] != "backfill" || r[3][5] != "" || r[3][6] != "" {
+	if r[1][6] != "2026-09-01" || r[1][7] != "sync" || r[2][7] != "backfill" || r[3][6] != "" || r[3][7] != "" {
 		t.Errorf("csv dates: %v", r)
 	}
 	pdf := string(render(t, one, "pdf", true))
@@ -243,7 +243,8 @@ func TestRenderLastUpdate(t *testing.T) {
 	if !strings.Contains(pdf, "tanggal perkiraan") {
 		t.Error("PDF lacks the ~ footnote")
 	}
-	if strings.Contains(string(render(t, one, "pdf", false)), "sejak") || strings.Contains(string(render(t, one, "pdf", false)), "tanggal perkiraan") {
+	// "Prod sejak" is a column header of every PDF; the status dates are "sejak <date>" / "sejak —".
+	if plain := string(render(t, one, "pdf", false)); strings.Contains(plain, "sejak 01") || strings.Contains(plain, "sejak \x97") || strings.Contains(plain, "tanggal perkiraan") {
 		t.Error("PDF without the option must not mention dates")
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(render(t, one, "xlsx", true)))
@@ -251,13 +252,13 @@ func TestRenderLastUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh := f.GetSheetList()[1]
-	if v, _ := f.GetCellValue(sh, "F2"); v != "2026-09-01" {
+	if v, _ := f.GetCellValue(sh, "G2"); v != "2026-09-01" {
 		t.Errorf("xlsx date cell = %q", v)
 	}
-	if v, _ := f.GetCellValue(sh, "G3"); v != "backfill" {
+	if v, _ := f.GetCellValue(sh, "H3"); v != "backfill" {
 		t.Errorf("xlsx source cell = %q", v)
 	}
-	if v, _ := f.GetCellValue(sh, "F4"); v != "" {
+	if v, _ := f.GetCellValue(sh, "G4"); v != "" {
 		t.Errorf("xlsx empty date = %q", v)
 	}
 	if tp, _ := f.GetCellType(sh, "F2"); tp == excelize.CellTypeSharedString || tp == excelize.CellTypeInlineString {
@@ -355,9 +356,9 @@ func TestGoldenHashes(t *testing.T) {
 		"pdf":  hashHex(render(t, cs, "pdf", true)),
 	}
 	want := map[string]string{
-		"csv":  "9a18e9d1913df354a7b41070c04d99559805997877765fb4ad29dc8f591d7a11",
-		"xlsx": "60a6a1c5c3d39f606073ca5e477f1eb2f1b44e6c7454b08874ca69795791afb0",
-		"pdf":  "98ba4a278c183a10d22f7c846c1ce7ba29054d9c59bb7be8d59455f220011886",
+		"csv":  "cae38973f5b0a4e4a893e59731c2464f2f72a4f6c58dd17e5501d85af2c2ceba",
+		"xlsx": "b95fa43fa4ffaa328630cbc9022a34403f8b827bfdc71ca5b9951c5a98ab134b",
+		"pdf":  "fc3de898c89a18a3022f22b559141a7b23d4381efa4c8f20d01cb1844b0aa590",
 	}
 	for k, v := range got {
 		if want[k] != v {

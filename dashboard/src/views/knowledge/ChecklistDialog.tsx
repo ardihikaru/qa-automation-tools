@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import Modal from '../../components/Modal';
 import SubmitButton from '../../components/SubmitButton';
-import { ChecklistCache, ChecklistFormat, downloadChecklist, errorText, isAbort } from './api';
+import { ChecklistCache, ChecklistFormat, ChecklistScope, downloadChecklist, errorText, isAbort } from './api';
 
 interface Props {
   pid: number;
@@ -14,6 +14,13 @@ const FORMATS: { id: ChecklistFormat; label: string }[] = [
   { id: 'csv', label: 'CSV' },
 ];
 
+const SCOPES: { id: ChecklistScope; label: string; help: string }[] = [
+  { id: 'all', label: 'All features', help: 'Every feature of the catalogue, whatever its status.' },
+  { id: 'prod', label: 'Production only', help: 'Only PROD features; optionally only those in production since a period.' },
+];
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 const CACHE_NOTE: Record<ChecklistCache, string> = {
   hit: 'Served from cache',
   miss: 'Generated now',
@@ -23,6 +30,9 @@ const CACHE_NOTE: Record<ChecklistCache, string> = {
 
 export default function ChecklistDialog({ pid, onClose }: Props) {
   const [format, setFormat] = useState<ChecklistFormat>('pdf');
+  const [scope, setScope] = useState<ChecklistScope>('all');
+  const [sinceFrom, setSinceFrom] = useState('');
+  const [sinceTo, setSinceTo] = useState('');
   const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -40,6 +50,12 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (inflight.current) return;
+    const rangeError = scope === 'prod' ? checkRange(sinceFrom, sinceTo) : null;
+    if (rangeError) {
+      setError(rangeError);
+      setNote(null);
+      return;
+    }
     inflight.current = true;
     setBusy(true);
     setError(null);
@@ -47,7 +63,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
     const ac = new AbortController();
     abort.current = ac;
     try {
-      const cache = await downloadChecklist(pid, { format, lastUpdate, force }, ac.signal);
+      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, lastUpdate, force }, ac.signal);
       setNote(cache ? CACHE_NOTE[cache] : 'Downloaded');
     } catch (err) {
       if (!isAbort(err)) setError(errorText(err, 'Could not download the checklist'));
@@ -71,6 +87,43 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
               </label>
             ))}
           </div>
+        </fieldset>
+
+        <fieldset disabled={busy} className="space-y-2">
+          <legend className="block text-sm font-medium text-gray-700 mb-1">Scope</legend>
+          {SCOPES.map((sc) => (
+            <div key={sc.id}>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+                <input type="radio" name="checklist-scope" value={sc.id} checked={scope === sc.id} onChange={() => setScope(sc.id)} aria-describedby={`checklist-scope-${sc.id}-help`} />
+                {sc.label}
+              </label>
+              <p id={`checklist-scope-${sc.id}-help`} className="text-xs text-gray-500 ml-6">
+                {sc.help}
+              </p>
+            </div>
+          ))}
+          {scope === 'prod' && (
+            <div className="ml-6 space-y-1">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm text-gray-800">
+                  <span className="block text-xs text-gray-600 mb-1">In production since: from</span>
+                  <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceFrom} onChange={(e) => setSinceFrom(e.target.value)} aria-describedby="checklist-since-help" />
+                </label>
+                <label className="text-sm text-gray-800">
+                  <span className="block text-xs text-gray-600 mb-1">to</span>
+                  <input type="month" className="border border-gray-300 rounded-md px-2 py-1 text-sm" value={sinceTo} onChange={(e) => setSinceTo(e.target.value)} aria-describedby="checklist-since-help" />
+                </label>
+                {(sinceFrom || sinceTo) && (
+                  <button type="button" className="text-xs text-teal-700 underline" onClick={() => { setSinceFrom(''); setSinceTo(''); }}>
+                    Clear period
+                  </button>
+                )}
+              </div>
+              <p id="checklist-since-help" className="text-xs text-gray-500">
+                Leave both empty for every PROD feature. With a period, a feature is listed when its &ldquo;Prod since&rdquo; overlaps it; PROD features with an unknown date are left out and counted in the file header.
+              </p>
+            </div>
+          )}
         </fieldset>
 
         <div className="space-y-3">
@@ -111,4 +164,11 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
       </form>
     </Modal>
   );
+}
+
+/** Returns an error message for an invalid "Prod since" period, or null when it is valid (both ends optional). */
+function checkRange(from: string, to: string): string | null {
+  if ((from && !MONTH.test(from)) || (to && !MONTH.test(to))) return 'Months must be YYYY-MM.';
+  if (from && to && from > to) return 'The "from" month must not be after the "to" month.';
+  return null;
 }

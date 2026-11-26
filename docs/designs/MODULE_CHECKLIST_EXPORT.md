@@ -482,3 +482,29 @@ Each phase is its own small PR (root `CLAUDE.md` git workflow); a later phase st
 | M16 Target Files | Added the db tests, config test, `ai-backend/README.md`, E2E path, setter placement. |
 | M17 parsing and gating | `strictBool`; derived `tab === 'modules'`. |
 | Nits N1 to N11 | Time zone (N1); assumptions renumbered and settled ones turned into facts (N2); `managedByRepo` claim corrected (N3); guard wording (N4); single `Get` (N5); key validation (N6); `secrets.md` (N7); ordering and golden hash (N8); subjective words removed and terms defined (N9); typos and status line (N10); phases, `bypass` log line, dev-origin note, parser-bump test (N11). |
+
+## Amendment 1: Scope and "Prod since" (2026-11-26)
+
+**Why.** Owners want to download only the features that are in production, and only those that reached production in a period ("PROD features since May 2026 to Nov 2026"). `status_as_of` cannot answer that: it is the date a status was *confirmed* (a whole catalogue can carry one bulk date), not when the feature went live. The automation repo's catalogue gains a **`Prod since`** column for that fact; this amendment imports it and filters on it.
+
+**Catalogue format.** A feature row has 12 columns, or 13 with `Prod since` right after `Status as of`. Both layouts parse (a repo moves from 12 to 13 in one commit; this parser must be deployed first, because an older parser rejects 13-column rows and the sync then drops every feature). Values: `YYYY-MM` (that month), `YYYY-MM..YYYY-MM` (somewhere in that period, from <= to), `<YYYY-MM` (before that month), `?` (in production, date unknown), `—` or absent (none; stored as `''`). An invalid value is a sync problem and is stored as `''`. The repo's own validator requires a value for `PROD` rows and `—` otherwise; this parser does not enforce that pairing (it reports formats only).
+
+**Storage.** `kb_features.prod_since VARCHAR(20) NOT NULL DEFAULT ''` (guarded `ALTER`), raw text; it is part of the generic feature columns, so the feature API returns it and the dashboard shows it on the feature page and panel. Parsing happens at export time (`ParseProdSince`), so the format can grow without a migration.
+
+**API.** `GET .../exports/modules-checklist` gains:
+| Param | Values | Default | 400 when |
+|---|---|---|---|
+| `scope` | `all`, `prod` | `all` | other value, repeated |
+| `since_from`, `since_to` | `YYYY-MM` | empty (open end) | not `YYYY-MM`, repeated, given without `scope=prod`, from > to |
+
+**Filter (`FilterChecklist`, after the snapshot, before rendering).** `all` keeps every row (output identical to before, apart from the new column). `prod` keeps `PROD` rows only. With a period, a `PROD` row stays when its period overlaps `[since_from, since_to]` (open ends allowed): `<2026-05` is `(-inf, 2026-04]`, so it only matches a period that starts before May 2026; `2026-07..2026-08` matches any period touching July or August. `PROD` rows with `?`, `''` or an unparsable value are left out of a ranged export and **counted** (`ExcludedUnknown`); the header says how many. Modules and parts left without rows are dropped.
+
+**Renderers.** A `Prod sejak` column after `Status` in all three formats, shown as `Jul 2026`, `Jul–Agu 2026`, `Des 2025–Jan 2026`, `< Mei 2026`, `?` or empty. A filtered export prints its scope line under the PDF title and in the XLSX summary (A3), e.g. `Hanya fitur PROD, Prod sejak Mei 2026 s.d. Nov 2026 (16 fitur PROD tanpa tanggal tidak disertakan)`. `TemplateVersion` becomes 2.
+
+**Cache key and file name.** The variant gets a scope suffix only for `prod` (`…/plain/prod`, `…/plain/prod-202605-202611`, `x` for an open end), so `scope=all` keeps the old key shape. The download name gets the same suffix in upper case (`<product>-MODULE-CHECKLIST-PROD-202605-202611.pdf`).
+
+**Dashboard.** The checklist dialog gets a *Scope* radio (All features / Production only) and, for Production only, optional *from* / *to* month inputs (`<input type="month">`), validated client-side (from <= to) and again by the API.
+
+**Assumptions to challenge.** (1) Overlap, not containment, is what owners mean by "since between May and Nov" (a `Jul–Agu` row is in; a `<2026-05` row is out). (2) Leaving `?` rows out of ranged exports, with a count, is better than including them flagged. (3) Parsing at export time is cheap enough (one regexp per row, at most `maxExportFeatures`).
+
+**Target files (amendment).** `ai-backend/internal/db/migrations.go`, `internal/db/skipif_test.go`, `internal/services/knowledge/{catalog,store,query,testcatalog,export_checklist,export_cache,export_csv,export_xlsx,export_pdf,export_filter}.go` and their tests, `testdata/sample-catalog/docs/modules/C-partner-api.md` (13-column layout) + `testdata/README.md`, `internal/api/knowledge_export.go` + test, `dashboard/src/views/knowledge/{api.ts,ChecklistDialog.tsx,EntityPanel.tsx,pages/FeaturePage.tsx}`.

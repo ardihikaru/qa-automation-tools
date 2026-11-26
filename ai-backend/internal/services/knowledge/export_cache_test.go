@@ -195,8 +195,8 @@ func TestExportMissThenHit(t *testing.T) {
 
 func TestExportKeyChanges(t *testing.T) {
 	e := newCacheEnv(t)
-	base := e.c.exportDir(1, 5, "SUT", false, 0)
-	if !strings.HasPrefix(base, "qa-automation/dev-test/knowledge-exports/1/modules-checklist/sync-5/v1/n") || !strings.HasSuffix(base, "/plain") {
+	base := e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{})
+	if !strings.HasPrefix(base, "qa-automation/dev-test/knowledge-exports/1/modules-checklist/sync-5/v"+fmt.Sprint(TemplateVersion)+"/n") || !strings.HasSuffix(base, "/plain") {
 		t.Fatalf("key shape: %s", base)
 	}
 	if !strings.Contains(base, fmt.Sprintf("/v%d/", TemplateVersion)) {
@@ -204,12 +204,16 @@ func TestExportKeyChanges(t *testing.T) {
 	}
 	other := NewExportCache(e.src, e.store, "prod", time.Second)
 	variants := map[string]string{
-		"sync id":     e.c.exportDir(1, 6, "SUT", false, 0),
-		"product":     e.c.exportDir(2, 5, "SUT", false, 0),
-		"renamed":     e.c.exportDir(1, 5, "SUT renamed", false, 0),
-		"last-update": e.c.exportDir(1, 5, "SUT", true, 3),
-		"watermark":   e.c.exportDir(1, 5, "SUT", true, 4),
-		"namespace":   other.exportDir(1, 5, "SUT", false, 0),
+		"sync id":     e.c.exportDir(1, 6, "SUT", false, 0, ChecklistFilter{}),
+		"product":     e.c.exportDir(2, 5, "SUT", false, 0, ChecklistFilter{}),
+		"renamed":     e.c.exportDir(1, 5, "SUT renamed", false, 0, ChecklistFilter{}),
+		"last-update": e.c.exportDir(1, 5, "SUT", true, 3, ChecklistFilter{}),
+		"watermark":   e.c.exportDir(1, 5, "SUT", true, 4, ChecklistFilter{}),
+		"namespace":   other.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{}),
+		"prod":        e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{Scope: ScopeProd}),
+		"prod-range":  e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{Scope: ScopeProd, From: "2026-05", To: "2026-11"}),
+		"prod-from":   e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{Scope: ScopeProd, From: "2026-05"}),
+		"prod-to":     e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{Scope: ScopeProd, To: "2026-05"}),
 	}
 	seen := map[string]string{base: "base"}
 	for n, k := range variants {
@@ -218,8 +222,12 @@ func TestExportKeyChanges(t *testing.T) {
 		}
 		seen[k] = n
 	}
+	// scope=all keeps the key of the unfiltered export.
+	if e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{Scope: ScopeAll}) != base {
+		t.Error("scope=all changes the key")
+	}
 	// The plain variant ignores the watermark.
-	if e.c.exportDir(1, 5, "SUT", false, 99) != base {
+	if e.c.exportDir(1, 5, "SUT", false, 99, ChecklistFilter{}) != base {
 		t.Error("plain key depends on the history watermark")
 	}
 	// End to end: a new sync id and a rename each cause a new generation.
@@ -313,7 +321,7 @@ func TestExportStoreFailuresBypass(t *testing.T) {
 func TestExportExtraPutsRunAfterReturn(t *testing.T) {
 	e := newCacheEnv(t)
 	// Hold the two extra objects back: Serve must return without them.
-	dir := e.c.exportDir(1, 5, "SUT", false, 0)
+	dir := e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{})
 	gate := make(chan struct{})
 	e.store.putGate[exportKey(dir, "xlsx")] = gate
 	e.store.putGate[exportKey(dir, "csv")] = gate
@@ -331,7 +339,7 @@ func TestExportExtraPutsRunAfterReturn(t *testing.T) {
 	}
 	// A failing extra Put is ignored.
 	e = newCacheEnv(t)
-	e.store.putGate[exportKey(e.c.exportDir(1, 5, "SUT", false, 0), "csv")] = func() chan struct{} { c := make(chan struct{}); close(c); return c }()
+	e.store.putGate[exportKey(e.c.exportDir(1, 5, "SUT", false, 0, ChecklistFilter{}), "csv")] = func() chan struct{} { c := make(chan struct{}); close(c); return c }()
 	mustServe(t, e, ExportQuery{Format: "pdf"})
 	e.c.Wait()
 }
