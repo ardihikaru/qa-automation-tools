@@ -15,7 +15,7 @@ import (
 // TemplateVersion is part of the export cache key. Raise it on any change that alters the output
 // of any renderer (layout, columns, colours, wording, time zone); the golden-hash test fails when
 // the output changes without a bump, including after a library upgrade.
-const TemplateVersion = 5
+const TemplateVersion = 6
 
 // maxExportFeatures is the largest catalogue the export accepts.
 const maxExportFeatures = 20000
@@ -35,16 +35,13 @@ const (
 
 // ChecklistRow is one feature line of the checklist.
 type ChecklistRow struct {
-	ID        string
-	Submodule string
-	Feature   string
-	Status    string
-	ProdSince string // raw "Prod since" cell ("" when absent); rendered with prodSinceText
-	// ProdSinceLabel overrides the rendered Prod sejak cell: an undated PROD row kept by a ranged
-	// filter with IncludeUndated shows "Before <from>" (FilterChecklist). Empty = use ProdSince.
-	ProdSinceLabel string
-	StatusSince    *time.Time // UTC; nil when unknown or the option is off
-	DateSource     string     // DateSourceSync, DateSourceBackfill, or "" when there is no date
+	ID          string
+	Submodule   string
+	Feature     string
+	Status      string
+	ProdSince   string     // raw "Prod since" cell ("" when absent); rendered with prodSinceText
+	StatusSince *time.Time // UTC; nil when unknown or the option is off
+	DateSource  string     // DateSourceSync, DateSourceBackfill, or "" when there is no date
 }
 
 // ChecklistModule is one module and its feature rows.
@@ -74,7 +71,6 @@ type ChecklistSnapshot struct {
 	// full export. ExcludedUnknown counts PROD rows a ranged filter left out for lack of a period.
 	Filter          ChecklistFilter
 	ExcludedUnknown int
-	IncludedUndated int // undated PROD rows a ranged filter kept because of IncludeUndated
 }
 
 // statusColumns are the status columns of the summary tables. A PROD export has none: every
@@ -98,9 +94,6 @@ func statusCountsFor(rows []ChecklistRow, cols []string) []int {
 
 // rowProdSince is the text of a row's Prod sejak cell.
 func rowProdSince(r ChecklistRow) string {
-	if r.ProdSinceLabel != "" {
-		return r.ProdSinceLabel
-	}
 	return prodSinceText(r.ProdSince)
 }
 
