@@ -24,6 +24,7 @@ import DraftModal, { DraftKind } from './DraftModal';
 import ChecklistDialog from './ChecklistDialog';
 import ModulesTab from './ModulesTab';
 import FeaturesTab from './FeaturesTab';
+import EpicsTab from './EpicsTab';
 import StoriesTab from './StoriesTab';
 import TestCasesTab from './TestCasesTab';
 import SyncsTab from './SyncsTab';
@@ -35,6 +36,7 @@ import { DEFAULT_PAGE_SIZE, Paging, parsePage, parseSize } from './paging';
 const TABS = [
   { id: 'modules', label: 'Modules' },
   { id: 'features', label: 'Features' },
+  { id: 'epics', label: 'Epics' },
   { id: 'stories', label: 'Stories' },
   { id: 'test-cases', label: 'Test cases' },
   { id: 'syncs', label: 'Syncs' },
@@ -356,6 +358,7 @@ export default function KnowledgeView() {
                   {t.id === 'features' && (
                     <FeaturesTab pid={pid} paging={pagingFor('features')} releases={summary.enums.release ?? []} refreshKey={refreshKey} selected={target?.type === 'feature' ? selectedCode : null} onOpen={open} />
                   )}
+                  {t.id === 'epics' && <EpicsTab pid={pid} paging={pagingFor('epics')} refreshKey={refreshKey} />}
                   {t.id === 'stories' && (
                     <StoriesTab pid={pid} paging={pagingFor('stories')} epics={epics} features={featureOptions} refreshKey={refreshKey} selected={target?.type === 'story' ? selectedCode : null} onOpen={open} />
                   )}

@@ -115,6 +115,22 @@ export interface Epic extends EntityBase {
   /** Only in the epics list. */
   case_counts?: Record<string, number>;
   test_cases?: number;
+  /** CASE_VERIFICATION_AND_EPIC_TAB.md: human verification and last run counts (epics list only). */
+  verified_valid?: number;
+  verified_invalid?: number;
+  last_pass?: number;
+  last_fail?: number;
+  /** Present when the server sends the shared coverage shape for the epic. */
+  coverage?: Coverage;
+}
+
+export type Verdict = 'valid' | 'invalid';
+export interface Verification {
+  verdict: Verdict;
+  verified_by: string;
+  verified_by_name: string;
+  verified_at: string;
+  note: string;
 }
 export interface Story extends EntityBase {
   epic_code: string;
@@ -133,6 +149,10 @@ export interface TestCase extends EntityBase {
   spec_paths: string[] | null;
   reason_category: string;
   reason_detail: string;
+  /** Latest human verification, null when nobody verified it. */
+  verification?: Verification | null;
+  /** Optional: how many times it was verified. Shown only when the server sends it. */
+  verification_count?: number;
 }
 
 export interface FeatureStats {
@@ -429,6 +449,10 @@ export interface TestCaseFilter extends StoryFilter {
   priority?: string;
   /** "1" or "0" */
   automated?: string;
+  /** any | valid | invalid | none */
+  verified?: string;
+  /** User id of the verifier (implies any). */
+  verified_by?: string;
 }
 export const listTestCases = (pid: number, f: TestCaseFilter, signal?: AbortSignal) =>
   api<Page<TestCase>>(`${kb(pid)}/test-cases${qs({ ...f })}`, { signal });
@@ -627,6 +651,68 @@ export const runCase = (pid: number, code: string) => api<{ job_id: number | str
 export const createAutomation = (pid: number, code: string) => api<{ job_id: number | string }>(`${caseUrl(pid, code)}/create-automation`, { method: 'POST' });
 export const listCaseJobs = (pid: number, code: string, signal?: AbortSignal) =>
   api<{ jobs?: CaseJob[] } | CaseJob[]>(`${caseUrl(pid, code)}/jobs`, { signal }).then((r) => (Array.isArray(r) ? r : (r?.jobs ?? [])));
+
+/** GET /api/jobs/{id}: timing fields are RFC3339 UTC strings or null. */
+export interface JobInfo {
+  id?: number | string;
+  status?: JobStatus;
+  case_code?: string | null;
+  product_id?: number | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  elapsed_ms?: number | null;
+}
+export const getJob = (jobId: number | string, signal?: AbortSignal) => api<JobInfo>(`/api/jobs/${enc(String(jobId))}`, { signal });
+
+export interface CaseJobRow {
+  id: number | string;
+  type?: string;
+  status: JobStatus;
+  error?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  pr_url?: string | null;
+  branch?: string | null;
+  outcome?: string | null;
+}
+export interface CaseJobHistory {
+  jobs: CaseJobRow[];
+  summary: { total: number; success: number; failed: number };
+}
+export const listCaseJobHistory = (pid: number, code: string, limit = 10, signal?: AbortSignal) =>
+  api<Partial<CaseJobHistory>>(`${caseUrl(pid, code)}/jobs${qs({ limit })}`, { signal }).then((r) => ({
+    jobs: r?.jobs ?? [],
+    summary: r?.summary ?? { total: r?.jobs?.length ?? 0, success: 0, failed: 0 },
+  }));
+
+// ---- case verification ----
+export interface Verifier {
+  id: string;
+  name: string;
+  count: number;
+}
+export const listVerifiers = (pid: number, signal?: AbortSignal) =>
+  api<{ verifiers?: Verifier[] }>(`${kb(pid)}/test-cases/verifiers`, { signal }).then((r) => r?.verifiers ?? []);
+export const putVerification = (pid: number, code: string, verdict: Verdict | null, note?: string) =>
+  api<Verification | null>(`${caseUrl(pid, code)}/verification`, json('PUT', { verdict, ...(note ? { note } : {}) })).then((r) => r ?? null);
+
+export interface VerificationEvent {
+  id: number | string;
+  verdict: Verdict | 'cleared';
+  note?: string | null;
+  verified_by?: string;
+  verified_by_name?: string;
+  verified_at: string;
+}
+export const listVerificationHistory = (pid: number, code: string, limit = 50, signal?: AbortSignal) =>
+  api<{ history?: VerificationEvent[]; total?: number }>(`${caseUrl(pid, code)}/verification/history${qs({ limit })}`, { signal }).then((r) => ({
+    history: r?.history ?? [],
+    total: r?.total ?? r?.history?.length ?? 0,
+  }));
+
 export const getJobEvents = (jobId: number | string, since: number, signal?: AbortSignal) =>
   api<JobEvents>(`/api/jobs/${enc(String(jobId))}/events?since=${since}`, { signal }).then((r) => ({ ...r, events: Array.isArray(r?.events) ? r.events : [] }));
 export const answerApproval = (jobId: number | string, decision: ApprovalDecision, text?: string) =>

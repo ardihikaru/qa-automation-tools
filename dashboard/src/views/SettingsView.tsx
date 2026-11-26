@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react';
 import SubmitButton from '../components/SubmitButton';
+import { useAuth } from '../auth/AuthContext';
+import { DEFAULT_TIMEZONE, formatInZone, setSystemTimezone } from '../lib/time';
 
 interface SettingsResponse {
   ai: {
@@ -16,7 +18,10 @@ interface SettingsResponse {
   };
   executor: { host: string; status: string };
   database: string;
+  timezone?: string;
 }
+
+const ZONES = ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura', 'Asia/Singapore', 'UTC'];
 
 function statusBadge(status: string): string {
   if (status === 'ok' || status === 'connected' || status === 'configured') return 'badge badge-success';
@@ -33,7 +38,82 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+function TimezoneCard({ zone, canEdit }: { zone: string; canEdit: boolean }) {
+  const [value, setValue] = useState(zone);
+  const [saved, setSaved] = useState(zone);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    setValue(zone);
+    setSaved(zone);
+  }, [zone]);
+  const options = ZONES.includes(saved) ? ZONES : [saved, ...ZONES];
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch('/api/settings/timezone', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timezone: value }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b?.error || `Could not save the timezone (${res.status})`);
+      }
+      setSaved(value);
+      setSystemTimezone(value);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save the timezone');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <h3 className="text-lg font-semibold">Timezone</h3>
+      </div>
+      <div className="card-body space-y-3">
+        <p className="text-sm text-gray-600">
+          Job times, run history and verification times are shown in this zone. Now: <span className="tabular-nums">{formatInZone(new Date().toISOString(), saved)}</span>
+        </p>
+        {canEdit ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="tz" className="sr-only">
+              System timezone
+            </label>
+            <select id="tz" value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} className="h-9 px-2 border border-gray-300 rounded-lg bg-white text-sm">
+              {options.map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
+            <SubmitButton loading={busy} loadingLabel="Saving…" disabled={value === saved} onClick={save} className="btn btn-primary h-9 px-3 text-sm">
+              Save
+            </SubmitButton>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-900">{saved}</p>
+        )}
+        {err && (
+          <p role="alert" className="text-sm text-red-700 break-words">
+            {err}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsView() {
+  const { user } = useAuth();
+  const canEditZone = ['Admin', 'DevOps'].includes(user?.role ?? '');
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,6 +200,12 @@ export default function SettingsView() {
               </Row>
             </dl>
           </section>
+        </div>
+      )}
+
+      {data && (
+        <div className="mb-6">
+          <TimezoneCard zone={data.timezone || DEFAULT_TIMEZONE} canEdit={canEditZone} />
         </div>
       )}
 

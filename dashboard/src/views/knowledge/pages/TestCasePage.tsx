@@ -3,6 +3,8 @@ import { Summary, TestCaseDetail, entityHref, getSummary } from '../api';
 import CaseAutomation from '../CaseAutomation';
 import { useLoad } from '../hooks';
 import { Scenario } from '../EntityPanel';
+import JobHistory from '../JobHistory';
+import VerificationControl from '../Verification';
 import EntityShell from './EntityShell';
 import { CoverageRow, CoverageSection, Fields, LinkedFeatures, SectionHead, StatusLabel } from './kit';
 import { PageCtx, crumbTo } from './data';
@@ -69,6 +71,16 @@ export default function TestCasePage({ ctx, e }: { ctx: PageCtx; e: TestCaseDeta
             ],
           ]}
         />
+      </section>
+
+      <section aria-labelledby="kb-verify" className="space-y-3">
+        <SectionHead id="kb-verify" title="Verification" />
+        <VerificationControl key={e.code} pid={pid} code={e.code} initial={e.verification} canWrite={ctx.canWrite} removed={!!e.removed_at} />
+      </section>
+
+      <section aria-labelledby="kb-runs" className="space-y-3">
+        <SectionHead id="kb-runs" title="Run history" />
+        <JobHistory pid={pid} code={e.code} limit={10} />
       </section>
 
       <section aria-labelledby="kb-story" className="space-y-3">
