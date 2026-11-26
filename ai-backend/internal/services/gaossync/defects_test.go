@@ -94,7 +94,7 @@ func TestOperationsFollowImportsInTheSameRepo(t *testing.T) {
 		}
 		return nil, fmt.Errorf("no file")
 	})
-	got := s.operationsFor(context.Background(), 1, "tests/api/rest/sample-service/a.spec.ts")
+	got := s.operationsFor(context.Background(), 1, "tests/api/rest/sample-service/a.spec.ts", "")
 	if strings.Join(got, "|") != "own/route|from/helper" {
 		t.Errorf("operations = %v", got)
 	}
@@ -118,7 +118,7 @@ func TestOperationsFollowTsconfigAliases(t *testing.T) {
 		}
 		return nil, fmt.Errorf("no file")
 	})
-	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts", "")
 	if strings.Join(got, "|") != "editThing|from/fixtures" {
 		t.Errorf("operations = %v", got)
 	}
@@ -144,7 +144,7 @@ func TestOperationsPreferTheSpecsOwnService(t *testing.T) {
 		}
 		return nil, fmt.Errorf("no file")
 	})
-	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts", "")
 	if len(got) == 0 || got[0] != "theOperation" {
 		t.Errorf("the service's operation must come first: %v", got)
 	}
@@ -159,9 +159,9 @@ func TestOperationsAreRankedByTheSpecsWords(t *testing.T) {
 		return "const q = `mutation " + n + "($d: In!) { " + n + "(data: $d) { status } }`;\n"
 	}
 	files := map[string]string{
-		"tests/api/graphql/svc/a.spec.ts": "import { K } from './k';\nawait kit.editDispense(tx);",
+		"tests/api/graphql/svc/a.spec.ts": "import { K } from './k';\nawait kit.editDispense(tx); // medication prescription",
 		"tests/api/graphql/svc/k.ts":      "import { O } from './ops';",
-		"tests/api/graphql/svc/ops.ts":    op("alphaOne") + op("alphaTwo") + op("alphaThree") + op("alphaFour") + op("alphaFive") + op("editMedicationDispense"),
+		"tests/api/graphql/svc/ops.ts":    op("alphaOne") + op("alphaTwo") + op("alphaThree") + op("alphaFour") + op("alphaFive") + op("updateMedicationDispensePrescriptionStatusVerified") + op("editMedicationDispense"),
 	}
 	s.SetSpecReader(func(_ context.Context, _ int, rel string) ([]byte, error) {
 		if v, ok := files[rel]; ok {
@@ -169,7 +169,7 @@ func TestOperationsAreRankedByTheSpecsWords(t *testing.T) {
 		}
 		return nil, fmt.Errorf("no file")
 	})
-	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts")
+	got := s.operationsFor(context.Background(), 1, "tests/api/graphql/svc/a.spec.ts", "")
 	if len(got) != 5 || got[0] != "editMedicationDispense" {
 		t.Errorf("operations = %v; the one the spec names must be first of five", got)
 	}
@@ -458,4 +458,17 @@ func TestSweeperPromotesAProductWithPendingDefects(t *testing.T) {
 	exec(t, r.d, `UPDATE product_settings SET gaos_last_sync_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 HOUR) WHERE product_id = ?`, r.pid)
 	r.s.sweepOnce(context.Background())
 	waitFor(t, "the sweeper pushes the pending defect", func() bool { return len(r.defectReqs()) == 1 })
+}
+
+func TestCaseBlockIsTheCasesOwnPart(t *testing.T) {
+	text := "head TC-A-001 first body editThing TC-A-002 second body other TC-A-003 third"
+	if got := caseBlock(text, "TC-A-002"); got != "TC-A-002 second body other " {
+		t.Errorf("block = %q", got)
+	}
+	if got := caseBlock(text, "TC-A-003"); got != "TC-A-003 third" {
+		t.Errorf("the last block runs to the end: %q", got)
+	}
+	if got := caseBlock(text, "TC-Z-009"); got != text {
+		t.Errorf("an unknown code gives the whole text: %q", got)
+	}
 }
