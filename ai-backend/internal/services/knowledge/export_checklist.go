@@ -15,7 +15,7 @@ import (
 // TemplateVersion is part of the export cache key. Raise it on any change that alters the output
 // of any renderer (layout, columns, colours, wording, time zone); the golden-hash test fails when
 // the output changes without a bump, including after a library upgrade.
-const TemplateVersion = 4
+const TemplateVersion = 5
 
 // maxExportFeatures is the largest catalogue the export accepts.
 const maxExportFeatures = 20000
@@ -77,10 +77,11 @@ type ChecklistSnapshot struct {
 	IncludedUndated int // undated PROD rows a ranged filter kept because of IncludeUndated
 }
 
-// statusColumns are the status columns of the summary tables: PROD only for a PROD export.
+// statusColumns are the status columns of the summary tables. A PROD export has none: every
+// feature is PROD, so the Fitur count already says it.
 func (s *ChecklistSnapshot) statusColumns() []string {
 	if s.Filter.Scope == ScopeProd {
-		return []string{"PROD"}
+		return nil
 	}
 	return ReleaseStatuses
 }

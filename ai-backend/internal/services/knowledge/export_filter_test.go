@@ -195,7 +195,7 @@ func TestFilterIncludeUndated(t *testing.T) {
 	}
 }
 
-// A PROD export has no status legend and only a PROD column in the summaries.
+// A PROD export has no status legend and no status columns in the summaries (Fitur says it).
 func TestProdOnlyLegendAndSummary(t *testing.T) {
 	prod := FilterChecklist(filterFixture(), ChecklistFilter{Scope: ScopeProd})
 	pdf := string(render(t, prod, "pdf", false))
@@ -203,7 +203,7 @@ func TestProdOnlyLegendAndSummary(t *testing.T) {
 		t.Error("PROD PDF still shows the legend or non-PROD status columns")
 	}
 	_, rows := xlsxDump(t, render(t, prod, "xlsx", false))
-	if h := strings.Join(rows["Ringkasan"][3], ","); h != "Kode,Nama,Modul,Fitur,PROD" {
+	if h := strings.Join(rows["Ringkasan"][3], ","); h != "Kode,Nama,Modul,Fitur" {
 		t.Errorf("PROD xlsx summary head = %q", h)
 	}
 	all := FilterChecklist(filterFixture(), ChecklistFilter{})
@@ -214,5 +214,32 @@ func TestProdOnlyLegendAndSummary(t *testing.T) {
 	_, rows = xlsxDump(t, render(t, all, "xlsx", false))
 	if h := strings.Join(rows["Ringkasan"][3], ","); h != "Kode,Nama,Modul,Fitur,PROD,DEV-DONE,IN-PROGRESS,NOT-STARTED,UNKNOWN" {
 		t.Errorf("full xlsx summary head = %q", h)
+	}
+}
+
+// check_column=0 leaves the Cek column out of every format; the last-update columns move left.
+func TestHideCheckColumn(t *testing.T) {
+	at := time.Date(2026, 11, 14, 3, 0, 0, 0, time.UTC)
+	snap := FilterChecklist(filterFixture(), ChecklistFilter{HideCheck: true})
+	snap.Parts[0].Modules[0].Rows[0].StatusSince, snap.Parts[0].Modules[0].Rows[0].DateSource = &at, DateSourceSync
+	recs := csvRecords(t, render(t, snap, "csv", true))
+	if h := strings.Join(recs[0], ","); h != "ID,Sub-modul,Fitur,Status,Prod sejak,Status tercatat,Sumber tanggal" || len(recs[1]) != 7 || recs[1][5] != "2026-11-14" {
+		t.Errorf("csv = %v / %v", recs[0], recs[1])
+	}
+	sheets, rows := xlsxDump(t, render(t, snap, "xlsx", true))
+	if h := strings.Join(rows[sheets[1]][0], ","); h != "ID,Sub-modul,Fitur,Status,Prod sejak,Status tercatat,Sumber tanggal" {
+		t.Errorf("xlsx head = %q", h)
+	}
+	if v := rows[sheets[1]][1][5]; v == "" {
+		t.Errorf("xlsx date moved wrongly: %v", rows[sheets[1]][1])
+	}
+	if pdf := string(render(t, snap, "pdf", false)); strings.Contains(pdf, "Cek") {
+		t.Error("PDF still mentions Cek")
+	}
+	if pdf := string(render(t, FilterChecklist(filterFixture(), ChecklistFilter{}), "pdf", false)); !strings.Contains(pdf, "Cek") {
+		t.Error("default PDF lost Cek")
+	}
+	if (ChecklistFilter{HideCheck: true}).variant() != "/nocheck" || (ChecklistFilter{Scope: ScopeProd, HideCheck: true}).variant() != "/prod/nocheck" {
+		t.Error("nocheck variant")
 	}
 }

@@ -167,6 +167,10 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 
 	// One sheet per part: columns ID | Sub-modul | Fitur | Status | Prod sejak | Cek [| Status tercatat | Sumber tanggal].
 	cols := []string{"ID", "Sub-modul", "Fitur", "Status", "Prod sejak", "Cek"}
+	dc := 7 // first last-update column; one less without Cek
+	if snap.Filter.HideCheck {
+		cols, dc = cols[:5], 6
+	}
 	if withLastUpdate {
 		cols = append(cols, "Status tercatat", "Sumber tanggal")
 	}
@@ -196,9 +200,9 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 				}
 				if withLastUpdate && x.StatusSince != nil {
 					d := x.StatusSince.In(wib)
-					_ = f.SetCellValue(sh, cell(7), time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC))
-					_ = f.SetCellStyle(sh, cell(7), cell(7), dateStyle)
-					_ = f.SetCellStr(sh, cell(8), x.DateSource)
+					_ = f.SetCellValue(sh, cell(dc), time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC))
+					_ = f.SetCellStyle(sh, cell(dc), cell(dc), dateStyle)
+					_ = f.SetCellStr(sh, cell(dc+1), x.DateSource)
 				}
 				r++
 			}
@@ -208,9 +212,13 @@ func renderXLSX(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 		_ = f.SetColWidth(sh, "C", "C", 70)
 		_ = f.SetColWidth(sh, "D", "D", 14)
 		_ = f.SetColWidth(sh, "E", "E", 16)
-		_ = f.SetColWidth(sh, "F", "F", 8)
+		if dc == 7 {
+			_ = f.SetColWidth(sh, "F", "F", 8)
+		}
 		if withLastUpdate {
-			_ = f.SetColWidth(sh, "G", "H", 16)
+			a, _ := excelize.ColumnNumberToName(dc)
+			b, _ := excelize.ColumnNumberToName(dc + 1)
+			_ = f.SetColWidth(sh, a, b, 16)
 		}
 		if err := f.SetPanes(sh, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft", Selection: []excelize.Selection{{SQRef: "A2", ActiveCell: "A2", Pane: "bottomLeft"}}}); err != nil {
 			return nil, err

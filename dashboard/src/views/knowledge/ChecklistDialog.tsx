@@ -34,6 +34,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
   const [sinceFrom, setSinceFrom] = useState('');
   const [sinceTo, setSinceTo] = useState('');
   const [includeUndated, setIncludeUndated] = useState(true);
+  const [checkColumn, setCheckColumn] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(true);
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -64,7 +65,7 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
     const ac = new AbortController();
     abort.current = ac;
     try {
-      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, includeUndated, lastUpdate, force }, ac.signal);
+      const cache = await downloadChecklist(pid, { format, scope, sinceFrom, sinceTo, includeUndated, checkColumn: scope === 'prod' ? checkColumn : true, lastUpdate, force }, ac.signal);
       setNote(cache ? CACHE_NOTE[cache] : 'Downloaded');
     } catch (err) {
       if (!isAbort(err)) setError(errorText(err, 'Could not download the checklist'));
@@ -138,6 +139,15 @@ export default function ChecklistDialog({ pid, onClose }: Props) {
                   </p>
                 </div>
               )}
+              <div>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-800">
+                  <input type="checkbox" checked={checkColumn} onChange={(e) => setCheckColumn(e.target.checked)} aria-describedby="checklist-cek-help" />
+                  Include the Cek column
+                </label>
+                <p id="checklist-cek-help" className="text-xs text-gray-500 ml-6">
+                  Empty tick boxes for checking by hand. Untick when the checklist is only for reading.
+                </p>
+              </div>
             </div>
           )}
         </fieldset>
