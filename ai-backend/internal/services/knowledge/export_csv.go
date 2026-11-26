@@ -20,7 +20,7 @@ func renderCSV(snap *ChecklistSnapshot, withLastUpdate bool) ([]byte, error) {
 	for _, p := range snap.Parts {
 		for _, m := range p.Modules {
 			for _, r := range m.Rows {
-				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, guardFormula(prodSinceText(r.ProdSince)), ""}
+				rec := []string{guardFormula(r.ID), guardFormula(r.Submodule), guardFormula(r.Feature), r.Status, guardFormula(rowProdSince(r)), ""}
 				if withLastUpdate {
 					since := ""
 					if r.StatusSince != nil {

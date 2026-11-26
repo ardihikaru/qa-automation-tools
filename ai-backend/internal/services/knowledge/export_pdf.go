@@ -188,13 +188,16 @@ func (d *pdfDoc) heading(s string) {
 
 func (d *pdfDoc) legend() {
 	p := d.p
-	d.heading("Legenda Status")
-	for _, st := range ReleaseStatuses {
-		d.text(statusColors[st])
-		p.SetFont("Helvetica", "B", 9)
-		p.CellFormat(34, pdfLineH, st, "", 0, "L", false, 0, "")
+	// A PROD-only export has one status: the legend is noise there (the notes below stay).
+	if d.snap.Filter.Scope != ScopeProd {
+		d.heading("Legenda Status")
+		for _, st := range ReleaseStatuses {
+			d.text(statusColors[st])
+			p.SetFont("Helvetica", "B", 9)
+			p.CellFormat(34, pdfLineH, st, "", 0, "L", false, 0, "")
+		}
+		p.Ln(pdfLineH + 1)
 	}
-	p.Ln(pdfLineH + 1)
 	p.SetTextColor(0, 0, 0)
 	p.SetFont("Helvetica", "", 8)
 	p.CellFormat(pdfUsable, pdfLineH, d.t("Kolom Cek dikosongkan untuk dicentang manual saat pengecekan."), "", 1, "L", false, 0, "")
@@ -253,8 +256,9 @@ func (d *pdfDoc) summaryTable(first string, withMods bool, rows []sumRow, total 
 	}
 	labels = append(labels, "Fitur")
 	widths = append(widths, 16)
-	rest := (pdfUsable - sumF(widths)) / float64(len(ReleaseStatuses))
-	for _, st := range ReleaseStatuses {
+	cols := d.snap.statusColumns()
+	rest := (pdfUsable - sumF(widths)) / float64(len(cols))
+	for _, st := range cols {
 		labels = append(labels, st)
 		widths = append(widths, rest)
 	}
@@ -281,9 +285,9 @@ func (d *pdfDoc) summaryTable(first string, withMods bool, rows []sumRow, total 
 		}
 		p.CellFormat(widths[i], pdfLineH+1, strconv.Itoa(len(r.rows)), "1", 0, "C", false, 0, "")
 		i++
-		for k, n := range statusCounts(r.rows) {
+		for k, n := range statusCountsFor(r.rows, cols) {
 			if n > 0 {
-				d.text(statusColors[ReleaseStatuses[k]])
+				d.text(statusColors[cols[k]])
 			}
 			p.CellFormat(widths[i+k], pdfLineH+1, strconv.Itoa(n), "1", 0, "C", false, 0, "")
 			p.SetTextColor(0, 0, 0)
@@ -428,7 +432,7 @@ func (d *pdfDoc) moduleTable(m ChecklistModule) {
 		p.SetTextColor(0, 0, 0)
 		p.SetFont("Helvetica", "", 8)
 		p.SetXY(sx+modWidths[3]+1, y+pdfRowPad/2)
-		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(prodSinceText(r.ProdSince), modWidths[4]-2), "", 0, "L", false, 0, "")
+		p.CellFormat(modWidths[4]-2, pdfLineH, d.fit(rowProdSince(r), modWidths[4]-2), "", 0, "L", false, 0, "")
 		// Empty check square, centred in the Cek column.
 		cx := sx + modWidths[3] + modWidths[4] + (modWidths[5]-3.6)/2
 		p.SetDrawColor(60, 60, 60)
