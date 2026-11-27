@@ -1,6 +1,6 @@
 # GAOS_RELEASE_B: repository kinds, the approved commit, and a pinned auto-merge of an approved spec
 
-Status: proposed, rev 2 (two EGM reviews: design, implementation readiness; triage in §9). Builds on [GAOS_AUTOMATION.md](GAOS_AUTOMATION.md) and [CASE_AUTOMATION.md](CASE_AUTOMATION.md). The GAOS side is GAOS decision D-103 (GAOS v0.65.0, design `docs/designs/release-b-e2e-kinds-merge-unit-tests.md` in the GAOS repository); this document fixes the QA tool's side of that contract.
+Status: implemented by PR #114, rev 2 (two EGM reviews: design, implementation readiness; triage in §9). Approved 2026-11-27 by delegation from the maintainer. Builds on [GAOS_AUTOMATION.md](GAOS_AUTOMATION.md) and [CASE_AUTOMATION.md](CASE_AUTOMATION.md). The GAOS side is GAOS decision D-103 (GAOS v0.65.0, design `docs/designs/release-b-e2e-kinds-merge-unit-tests.md` in the GAOS repository); this document fixes the QA tool's side of that contract.
 
 ## 1. Goal
 
