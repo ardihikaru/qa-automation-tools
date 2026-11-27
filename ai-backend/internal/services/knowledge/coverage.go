@@ -294,8 +294,9 @@ func (s *Syncer) Features(ctx context.Context, pid int, f Filter) (Item, error) 
 		args = append(args, f.Release)
 	}
 	if f.Q != "" {
-		where = and(where, "(t.code LIKE ? OR t.name LIKE ?)")
-		args = append(args, likeArg(f.Q), likeArg(f.Q))
+		w, a := qMatch(TypeFeature, f.Q, "name")
+		where = and(where, w)
+		args = append(args, a...)
 	}
 	items, err := s.list(ctx, pid, TypeFeature, where, args, "")
 	if err != nil {
@@ -334,11 +335,16 @@ func sortItems(items []Item, by string) error {
 }
 
 // Modules lists modules (with part and sub-module counts) and their coverage.
-func (s *Syncer) Modules(ctx context.Context, pid int, includeRemoved bool) ([]Item, error) {
+func (s *Syncer) Modules(ctx context.Context, pid int, includeRemoved bool, q string) ([]Item, error) {
 	if err := s.productExists(ctx, pid); err != nil {
 		return nil, err
 	}
-	items, err := s.list(ctx, pid, TypeModule, activeOnly(includeRemoved), nil, "")
+	where, args := activeOnly(includeRemoved), []any(nil)
+	if q != "" {
+		w, a := qMatch(TypeModule, q, "name")
+		where, args = and(where, w), a
+	}
+	items, err := s.list(ctx, pid, TypeModule, where, args, "")
 	if err != nil {
 		return nil, err
 	}

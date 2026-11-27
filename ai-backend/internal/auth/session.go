@@ -50,10 +50,10 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, erro
 	const q = `
 		SELECT u.id, u.username, COALESCE(u.full_name, ''), COALESCE(u.email, ''),
 		       COALESCE(u.whatsapp, ''), COALESCE(u.odoo_id, ''), u.role,
-		       u.is_lead, u.active, u.must_change_pw, s.expires_at AS s_expires_at,
+		       u.is_lead, u.active, u.must_change_pw, u.language, s.expires_at AS s_expires_at,
 		       ai.expires_at AS ai_expires_at,
 		       t.id, t.username, t.full_name, t.email, t.whatsapp, t.odoo_id,
-		       t.role, t.is_lead, t.active
+		       t.role, t.is_lead, t.active, t.language
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		LEFT JOIN active_impersonations ai
@@ -68,16 +68,17 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, erro
 		tID, tUser, tName, tMail, tWA, tOd sql.NullString
 		tRole                              sql.NullString
 		tLead, tActive                     sql.NullBool
+		tLang                              sql.NullString
 	)
 	// Connections are pinned to UTC (db.NormalizeDSN), so Go timestamps and
 	// UTC_TIMESTAMP() agree; ai.expires_at is compared with Go's now as well.
 	err := db.QueryRowContext(ctx, q, time.Now().UTC(), token).Scan(
 		&u.ID, &u.Username, &u.FullName, &u.Email,
 		&u.WhatsApp, &u.OdooID, &u.Role,
-		&u.IsLead, &u.Active, &u.MustChangePW, &u.SessionExpires,
+		&u.IsLead, &u.Active, &u.MustChangePW, &u.Language, &u.SessionExpires,
 		&aiExpires,
 		&tID, &tUser, &tName, &tMail, &tWA, &tOd,
-		&tRole, &tLead, &tActive,
+		&tRole, &tLead, &tActive, &tLang,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrSessionInvalid
@@ -108,6 +109,7 @@ func ValidateSession(ctx context.Context, db *sql.DB, token string) (*User, erro
 		IsLead:       tLead.Valid && tLead.Bool,
 		Active:       true,
 		MustChangePW: false,
+		Language:     normLang(tLang.String),
 		Impersonator: &Actor{
 			ID:       u.ID,
 			Username: u.Username,
@@ -136,4 +138,12 @@ func RevokeSession(ctx context.Context, db *sql.DB, token string) error {
 func PurgeExpiredSessions(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= UTC_TIMESTAMP()`)
 	return err
+}
+
+// normLang maps anything but "id" to "en".
+func normLang(l string) string {
+	if l == "id" {
+		return "id"
+	}
+	return "en"
 }

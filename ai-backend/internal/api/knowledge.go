@@ -13,6 +13,9 @@ import (
 // SetKnowledge wires the knowledge syncer (PRODUCT_KNOWLEDGE_SYNC.md).
 func (r *Router) SetKnowledge(s *knowledge.Syncer) { r.kb = s }
 
+// SetTranslator wires the knowledge translator (KNOWLEDGE_TRANSLATION.md).
+func (r *Router) SetTranslator(t *knowledge.Translator) { r.kbTranslator = t }
+
 // entityPaths maps the URL segment of an entity collection to its type.
 var entityPaths = map[string]string{
 	"parts":      knowledge.TypePart,
@@ -65,6 +68,8 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, knowledge.ErrExportTooLarge):
 		writeJSONError(w, http.StatusRequestEntityTooLarge, err.Error())
+	case errors.Is(err, knowledge.ErrTranslationDisabled):
+		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, knowledge.ErrUnavailable):
 		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
 	default:
@@ -90,6 +95,11 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 		writeJSONError(w, http.StatusServiceUnavailable, "knowledge base not available")
 		return
 	}
+	lang, ok := knowledgeLang(w, req)
+	if !ok {
+		return
+	}
+	req = req.WithContext(knowledge.WithLang(req.Context(), lang))
 	ctx := req.Context()
 	method := req.Method
 	deny := func() bool {
@@ -141,6 +151,9 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 	case seg == "exports" && len(rest) == 2 && rest[1] == "modules-checklist":
 		// MODULE_CHECKLIST_EXPORT.md. Any authenticated reader; no deny() (the cache write is not a user-data write).
 		r.handleChecklistExport(w, req, pid)
+
+	case seg == "translations" && len(rest) == 2:
+		r.handleTranslations(w, req, pid, rest[1], canWrite)
 
 	case seg == "tree" && len(rest) == 1:
 		if method != http.MethodGet {
@@ -342,7 +355,7 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 		out, err := r.kb.TestCases(ctx, pid, f)
 		respond(w, out, err)
 	case knowledge.TypeEpic:
-		out, err := r.kb.Epics(ctx, pid, f.IncludeRemoved)
+		out, err := r.kb.Epics(ctx, pid, f.IncludeRemoved, f.Q)
 		respond(w, map[string]any{"epics": out}, err)
 	case knowledge.TypeFeature:
 		out, err := r.kb.Features(ctx, pid, f)
@@ -352,7 +365,7 @@ func (r *Router) listKnowledge(w http.ResponseWriter, req *http.Request, pid int
 			IncludeRemoved: f.IncludeRemoved, Page: f.Page, PageSize: f.PageSize})
 		respond(w, out, err)
 	case knowledge.TypeModule:
-		out, err := r.kb.Modules(ctx, pid, f.IncludeRemoved)
+		out, err := r.kb.Modules(ctx, pid, f.IncludeRemoved, f.Q)
 		respond(w, map[string]any{"modules": out}, err)
 	default:
 		// Parts and sub-modules are browsed through the tree.
@@ -377,4 +390,20 @@ func (r *Router) handleAssistants(w http.ResponseWriter, req *http.Request) {
 		Page: intParam(req, "page"), PageSize: intParam(req, "page_size"),
 	})
 	respond(w, out, err)
+}
+
+// knowledgeLang is the effective display language of a request: ?lang=en|id, else the (effective, so
+// impersonated) user's language, else en. An unknown ?lang is a 400.
+func knowledgeLang(w http.ResponseWriter, req *http.Request) (string, bool) {
+	if l := req.URL.Query().Get("lang"); l != "" {
+		if !knowledge.ValidLang(l) {
+			writeJSONError(w, http.StatusBadRequest, "lang must be en or id")
+			return "", false
+		}
+		return l, true
+	}
+	if u, ok := auth.GetUser(req.Context()); ok && knowledge.ValidLang(u.Language) {
+		return u.Language, true
+	}
+	return knowledge.LangEN, true
 }

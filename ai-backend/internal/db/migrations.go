@@ -1098,6 +1098,58 @@ ALTER TABLE kb_features ADD COLUMN dev_period VARCHAR(20) NOT NULL DEFAULT '' AF
   PRIMARY KEY (product_id, case_code, pr_url),
   CONSTRAINT fk_kb_case_pr_links_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// KNOWLEDGE_TRANSLATION.md: the display language of a user (the dashboard toggle).
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'language'
+ALTER TABLE users ADD COLUMN language ENUM('en','id') NOT NULL DEFAULT 'en';`,
+	// KNOWLEDGE_TRANSLATION.md: machine (or typed) Indonesian text per knowledge field. Never written by a
+	// sync. src_hash is the SHA-256 of the trimmed, NFC-normalised English field text it was made from.
+	`CREATE TABLE IF NOT EXISTS kb_translations (
+  product_id INT NOT NULL,
+  entity_type ENUM('part','module','submodule','feature','epic','story','test_case') NOT NULL,
+  code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  field VARCHAR(20) NOT NULL,
+  lang CHAR(2) NOT NULL,
+  text TEXT NOT NULL,
+  src_hash CHAR(64) NOT NULL,
+  source_lang ENUM('en','id','mixed') NOT NULL DEFAULT 'en',
+  state ENUM('machine','original') NOT NULL DEFAULT 'machine',
+  model VARCHAR(64) NOT NULL DEFAULT '',
+  translated_at DATETIME NOT NULL,
+  PRIMARY KEY (product_id, entity_type, code, field, lang),
+  CONSTRAINT fk_kb_translations_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	`CREATE TABLE IF NOT EXISTS kb_translation_runs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  trigger_kind ENUM('sync','manual','draft') NOT NULL,
+  status ENUM('running','succeeded','failed') NOT NULL DEFAULT 'running',
+  total INT NOT NULL DEFAULT 0,
+  done INT NOT NULL DEFAULT 0,
+  failed INT NOT NULL DEFAULT 0,
+  input_tokens INT NOT NULL DEFAULT 0,
+  output_tokens INT NOT NULL DEFAULT 0,
+  cost_usd DECIMAL(10,4) NOT NULL DEFAULT 0,
+  started_at DATETIME NOT NULL,
+  finished_at DATETIME NULL,
+  error VARCHAR(400) NOT NULL DEFAULT '',
+  INDEX idx_kb_translation_runs_product (product_id, id),
+  CONSTRAINT fk_kb_translation_runs_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// Fields whose translation was rejected or failed; retried with backoff (1 h, 6 h, 24 h, give up at 5).
+	`CREATE TABLE IF NOT EXISTS kb_translation_failures (
+  product_id INT NOT NULL,
+  entity_type ENUM('part','module','submodule','feature','epic','story','test_case') NOT NULL,
+  code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  field VARCHAR(20) NOT NULL,
+  attempts TINYINT NOT NULL DEFAULT 1,
+  next_try_at DATETIME NOT NULL,
+  last_error VARCHAR(400) NOT NULL DEFAULT '',
+  PRIMARY KEY (product_id, entity_type, code, field),
+  CONSTRAINT fk_kb_translation_failures_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
+	// The `translation` conversation kind is longer than the original VARCHAR(8).
+	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ai_conversations' AND column_name = 'kind' AND character_maximum_length >= 16
+ALTER TABLE ai_conversations MODIFY kind VARCHAR(16) NOT NULL;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

@@ -17,7 +17,7 @@ func lookupForLogin(r *http.Request, db *sql.DB, username string) (*auth.User, s
 	const q = `
 		SELECT id, username, COALESCE(full_name, ''), COALESCE(email, ''),
 		       COALESCE(whatsapp, ''), COALESCE(odoo_id, ''), role,
-		       is_lead, active, must_change_pw, password_hash
+		       is_lead, active, must_change_pw, language, password_hash
 		FROM users
 		WHERE username = ? AND active = 1
 		LIMIT 1
@@ -27,7 +27,7 @@ func lookupForLogin(r *http.Request, db *sql.DB, username string) (*auth.User, s
 	err := db.QueryRowContext(r.Context(), q, username).Scan(
 		&u.ID, &u.Username, &u.FullName, &u.Email,
 		&u.WhatsApp, &u.OdooID, &u.Role,
-		&u.IsLead, &u.Active, &u.MustChangePW, &hash,
+		&u.IsLead, &u.Active, &u.MustChangePW, &u.Language, &hash,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, "", nil

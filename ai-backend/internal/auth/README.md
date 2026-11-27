@@ -39,6 +39,7 @@ wires them up only when the database connects.
 
 ## Side Effects
 
+- `User.Language` (`en`\|`id`, `users.language`, default `en`) is read by `ValidateSession` (the impersonation target's, while impersonating) and by login; `PUT /api/auth/language` writes it (KNOWLEDGE_TRANSLATION.md).
 - MySQL `sessions` table: `INSERT` (`CreateSession`), `SELECT ... JOIN users` plus `LEFT JOIN active_impersonations`/`users` (`ValidateSession`), `DELETE` by token (`RevokeSession`), and `DELETE` of expired rows (`PurgeExpiredSessions`).
 - MySQL `active_impersonations` and `impersonation_audit`: `StartImpersonation` and `EndImpersonation`, each in one transaction with `SELECT ... FOR UPDATE` on the active row.
 - Log lines: `auth: session query failed` on SQL errors in `ValidateSession`, and `impersonated-write` from `Require`.

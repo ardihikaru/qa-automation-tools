@@ -43,6 +43,8 @@ The result is cached in a package-level singleton. Consumers include
 | `AI_MANAGER_PROVIDER` | `Backend.AI.ManagerProvider` | `claude-v3` |
 | `AI_MANAGER_NO_FALLBACK` | `Backend.AI.ManagerNoFallback` | `true` |
 | `AI_MANAGER_MODEL` | `Backend.AI.ManagerModel` | empty |
+| `AI_TRANSLATION_MODEL` | `Backend.AI.TranslationModel` | `claude-haiku-5-5`; set but empty disables knowledge translation |
+| `TRANSLATE_CONCURRENCY` | `Backend.AI.TranslateConcurrency` | `1` (clamped to 1..2) |
 | `PLAYWRIGHT_EXECUTOR_URL` | `Backend.Executor.URL` | empty (`case_run` jobs fail). Prod: `http://10.8.0.9:8141` |
 | `PLAYWRIGHT_EXECUTOR_TOKEN` | `Backend.Executor.Token` | empty (secret) |
 | `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | `Backend.Executor.TimeoutMinutes` | `30` |

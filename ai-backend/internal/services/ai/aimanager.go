@@ -96,10 +96,14 @@ func (p *aiManagerProvider) Chat(ctx context.Context, messages []models.Message,
 	if opts.Caller != "" {
 		caller = opts.Caller
 	}
+	model := p.cfg.Model
+	if opts.Model != "" {
+		model = opts.Model
+	}
 	body, err := json.Marshal(aiManagerChatRequest{
 		Messages:    messages,
 		Provider:    p.cfg.Provider,
-		Model:       p.cfg.Model,
+		Model:       model,
 		Temperature: opts.Temperature,
 		MaxTokens:   opts.MaxTokens,
 		Caller:      caller,

@@ -200,6 +200,12 @@ type AIConfig struct {
 	// ManagerNoFallback pins every call to ManagerProvider (no cross-provider fallback).
 	ManagerNoFallback bool `yaml:"-"`
 
+	// TranslationModel is AI_TRANSLATION_MODEL: the claude-v3 model used for knowledge translation
+	// (KNOWLEDGE_TRANSLATION.md). Empty disables translation. TranslateConcurrency is
+	// TRANSLATE_CONCURRENCY: products translated in parallel (1 or 2).
+	TranslationModel     string `yaml:"-"`
+	TranslateConcurrency int    `yaml:"-"`
+
 	// MiniMax direct (fallback when Provider == "minimax").
 	APIKey       string `yaml:"api_key"`
 	Model        string `yaml:"model"`
@@ -408,10 +414,13 @@ func LoadConfig() *Config {
 				ManagerProvider:   getEnvString("AI_MANAGER_PROVIDER", "claude-v3"),
 				ManagerModel:      getEnvString("AI_MANAGER_MODEL", ""),
 				ManagerNoFallback: getEnvBool("AI_MANAGER_NO_FALLBACK", true),
-				APIKey:            getEnvString("MINIMAX_API_KEY", ""),
-				Model:             getEnvString("AI_MODEL", "MiniMax-M2.5"),
-				BaseURL:           getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
-				ChatEndpoint:      getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
+				// Unset = default model; set but empty = translation disabled.
+				TranslationModel:     getEnvStringAllowEmpty("AI_TRANSLATION_MODEL", "claude-haiku-5-5"),
+				TranslateConcurrency: clampInt(getEnvInt("TRANSLATE_CONCURRENCY", 1), 1, 2),
+				APIKey:               getEnvString("MINIMAX_API_KEY", ""),
+				Model:                getEnvString("AI_MODEL", "MiniMax-M2.5"),
+				BaseURL:              getEnvString("AI_BASE_URL", "https://api.minimax.io/v1"),
+				ChatEndpoint:         getEnvString("AI_CHAT_ENDPOINT", "/chat/completions"),
 			},
 			Security: SecurityConfig{
 				APISecretKey: getEnvString("API_SECRET_KEY", ""),
@@ -671,6 +680,24 @@ func getEnvString(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvStringAllowEmpty is getEnvString where an explicitly empty value is kept.
+func getEnvStringAllowEmpty(key, defaultValue string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return strings.TrimSpace(value)
+	}
+	return defaultValue
+}
+
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func getEnvInt(key string, defaultValue int) int {

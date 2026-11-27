@@ -170,6 +170,22 @@ func main() {
 			}
 			log.Printf("   Results ingest: enabled=%v", router.ResultsIngestEnabled())
 		}
+		// Knowledge translation EN -> ID (KNOWLEDGE_TRANSLATION.md): a background run after each sync, only
+		// for new or changed text. An empty AI_TRANSLATION_MODEL disables it (status endpoint still answers).
+		if database != nil {
+			tr := knowledge.NewTranslator(serverCtx, syncer, aiService, knowledge.TranslatorConfig{
+				Model: cfg.Backend.AI.TranslationModel, Concurrency: cfg.Backend.AI.TranslateConcurrency, Pause: time.Second})
+			router.SetTranslator(tr)
+			prev := syncer.OnSucceeded
+			syncer.OnSucceeded = func(pid int) {
+				if prev != nil {
+					prev(pid)
+				}
+				tr.Trigger(pid)
+			}
+			syncer.FailOrphanedTranslationRuns(context.Background())
+			log.Printf("   Knowledge translation: enabled=%v model=%q", tr.Enabled(), tr.Model())
+		}
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
 	}

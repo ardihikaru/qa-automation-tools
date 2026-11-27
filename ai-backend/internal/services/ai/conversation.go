@@ -16,6 +16,8 @@ const (
 	ConvJob  = "job"
 	ConvSync = "sync"
 	ConvCall = "call"
+	// ConvTranslation groups the calls of one knowledge translation run (KNOWLEDGE_TRANSLATION.md).
+	ConvTranslation = "translation"
 )
 
 // ConvRef names the work a call belongs to: a case_create job, a knowledge sync, or a call of its own.

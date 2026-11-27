@@ -16,6 +16,9 @@ const (
 type ChatOpts struct {
 	Temperature float64
 	MaxTokens   int
+	// Model overrides the configured upstream model for this call (ai-manager only; the provider
+	// stays pinned). Empty = the provider's configured model.
+	Model string
 	// Feature labels the call for the cost ledger (e.g. "classify-issue"); Caller is sent to
 	// ai-manager for its own usage attribution. Both are optional.
 	Feature string
