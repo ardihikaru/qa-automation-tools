@@ -187,6 +187,10 @@ type caseEnqueueIn struct {
 	TriggeredBy string
 	BatchID     string
 	BatchSeq    int
+	// GAOS_RELEASE_B.md §3.2: the repository kind GAOS sent, and whether it asked for a pinned
+	// auto-merge of the approved spec (only GAOS's route sets either).
+	Kind      string
+	AutoMerge bool
 }
 
 // caseErr is a refusal, typed so a non-HTTP caller (the epic driver) can act on it.
@@ -275,6 +279,12 @@ func (r *Router) enqueueCaseAction(ctx context.Context, d *db.DB, in caseEnqueue
 	if in.BatchID != "" {
 		payload["batch_id"] = in.BatchID
 		payload["batch_seq"] = in.BatchSeq
+	}
+	if in.Kind != "" {
+		payload["kind"] = in.Kind
+	}
+	if action != "run" {
+		payload["auto_merge_requested"] = in.AutoMerge
 	}
 	r.caseAuto.mu.Lock()
 	defer r.caseAuto.mu.Unlock()
@@ -597,6 +607,7 @@ func (r *Router) caseJobFor(ctx context.Context, d *db.DB, jobID string, payload
 		Case:   caseauto.Case{Code: code, Scenario: c.Scenario, StoryCode: c.StoryCode, StoryText: storyText.String, Features: features},
 	}
 	job.GaosProductID = r.gaosProductFor(ctx, d, pid)
+	job.Kind, _ = payload["kind"].(string)
 	if o := r.dashboardOrigin; o != "" && o != "*" {
 		job.JobURL = strings.TrimRight(o, "/") + "/jobs/" + jobID
 	}
@@ -628,7 +639,7 @@ func (r *Router) newMachine(d *db.DB, jobID string, pid int, repo *automationRep
 	if r.gaos.Configured() {
 		inbox = r.gaos
 	}
-	return caseauto.NewMachine(
+	m := caseauto.NewMachine(
 		&poolRepo{r: r, d: d, repo: repo},
 		r.aiService,
 		&executorRunner{r: r, jobID: jobID, pid: pid},
@@ -638,6 +649,10 @@ func (r *Router) newMachine(d *db.DB, jobID string, pid int, repo *automationRep
 		inbox,
 		r.caseAuto.redact,
 	)
+	if r.repoPool != nil {
+		m.AutoMerge = r.newSpecAutoMerger(d, jobID, repo.ID) // GAOS_RELEASE_B.md §4
+	}
+	return m
 }
 
 const caseCreateMaxDuration = 76 * time.Hour // the 72 h approval plus working time
@@ -843,6 +858,11 @@ func (p *poolRepo) Push(ctx context.Context, ws caseauto.Workspace) error {
 		return err
 	}
 	return p.r.repoPool.Push(ctx, ws.Dir, ws.Branch)
+}
+
+// HeadSHA implements caseauto.HeadReader (GAOS_RELEASE_B.md §3.3).
+func (p *poolRepo) HeadSHA(ctx context.Context, ws caseauto.Workspace) (string, error) {
+	return p.r.repoPool.HeadSHA(ctx, ws.Dir)
 }
 
 func (p *poolRepo) OpenPR(ctx context.Context, ws caseauto.Workspace, title, body string) (string, error) {

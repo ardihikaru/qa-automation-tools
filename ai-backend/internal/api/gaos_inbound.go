@@ -50,7 +50,8 @@ var (
 // never called.
 func IsGAOSInboundPath(path string) bool {
 	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog" || path == gaosInboxAnswerPath ||
-		path == gaosAutomationPath || strings.HasPrefix(path, gaosJobsPrefix) || path == gaosCaseProposalsPath
+		path == gaosAutomationPath || strings.HasPrefix(path, gaosJobsPrefix) || path == gaosCaseProposalsPath ||
+		path == gaosCapabilitiesPath
 }
 
 // SetGAOSInboundToken enables the inbound routes. Empty = disabled (503, fail-closed).
@@ -90,6 +91,12 @@ func (r *Router) serveGAOSInbound(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		r.gaosCaseProposals(w, req)
+	case req.URL.Path == gaosCapabilitiesPath:
+		if req.Method != http.MethodGet {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosCapabilities(w, req)
 	case req.URL.Path == gaosAutomationPath:
 		if req.Method != http.MethodPost {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")

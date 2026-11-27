@@ -1,6 +1,6 @@
 # GAOS_AUTOMATION: GAOS starts a case automation and watches the job
 
-Status: implemented by PR #83. Builds on [CASE_AUTOMATION.md](CASE_AUTOMATION.md) and [GAOS_INBOUND.md](GAOS_INBOUND.md); the consumer-facing text is in [GAOS_COLLABORATION.md](../GAOS_COLLABORATION.md).
+Status: implemented by PR #83. Extended by [GAOS_RELEASE_B.md](GAOS_RELEASE_B.md) (`kind`, `auto_merge`, capabilities, `pushed_sha`). Builds on [CASE_AUTOMATION.md](CASE_AUTOMATION.md) and [GAOS_INBOUND.md](GAOS_INBOUND.md); the consumer-facing text is in [GAOS_COLLABORATION.md](../GAOS_COLLABORATION.md).
 
 ## 1. Goal
 
