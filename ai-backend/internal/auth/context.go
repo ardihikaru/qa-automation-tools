@@ -21,6 +21,8 @@ type User struct {
 	IsLead       bool   `json:"isLead"`
 	Active       bool   `json:"active"`
 	MustChangePW bool   `json:"mustChangePassword"`
+	// Language is the display language, "en" or "id" (KNOWLEDGE_TRANSLATION.md).
+	Language string `json:"language"`
 
 	// Impersonator is set only while this session acts as another user.
 	Impersonator *Actor `json:"impersonator,omitempty"`

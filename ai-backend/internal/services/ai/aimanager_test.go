@@ -196,3 +196,27 @@ func TestAIManagerHealthUpstreamDisabled(t *testing.T) {
 		t.Errorf("health = %q", got)
 	}
 }
+
+func TestAIManagerModelOverride(t *testing.T) {
+	for _, tc := range []struct{ cfgModel, optModel, want string }{
+		{"", "", ""},
+		{"cfg-model", "", "cfg-model"},
+		{"cfg-model", "claude-haiku-5-5", "claude-haiku-5-5"},
+		{"", "claude-haiku-5-5", "claude-haiku-5-5"},
+	} {
+		var got aiManagerChatRequest
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			_, _ = w.Write([]byte(`{"text":"ok","provider":"claude-v3"}`))
+		}))
+		p := NewAIManagerProvider(AIManagerConfig{URL: srv.URL, LoginID: "qa", SecretKey: "s", Provider: "claude-v3", Model: tc.cfgModel, NoFallback: true, Timeout: 5 * time.Second})
+		_, err := p.Chat(context.Background(), []models.Message{{Role: "user", Content: "hi"}}, ChatOpts{Model: tc.optModel})
+		srv.Close()
+		if err != nil {
+			t.Fatalf("%+v: %v", tc, err)
+		}
+		if got.Model != tc.want || got.Provider != "claude-v3" || !got.NoFallback {
+			t.Errorf("%+v: sent model=%q provider=%q no_fallback=%v", tc, got.Model, got.Provider, got.NoFallback)
+		}
+	}
+}

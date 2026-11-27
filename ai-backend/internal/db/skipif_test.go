@@ -44,9 +44,11 @@ func TestGuardedMigrationsAreKnown(t *testing.T) {
 		"ALTER TABLE skills ADD COLUMN product_id",
 		"ADD COLUMN gaos_integrated",
 		"ADD COLUMN gaos_push_requested_at",
-		"ADD COLUMN answer_source", // HISTORY_ANSWER.md
-		"ADD COLUMN prod_since",    // MODULE_CHECKLIST_EXPORT.md (PROD scope)
-		"ADD COLUMN dev_period",    // MODULE_CHECKLIST_EXPORT.md (Amendment 2)
+		"ADD COLUMN answer_source",                             // HISTORY_ANSWER.md
+		"ADD COLUMN prod_since",                                // MODULE_CHECKLIST_EXPORT.md (PROD scope)
+		"ADD COLUMN dev_period",                                // MODULE_CHECKLIST_EXPORT.md (Amendment 2)
+		"ALTER TABLE users ADD COLUMN language",                // KNOWLEDGE_TRANSLATION.md
+		"ALTER TABLE ai_conversations MODIFY kind VARCHAR(16)", // KNOWLEDGE_TRANSLATION.md (translation kind)
 	}
 	var got []string
 	for _, m := range migrations {

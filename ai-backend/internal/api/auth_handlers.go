@@ -159,3 +159,42 @@ func (h *AuthHandlers) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// SetLanguage is PUT /api/auth/language {"language":"en"|"id"}: sets the caller's own display
+// language and answers {"language": "..."}. Refused while impersonating (it would change the target's account).
+func (h *AuthHandlers) SetLanguage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		writeJSON(w, http.StatusMethodNotAllowed, errorPayload("method not allowed"))
+		return
+	}
+	u, ok := auth.GetUser(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorPayload("unauthorized"))
+		return
+	}
+	if !auth.RequireRealUser(u) {
+		writeJSON(w, http.StatusForbidden, errorPayload("not allowed while impersonating"))
+		return
+	}
+	if !isJSON(r) {
+		writeJSON(w, http.StatusUnsupportedMediaType, errorPayload("content type must be application/json"))
+		return
+	}
+	var body struct {
+		Language string `json:"language"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorPayload("invalid request body"))
+		return
+	}
+	if body.Language != "en" && body.Language != "id" {
+		writeJSON(w, http.StatusBadRequest, errorPayload("language must be en or id"))
+		return
+	}
+	if _, err := h.DB.ExecContext(r.Context(), `UPDATE users SET language = ? WHERE id = ?`, body.Language, u.ID); err != nil {
+		log.Printf("auth: set language: %v", err)
+		writeJSON(w, http.StatusInternalServerError, errorPayload("could not save language"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"language": body.Language})
+}

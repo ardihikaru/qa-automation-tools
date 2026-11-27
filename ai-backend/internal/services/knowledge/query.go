@@ -138,6 +138,9 @@ func (s *Syncer) decorate(ctx context.Context, pid int, et string, items []Item)
 			it["automated"] = it["automated"] == int64(1)
 		}
 	}
+	if err := s.attachI18N(ctx, pid, et, items, ownKey); err != nil {
+		return err
+	}
 	if et == TypeTestCase {
 		return s.attachVerification(ctx, pid, items)
 	}
@@ -375,6 +378,9 @@ func (s *Syncer) Tree(ctx context.Context, pid int, includeRemoved bool) (Item, 
 			o[k] = it[k]
 		}
 		o["has_annotation"] = it["annotation"] != nil
+		if v, ok := it["i18n"]; ok {
+			o["i18n"] = v
+		}
 		return o
 	}
 	featBySub := map[string][]Item{}
@@ -515,8 +521,9 @@ func (s *Syncer) Stories(ctx context.Context, pid int, f Filter) (Item, error) {
 		args = append(args, f.Feature)
 	}
 	if f.Q != "" {
-		where = and(where, "(t.code LIKE ? OR t.text LIKE ?)")
-		args = append(args, likeArg(f.Q), likeArg(f.Q))
+		w, a := qMatch(TypeStory, f.Q, "text")
+		where = and(where, w)
+		args = append(args, a...)
 	}
 	if w, a := featureScope("t.code", f); w != "" {
 		where = and(where, w)
@@ -593,8 +600,9 @@ func (s *Syncer) TestCases(ctx context.Context, pid int, f Filter) (Item, error)
 		args = append(args, f.Feature)
 	}
 	if f.Q != "" {
-		where = and(where, "(t.code LIKE ? OR t.scenario LIKE ?)")
-		args = append(args, likeArg(f.Q), likeArg(f.Q))
+		w, a := qMatch(TypeTestCase, f.Q, "scenario")
+		where = and(where, w)
+		args = append(args, a...)
 	}
 	if w, a := featureScope("t.story_code", f); w != "" {
 		where = and(where, w)
@@ -604,11 +612,16 @@ func (s *Syncer) TestCases(ctx context.Context, pid int, f Filter) (Item, error)
 }
 
 // Epics lists epics with case counts per status.
-func (s *Syncer) Epics(ctx context.Context, pid int, includeRemoved bool) ([]Item, error) {
+func (s *Syncer) Epics(ctx context.Context, pid int, includeRemoved bool, q string) ([]Item, error) {
 	if err := s.productExists(ctx, pid); err != nil {
 		return nil, err
 	}
-	items, err := s.list(ctx, pid, TypeEpic, activeOnly(includeRemoved), nil, "")
+	where, args := activeOnly(includeRemoved), []any(nil)
+	if q != "" {
+		w, a := qMatch(TypeEpic, q, "title", "area")
+		where, args = and(where, w), a
+	}
+	items, err := s.list(ctx, pid, TypeEpic, where, args, "")
 	if err != nil {
 		return nil, err
 	}
@@ -683,7 +696,18 @@ func (s *Syncer) refs(ctx context.Context, pid int, et, where string, args ...an
 	if err != nil {
 		return nil, err
 	}
-	return scanItems(rs)
+	items, err := scanItems(rs)
+	if err != nil {
+		return nil, err
+	}
+	// The label is the item's `name`; only that field gets an i18n text.
+	err = s.attachI18N(ctx, pid, et, items, func(f string) string {
+		if f == label {
+			return "name"
+		}
+		return ""
+	})
+	return items, err
 }
 
 // Entity returns one entity with its relations.

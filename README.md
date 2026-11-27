@@ -415,6 +415,7 @@ Loaded by `ai-backend/internal/config/config.go:LoadConfig` and `cmd/server/main
 | `AI_MANAGER_LOGIN_ID`, `AI_MANAGER_SECRET_KEY` | ai-manager HTTP Basic credentials | — |
 | `AI_MANAGER_PROVIDER`, `AI_MANAGER_NO_FALLBACK`, `AI_MANAGER_MODEL` | Upstream pinned inside ai-manager (Claude CLI REST on app-host `10.8.0.9:8105`) | `claude-v3`, `true`, empty (`claude-opus-5`) |
 | `AI_TIMEOUT_SECONDS` | LLM call timeout | `180` |
+| `AI_TRANSLATION_MODEL`, `TRANSLATE_CONCURRENCY` | Model for the EN to ID knowledge translation (sent per call through ai-manager, still pinned to claude-v3; set but empty disables it) and products translated in parallel | `claude-haiku-5-5`, `1` |
 | `MINIMAX_API_KEY`, `AI_MODEL`, `AI_BASE_URL`, `AI_CHAT_ENDPOINT` | **Dormant** MiniMax settings (unused) | `MiniMax-M2.5`, `https://api.minimax.io/v1`, `/chat/completions` |
 | `PLAYWRIGHT_EXECUTOR_URL`, `PLAYWRIGHT_EXECUTOR_TOKEN`, `PLAYWRIGHT_EXECUTOR_TIMEOUT_MINUTES` | playwright-executor endpoint, bearer token, max wait per job | empty (case_run fails), —, `30` |
 | `GAOS_API_URL`, `GAOS_API_TOKEN` | GAOS REST API base URL (https, or http to loopback/`10.8.0.0/24` only) and the QA bearer (`gaos_...`, secret); both empty = the GAOS integration is off ([GAOS_INTEGRATION.md](docs/designs/GAOS_INTEGRATION.md); how the two systems work together, both ways: [GAOS_COLLABORATION.md](docs/GAOS_COLLABORATION.md)) | empty, — |

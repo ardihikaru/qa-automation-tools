@@ -44,6 +44,8 @@ type Router struct {
 	repoPool *repopool.Pool
 	// knowledge runs and serves product knowledge syncs (nil without a DB).
 	kb *knowledge.Syncer
+	// kbTranslator fills the Indonesian knowledge texts in the background (nil without a DB).
+	kbTranslator *knowledge.Translator
 	// exports serves the module checklist export from the object store (nil = not configured, 503).
 	exports *knowledge.ExportCache
 	// gaos pushes flagged products' test cases to GAOS (nil or unconfigured = off). See products_gaos.go.
@@ -700,6 +702,9 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 			return
 		case "/api/auth/me":
 			r.authHandlers.Me(w, req)
+			return
+		case "/api/auth/language":
+			r.authHandlers.SetLanguage(w, req)
 			return
 		case "/api/auth/change-password":
 			r.authHandlers.ChangePassword(w, req)
