@@ -35,7 +35,8 @@ func (r *Router) FailOrphanedJobs(ctx context.Context) {
 		return
 	}
 	// case_run/case_create are left for ResumeOrphanedJobs when the feature is wired;
-	// policy_propose (LEARNING_LOOP.md) always goes to ResumeProposals.
+	// policy_propose (LEARNING_LOOP.md) always goes to ResumeProposals and drafts_publish to
+	// ResumeDraftPublishes (knowledge_publish_resume.go).
 	skipCase := ""
 	if r.canResumeCaseJobs() {
 		skipCase = " AND type NOT IN ('case_run', 'case_create')"
@@ -43,14 +44,14 @@ func (r *Router) FailOrphanedJobs(ctx context.Context) {
 	res, err := db.Exec(ctx, `
 		UPDATE job_runs
 		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
-		WHERE status IN ('queued', 'running') AND type <> 'policy_propose'`+skipCase+`
+		WHERE status IN ('queued', 'running') AND type NOT IN ('policy_propose', 'drafts_publish')`+skipCase+`
 		AND NOT (type = 'case_create' AND EXISTS (SELECT 1 FROM case_approvals a WHERE a.job_id = job_runs.id AND a.status = 'open'))`)
 	if err != nil {
 		// case_approvals may not exist yet (migration pending): fall back to the plain statement.
 		res, err = db.Exec(ctx, `
 		UPDATE job_runs
 		SET status = 'failed', error = 'backend restarted while the job was in progress', completed_at = UTC_TIMESTAMP()
-		WHERE status IN ('queued', 'running') AND type <> 'policy_propose'`+skipCase)
+		WHERE status IN ('queued', 'running') AND type NOT IN ('policy_propose', 'drafts_publish')`+skipCase)
 	}
 	if err != nil {
 		log.Printf("failed to reconcile orphaned jobs: %v", err)

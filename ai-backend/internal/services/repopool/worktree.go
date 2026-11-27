@@ -303,3 +303,64 @@ func ParsePRURL(out string) (string, error) {
 	}
 	return all[len(all)-1], nil
 }
+
+// RemoteHead returns the commit SHA of origin/<branch> in the clone at rootDir (after FetchOrigin).
+func (p *Pool) RemoteHead(ctx context.Context, rootDir, branch string) (string, error) {
+	if err := ValidateBranch(branch); err != nil {
+		return "", err
+	}
+	abs, err := p.ResolveDir(rootDir)
+	if err != nil {
+		return "", err
+	}
+	if !isGitRepo(abs) {
+		return "", inputErr("the repo is not cloned yet")
+	}
+	out, err := run(ctx, abs, []string{abs}, 10*time.Second, "git", "rev-parse", "--verify", "refs/remotes/origin/"+branch+"^{commit}")
+	if err != nil {
+		return "", err
+	}
+	sha := strings.TrimSpace(out)
+	if !shaHexRe.MatchString(sha) {
+		return "", fmt.Errorf("git rev-parse: unexpected output")
+	}
+	return sha, nil
+}
+
+// RemoveWorktree deletes the worktree of an automation branch and its local branch (a finished or
+// failed job cleaning up). Both are ours by the qa-auto/ prefix; the remote branch is not touched.
+// Missing pieces are not an error.
+func (p *Pool) RemoveWorktree(ctx context.Context, rootDir, branch string) error {
+	if err := validAutoBranch(branch); err != nil {
+		return err
+	}
+	abs, err := p.ResolveDir(rootDir)
+	if err != nil {
+		return err
+	}
+	wt, err := p.ResolveWorktreeDir(rootDir, Slug(branch))
+	if err != nil {
+		return err
+	}
+	unlock, err := p.lockWait(ctx, abs, 2*time.Minute)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !isGitRepo(abs) {
+		return nil
+	}
+	sd := []string{abs, wt}
+	if _, err := os.Lstat(wt); err == nil {
+		if _, err := run(ctx, abs, sd, 30*time.Second, "git", "worktree", "remove", "--force", wt); err != nil {
+			return err
+		}
+	}
+	_, _ = run(ctx, abs, sd, 20*time.Second, "git", "worktree", "prune")
+	if _, err := run(ctx, abs, sd, 10*time.Second, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+		if _, err := run(ctx, abs, sd, 20*time.Second, "git", "branch", "-D", branch); err != nil {
+			return err
+		}
+	}
+	return nil
+}

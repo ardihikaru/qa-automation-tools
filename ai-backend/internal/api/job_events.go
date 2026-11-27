@@ -187,6 +187,17 @@ func (r *Router) handleJobEvents(w http.ResponseWriter, req *http.Request, jobID
 			out["skip_reason"] = sr
 		}
 	}
+	if job.Type == JobTypeDraftsPublish {
+		// KNOWLEDGE_TRANSLATION.md: the page shows "was L-..." from the draft to repo code mapping.
+		if v, ok := p["epic_code"].(string); ok {
+			out["epic_code"] = v
+		}
+		if r.kb != nil {
+			if codes, err := r.kb.JobCodes(ctx, jobID); err == nil {
+				out["codes"] = codes
+			}
+		}
+	}
 	if a, err := (&caseauto.ApprovalStore{DB: d}).Latest(ctx, jobID); err == nil && a != nil {
 		out["approval"] = map[string]any{"status": a.Status, "gaos_created": a.GaosCreated, "answer_text": a.Text, "answered_by": a.AnsweredBy, "external_id": a.ExternalID,
 			"source": a.Source, "actor": a.Actor, "answered_at": a.AnsweredAt}

@@ -41,6 +41,8 @@ type Syncer struct {
 
 	syncTimeout time.Duration
 	aiTimeout   time.Duration
+
+	drafts *Translator // SaveDraft's ID to EN conversion (SetDraftTranslator)
 }
 
 // NewSyncer returns nil without a DB. A nil pool leaves ReadTree nil: syncs then fail with ErrUnavailable.
