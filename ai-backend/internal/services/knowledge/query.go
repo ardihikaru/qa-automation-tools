@@ -896,6 +896,8 @@ func (s *Syncer) DeleteAnnotation(ctx context.Context, pid int, et, code string)
 
 // StoryBody is a local draft story.
 type StoryBody struct {
+	// Lang is the language the user typed the text in ("en" or "id"; a hint, KNOWLEDGE_TRANSLATION.md).
+	Lang         string   `json:"lang"`
 	Code         string   `json:"code"`
 	EpicCode     string   `json:"epic_code"`
 	Text         string   `json:"text"`
@@ -904,6 +906,7 @@ type StoryBody struct {
 
 // TestCaseBody is a local draft test case.
 type TestCaseBody struct {
+	Lang           string   `json:"lang"` // as StoryBody.Lang
 	Code           string   `json:"code"`
 	EpicCode       string   `json:"epic_code"`
 	StoryCode      string   `json:"story_code"`
@@ -1065,7 +1068,16 @@ func (s *Syncer) SaveDraft(ctx context.Context, pid int, et, pathCode, userID st
 		return nil, err
 	}
 	insert := pathCode == ""
-	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
+	if !insert {
+		if err := s.checkNotPublishing(ctx, pid, et, pathCode); err != nil {
+			return nil, err
+		}
+	}
+	orig, err := s.convertDraft(ctx, pid, raw)
+	if err != nil {
+		return nil, err
+	}
+	err = s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		switch b := raw.(type) {
 		case *StoryBody:
 			if insert {
@@ -1082,7 +1094,13 @@ func (s *Syncer) SaveDraft(ctx context.Context, pid int, et, pathCode, userID st
 				return err
 			}
 			pathCode = b.Code
-			return s.writeStory(ctx, tx, pid, *b, userID, insert)
+			if err := s.writeStory(ctx, tx, pid, *b, userID, insert); err != nil {
+				return err
+			}
+			if orig != nil {
+				return s.storeDraftOriginal(ctx, tx, pid, et, b.Code, b.Text, orig)
+			}
+			return nil
 		case *TestCaseBody:
 			if insert {
 				if !LocalCodeRe.MatchString(b.Code) {
@@ -1098,7 +1116,13 @@ func (s *Syncer) SaveDraft(ctx context.Context, pid int, et, pathCode, userID st
 				return err
 			}
 			pathCode = b.Code
-			return s.writeCase(ctx, tx, pid, *b, userID, insert)
+			if err := s.writeCase(ctx, tx, pid, *b, userID, insert); err != nil {
+				return err
+			}
+			if orig != nil {
+				return s.storeDraftOriginal(ctx, tx, pid, et, b.Code, b.Scenario, orig)
+			}
+			return nil
 		}
 		return badInput("unsupported entity")
 	})
@@ -1132,6 +1156,9 @@ func (s *Syncer) DeleteDraft(ctx context.Context, pid int, et, code string) erro
 	if err := s.productExists(ctx, pid); err != nil {
 		return err
 	}
+	if err := s.checkNotPublishing(ctx, pid, et, code); err != nil {
+		return err
+	}
 	err := s.DB.WithTx(ctx, func(tx *sql.Tx) error {
 		if err := s.checkLocal(ctx, tx, pid, et, code); err != nil {
 			return err
@@ -1151,7 +1178,10 @@ func (s *Syncer) DeleteDraft(ctx context.Context, pid int, et, code string) erro
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE product_id = ? AND code = ? AND origin = 'local'", tables[et].name), pid, code); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM kb_annotations WHERE product_id = ? AND entity_type = ? AND entity_code = ?`, pid, et, code)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM kb_annotations WHERE product_id = ? AND entity_type = ? AND entity_code = ?`, pid, et, code); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM kb_translations WHERE product_id = ? AND entity_type = ? AND code = ?`, pid, et, code)
 		return err
 	})
 	var c *ConflictError

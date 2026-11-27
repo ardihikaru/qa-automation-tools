@@ -46,6 +46,10 @@ type Router struct {
 	kb *knowledge.Syncer
 	// kbTranslator fills the Indonesian knowledge texts in the background (nil without a DB).
 	kbTranslator *knowledge.Translator
+	// pubMu serialises "is a publish active for the product?" and queueing one; pubGit replaces the
+	// repo pool as the git side of a draft publish in tests (knowledge_publish.go).
+	pubMu  sync.Mutex
+	pubGit publishGit
 	// exports serves the module checklist export from the object store (nil = not configured, 503).
 	exports *knowledge.ExportCache
 	// gaos pushes flagged products' test cases to GAOS (nil or unconfigured = off). See products_gaos.go.
@@ -254,6 +258,10 @@ func (r *Router) enqueueJobID(id, jobType string, payload map[string]interface{}
 
 	if jobType == "case_create" {
 		go r.runCaseCreate(job.ID, payload, false)
+		return job, nil
+	}
+	if jobType == JobTypeDraftsPublish {
+		go r.runDraftsPublish(job.ID, payload)
 		return job, nil
 	}
 	if jobType == learnloop.JobType {

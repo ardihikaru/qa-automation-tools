@@ -1150,6 +1150,29 @@ ALTER TABLE users ADD COLUMN language ENUM('en','id') NOT NULL DEFAULT 'en';`,
 	// The `translation` conversation kind is longer than the original VARCHAR(8).
 	`-- skip-if: SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ai_conversations' AND column_name = 'kind' AND character_maximum_length >= 16
 ALTER TABLE ai_conversations MODIFY kind VARCHAR(16) NOT NULL;`,
+	// KNOWLEDGE_TRANSLATION.md: drafts published to the automation repo as a pull request. One row per
+	// draft; the rows of one publish share job_id, branch and pr_url. repo_code is assigned by the job.
+	// A row in state queued/running locks its draft; failed rows release their repo codes.
+	`CREATE TABLE IF NOT EXISTS kb_publications (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  job_id VARCHAR(191) NOT NULL,
+  entity_type ENUM('story','test_case') NOT NULL,
+  local_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  repo_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
+  epic_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  branch VARCHAR(200) NOT NULL DEFAULT '',
+  pr_url VARCHAR(300) NOT NULL DEFAULT '',
+  state ENUM('queued','running','pr_open','merged','failed') NOT NULL DEFAULT 'queued',
+  error VARCHAR(400) NOT NULL DEFAULT '',
+  created_by CHAR(36) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_kb_publications_local (product_id, entity_type, local_code),
+  INDEX idx_kb_publications_job (job_id),
+  INDEX idx_kb_publications_state (product_id, state),
+  CONSTRAINT fk_kb_publications_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"

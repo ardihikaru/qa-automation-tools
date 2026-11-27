@@ -173,3 +173,44 @@ func TestHostPathAndParsePRURL(t *testing.T) {
 		t.Error("no URL must be an error")
 	}
 }
+
+func TestRemoteHeadAndRemoveWorktree(t *testing.T) {
+	p, root := automationPool(t)
+	ctx := context.Background()
+	if err := p.FetchOrigin(ctx, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	want := wtGit(t, filepath.Join(root, "auto"), "rev-parse", "origin/main")
+	got, err := p.RemoteHead(ctx, "auto", "main")
+	if err != nil || got != want {
+		t.Fatalf("RemoteHead = %q %v, want %q", got, err, want)
+	}
+	if _, err := p.RemoteHead(ctx, "auto", "nope"); err == nil {
+		t.Fatal("unknown branch accepted")
+	}
+	if _, err := p.RemoteHead(ctx, "auto", "--bad"); err == nil {
+		t.Fatal("option-like branch accepted")
+	}
+
+	branch := "qa-auto/kb-out-202611271200"
+	wt, err := p.AddWorktree(ctx, "auto", branch, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.RemoveWorktree(ctx, "auto", branch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(wt); !os.IsNotExist(err) {
+		t.Fatalf("worktree still there: %v", err)
+	}
+	if out := wtGit(t, filepath.Join(root, "auto"), "branch", "--list", branch); out != "" {
+		t.Fatalf("local branch still there: %q", out)
+	}
+	// Idempotent, and only automation branches.
+	if err := p.RemoveWorktree(ctx, "auto", branch); err != nil {
+		t.Fatalf("second removal: %v", err)
+	}
+	if err := p.RemoveWorktree(ctx, "auto", "main"); err == nil {
+		t.Fatal("removed a non-automation branch")
+	}
+}

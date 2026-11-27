@@ -51,6 +51,7 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 	var in *knowledge.InputError
 	var cf *knowledge.ConflictError
 	var running knowledge.ErrRunning
+	var draftErr *knowledge.DraftTranslateError
 	switch {
 	case errors.Is(err, knowledge.ErrNotFound), errors.Is(err, knowledge.ErrProductNotFound):
 		writeJSONError(w, http.StatusNotFound, "not found")
@@ -70,6 +71,13 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 		writeJSONError(w, http.StatusRequestEntityTooLarge, err.Error())
 	case errors.Is(err, knowledge.ErrTranslationDisabled):
 		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
+	case errors.As(err, &draftErr):
+		log.Printf("knowledge: %v", err)
+		writeJSONError(w, http.StatusBadGateway, "the draft text could not be converted to English; nothing was saved. Try again, or write it in English")
+	case knowledge.IsGateError(err):
+		writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, knowledge.ErrPublishActive), errors.Is(err, knowledge.ErrSyncRunning):
+		writeJSONError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, knowledge.ErrUnavailable):
 		writeJSONError(w, http.StatusServiceUnavailable, err.Error())
 	default:
@@ -151,6 +159,9 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 	case seg == "exports" && len(rest) == 2 && rest[1] == "modules-checklist":
 		// MODULE_CHECKLIST_EXPORT.md. Any authenticated reader; no deny() (the cache write is not a user-data write).
 		r.handleChecklistExport(w, req, pid)
+
+	case (seg == "publish" || seg == "publications") && len(rest) == 1:
+		r.handlePublish(w, req, pid, seg, canWrite)
 
 	case seg == "translations" && len(rest) == 2:
 		r.handleTranslations(w, req, pid, rest[1], canWrite)
@@ -281,6 +292,13 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 			if err == nil && et == knowledge.TypeTestCase && out != nil {
 				// GAOS_CASE_PROPOSALS.md: the pull requests GAOS linked to this case.
 				out["pr_links"] = r.casePRLinks(ctx, pid, code)
+			}
+			if errors.Is(err, knowledge.ErrNotFound) && knowledge.LocalCodeRe.MatchString(code) && draftable {
+				// A published draft is gone after its PR merged and synced: say where it moved to.
+				if to := s.MovedTo(ctx, pid, et, code); to != "" {
+					writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found", "moved_to": to})
+					return
+				}
 			}
 			respond(w, out, err)
 		case http.MethodPut:

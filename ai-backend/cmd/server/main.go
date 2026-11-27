@@ -176,12 +176,22 @@ func main() {
 			tr := knowledge.NewTranslator(serverCtx, syncer, aiService, knowledge.TranslatorConfig{
 				Model: cfg.Backend.AI.TranslationModel, Concurrency: cfg.Backend.AI.TranslateConcurrency, Pause: time.Second})
 			router.SetTranslator(tr)
+			syncer.SetDraftTranslator(tr) // a draft typed in Indonesian is converted to English on save
+			// Draft write-back (KNOWLEDGE_TRANSLATION.md step 8): after a sync, the drafts of a merged (or
+			// closed) publication PR are reconciled first, then translation is queued. The hook returns at once.
+			var prs knowledge.PRChecker
+			if pool != nil {
+				prs = pool
+			}
 			prev := syncer.OnSucceeded
 			syncer.OnSucceeded = func(pid int) {
 				if prev != nil {
 					prev(pid)
 				}
-				tr.Trigger(pid)
+				go func() {
+					syncer.ReconcilePublications(serverCtx, pid, prs)
+					tr.Trigger(pid)
+				}()
 			}
 			syncer.FailOrphanedTranslationRuns(context.Background())
 			log.Printf("   Knowledge translation: enabled=%v model=%q", tr.Enabled(), tr.Model())
@@ -189,11 +199,12 @@ func main() {
 		syncer.FailOrphanedSyncs(context.Background())
 		syncer.StartScheduler(context.Background(), time.Duration(cfg.Backend.Products.KnowledgeSyncIntervalMinutes)*time.Minute)
 	}
-	router.ResumeCaseApprovals(context.Background()) // an open approval survives a restart (CASE_AUTOMATION.md)
-	router.ResumeOrphanedJobs(context.Background())  // other case_run/case_create jobs are retried (max 2), not failed
-	router.StartEpicDriver(serverCtx, 0)             // EPIC_AUTOMATION.md: works through running epic batches (after the resume steps)
-	router.ResumeProposals(context.Background())     // LEARNING_LOOP.md: policy proposals left by the previous process
-	router.StartLearningLoop(serverCtx, 0)           // LEARNING_LOOP.md: harvest findings, reconcile, poll learned-policy PRs
+	router.ResumeCaseApprovals(context.Background())  // an open approval survives a restart (CASE_AUTOMATION.md)
+	router.ResumeOrphanedJobs(context.Background())   // other case_run/case_create jobs are retried (max 2), not failed
+	router.StartEpicDriver(serverCtx, 0)              // EPIC_AUTOMATION.md: works through running epic batches (after the resume steps)
+	router.ResumeProposals(context.Background())      // LEARNING_LOOP.md: policy proposals left by the previous process
+	router.ResumeDraftPublishes(context.Background()) // KNOWLEDGE_TRANSLATION.md: drafts_publish jobs left by the previous process
+	router.StartLearningLoop(serverCtx, 0)            // LEARNING_LOOP.md: harvest findings, reconcile, poll learned-policy PRs
 
 	// Wire authentication when the database is connected. Without a DB we have
 	// no users table; the app stays open (current pre-auth behaviour) and logs
