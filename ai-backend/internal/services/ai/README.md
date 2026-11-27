@@ -106,6 +106,6 @@ and `internal/api/router.go`, and is used by `internal/services/skills`.
 ## Cost ledger
 Every `ChatMessages` call (success or failure) is reported to the installed `CallRecorder`
 (`recorder.go`). `SQLRecorder` inserts one row per call into `ai_call_log` with feature
-(`ChatOpts.Feature`), caller, provider/model, tokens, `cost_usd`/`cost_idr`, `cost_source`,
+(`ChatOpts.Feature`; `model` is ai-manager's `observed_model` when it sends one, else its `model`, which only echoes the requested/default model), caller, provider/model, tokens, `cost_usd`/`cost_idr`, `cost_source`,
 latency and error. Usage returned by ai-manager is kept even when the call is rejected
 (pinned-provider mismatch, empty text). Recording failures are logged and never affect the call.

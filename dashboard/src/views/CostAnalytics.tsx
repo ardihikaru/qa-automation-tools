@@ -12,10 +12,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import CostVendorModels from './CostVendorModels';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import type {
   CostByFeature,
   CostByModel,
+  CostByVendor,
   CostEfficiency,
   CostFilterOptions,
   CostGateway,
@@ -180,6 +182,7 @@ export default function CostAnalytics() {
   const trend = useCostData<CostTrendPoint[]>('/api/cost/trend', params, key, reload);
   const byFeature = useCostData<CostByFeature[]>('/api/cost/by-feature', params, key, reload);
   const byModel = useCostData<CostByModel[]>('/api/cost/by-model', params, key, reload);
+  const byVendor = useCostData<CostByVendor>('/api/cost/by-vendor', params, key, reload);
   const efficiency = useCostData<CostEfficiency>('/api/cost/efficiency', params, key, reload);
   const filters = useCostData<CostFilterOptions>('/api/cost/filters', null, '', reload);
 
@@ -212,7 +215,7 @@ export default function CostAnalytics() {
   const modelData = useMemo(
     () =>
       (byModel.data ?? []).slice(0, 10).map((m) => ({
-        name: `${m.provider}/${m.model}`,
+        name: m.model_label ? `${m.vendor ?? m.provider} / ${m.model_label}` : `${m.provider}/${m.model}`,
         cost: m.cost,
         calls: m.calls,
       })),
@@ -418,6 +421,8 @@ export default function CostAnalytics() {
           </div>
         </div>
       </div>
+
+      <CostVendorModels data={byVendor.data} loading={byVendor.loading} error={byVendor.error} onRetry={byVendor.retry} params={params} />
 
       <RecentCalls params={params} filterKey={key} reload={reload} />
       <Gateway reload={reload} />

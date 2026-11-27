@@ -801,6 +801,8 @@ func (r *Router) dispatchAuthenticated(w http.ResponseWriter, req *http.Request)
 		r.handleCostByFeature(w, req)
 	case "/api/cost/by-model":
 		r.handleCostByModel(w, req)
+	case "/api/cost/by-vendor":
+		r.handleCostByVendor(w, req)
 	case "/api/cost/recent":
 		r.handleCostRecent(w, req)
 	case "/api/cost/filters":

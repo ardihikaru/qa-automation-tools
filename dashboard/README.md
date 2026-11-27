@@ -109,7 +109,7 @@ backend through same-origin `/api/*` calls (see [ai-backend API](../ai-backend/i
 | `/api/users` | GET | `auth/api.ts` `listUsers` (Admin/Service only) |
 | `/api/auth/impersonate` | POST | `auth/api.ts` `impersonate` |
 | `/api/auth/impersonate/stop` | POST | `auth/api.ts` `stopImpersonation` |
-| `/api/cost/{overview,trend,by-feature,by-model,efficiency,filters}?from&to&feature&provider&model&status`, `/api/cost/recent?...&limit&offset`, `/api/cost/gateway?month=YYYY-MM|all` | GET | `views/CostAnalytics.tsx` (types in `utils/costTypes.ts`) |
+| `/api/cost/{overview,trend,by-feature,by-model,by-vendor,efficiency,filters}?from&to&feature&provider&model&status`, `/api/cost/recent?...&limit&offset`, `/api/cost/gateway?month=YYYY-MM|all` | GET | `views/CostAnalytics.tsx`, `views/CostVendorModels.tsx` (the "By vendor & model" section: vendor rows expand to models, then to per-feature totals and a per-model daily trend from `/api/cost/trend?model=`) (types in `utils/costTypes.ts`) |
 | `/api/settings` (GET, includes `timezone`), `/api/settings/timezone` (PUT) | GET, PUT | `views/SettingsView.tsx` |
 | `/api/history/{builds,runs,syncs,approvals}`, `/api/history/runs/{id}` | GET | `views/history/` (`api.ts`; `formatMs` is shared from `views/knowledge/api.ts`) |
 | `/api/conversations[...]`, `/api/jobs/{id}/conversation` | GET, POST | `views/conversations/api.ts`; the job page's AI conversation card (`JobConversationCard.tsx`, polls `since_seq` every 2 s while the job runs) |

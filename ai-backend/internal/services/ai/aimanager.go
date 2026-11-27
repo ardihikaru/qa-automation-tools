@@ -57,6 +57,7 @@ type aiManagerChatResponse struct {
 	Text              string  `json:"text"`
 	Provider          string  `json:"provider"`
 	Model             string  `json:"model"`
+	ObservedModel     string  `json:"observed_model"` // model the CLI worker really ran; absent on older ai-manager
 	InputTokens       int     `json:"input_tokens"`
 	OutputTokens      int     `json:"output_tokens"`
 	CostUSD           float64 `json:"cost_usd"`
@@ -145,7 +146,7 @@ func (p *aiManagerProvider) Chat(ctx context.Context, messages []models.Message,
 	res := ChatResult{
 		Text:              out.Text,
 		Provider:          out.Provider,
-		Model:             out.Model,
+		Model:             effectiveModel(out.ObservedModel, out.Model),
 		InputTokens:       out.InputTokens,
 		OutputTokens:      out.OutputTokens,
 		CostUSD:           out.CostUSD,
@@ -199,4 +200,14 @@ func (p *aiManagerProvider) Health(ctx context.Context) string {
 	}
 	p.healthAt, p.healthStatus = time.Now(), status
 	return status
+}
+
+// effectiveModel prefers the model the upstream CLI reported it really ran
+// (ai-manager observed_model) over the requested/default model it echoes in
+// model, which is what the cost page groups by.
+func effectiveModel(observed, requested string) string {
+	if o := strings.TrimSpace(observed); o != "" {
+		return o
+	}
+	return requested
 }
