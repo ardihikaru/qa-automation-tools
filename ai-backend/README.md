@@ -50,7 +50,7 @@ The authoritative list, with methods, is in [internal/api/README.md](./internal/
 - `/health` is always public. It returns `status`, `database`, `ai_provider`, `ai_upstream` (`claude-v3`), `ai`, `executor`, and also `minimax` for backward compatibility.
 - These auth endpoints exist only when the DB is connected: `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`, `/api/auth/change-password`.
 - `/api/skills`, `/api/skills/logs`, `/api/skills/stats`
-- `/api/cost/{overview,trend,efficiency,by-feature,by-model,recent,filters,gateway}`
+- `/api/cost/{overview,trend,efficiency,by-feature,by-model,by-vendor,recent,filters,gateway}`. `by-vendor` nests `{vendors:[{vendor,...totals,share_pct,models:[{model,label,...,features:[...]}]}]}`; the vendor (`Anthropic` for `claude*`, else `Other`) and label (`claude-haiku-5-5` -> `Haiku 5.5`) are derived from the model id in `internal/api/cost_vendor.go`; `by-model` rows also carry `vendor` and `model_label`. All take the same from/to/feature/provider/model/status filters
 - `/api/learning`, `/api/learning/navigation`
 - `/api/jobs`, `/api/jobs/{id}` (+ `/events`, `/approval`)
 

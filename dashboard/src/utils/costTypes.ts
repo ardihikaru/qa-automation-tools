@@ -39,6 +39,8 @@ export interface CostByFeature {
 export interface CostByModel {
   provider: string;
   model: string;
+  vendor?: string; // derived by the backend, e.g. "Anthropic"
+  model_label?: string; // e.g. "Haiku 5.5"
   calls: number;
   errors: number;
   input_tokens: number;
@@ -127,4 +129,51 @@ export interface CostGateway {
     total_errors: number;
   };
   recent?: GatewayRecent[];
+}
+
+// GET /api/cost/by-vendor
+export interface CostVendorFeature {
+  feature: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  cost_idr: number;
+}
+
+export interface CostVendorModel {
+  provider: string;
+  model: string;
+  label: string;
+  calls: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  cost_idr: number;
+  avg_cost_per_call: number;
+  avg_cost_idr_per_call: number;
+  share_pct: number; // of total cost (of calls when total cost is 0)
+  features: CostVendorFeature[];
+}
+
+export interface CostVendor {
+  vendor: string;
+  calls: number;
+  errors: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  cost_idr: number;
+  avg_cost_per_call: number;
+  avg_cost_idr_per_call: number;
+  share_pct: number;
+  models: CostVendorModel[];
+}
+
+export interface CostByVendor {
+  total_cost: number;
+  total_cost_idr: number;
+  total_calls: number;
+  vendors: CostVendor[];
 }

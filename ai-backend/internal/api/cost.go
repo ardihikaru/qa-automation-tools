@@ -234,6 +234,8 @@ type costGroup struct {
 	Feature      string  `json:"feature,omitempty"`
 	Provider     string  `json:"provider,omitempty"`
 	Model        string  `json:"model,omitempty"`
+	Vendor       string  `json:"vendor,omitempty"`      // by-model only
+	ModelLabel   string  `json:"model_label,omitempty"` // by-model only, e.g. "Haiku 5.5"
 	Calls        int     `json:"calls"`
 	Errors       int     `json:"errors"`
 	InputTokens  int64   `json:"input_tokens"`
@@ -267,6 +269,9 @@ FROM ai_call_log `+where+` GROUP BY `+cols+` ORDER BY SUM(cost_usd) DESC, COUNT(
 		if err := rows.Scan(dst...); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if by == "model" {
+			g.Vendor, g.ModelLabel = vendorForModel(g.Provider, g.Model), modelLabel(g.Model)
 		}
 		out = append(out, g)
 	}

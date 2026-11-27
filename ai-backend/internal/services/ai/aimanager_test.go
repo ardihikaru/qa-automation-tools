@@ -220,3 +220,17 @@ func TestAIManagerModelOverride(t *testing.T) {
 		}
 	}
 }
+
+func TestAIManagerPrefersObservedModel(t *testing.T) {
+	for _, tc := range []struct{ observed, want string }{{"claude-haiku-5-5", "claude-haiku-5-5"}, {"", "claude-opus-5"}} {
+		p := newTestManager(t, func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"text": "ok", "provider": "antigravity", "model": "claude-opus-5", "observed_model": tc.observed,
+			})
+		}, 5*time.Second)
+		res, err := p.Chat(context.Background(), []models.Message{{Role: "user", Content: "hi"}}, ChatOpts{})
+		if err != nil || res.Model != tc.want {
+			t.Errorf("observed=%q: model=%q err=%v, want %q", tc.observed, res.Model, err, tc.want)
+		}
+	}
+}
