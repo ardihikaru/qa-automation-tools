@@ -921,7 +921,16 @@ export interface TranslationStatus {
   stale: number;
   failed: number;
 }
-export const getTranslationStatus = (pid: number, signal?: AbortSignal) => api<TranslationStatus>(`${kb(pid)}/translations/status`, { signal });
+interface TranslationStatusWire {
+  enabled?: boolean;
+  running?: boolean;
+  lang_coverage?: { total: number; translated: number; stale: number; missing: number; failed: number };
+}
+export const getTranslationStatus = (pid: number, signal?: AbortSignal): Promise<TranslationStatus> =>
+  api<TranslationStatusWire>(`${kb(pid)}/translations/status`, { signal }).then((w) => {
+    const c = w?.lang_coverage ?? { total: 0, translated: 0, stale: 0, missing: 0, failed: 0 };
+    return { state: w?.running ? 'running' : 'idle', total: c.total, done: c.translated, stale: c.stale, failed: c.failed };
+  });
 
 // ---- publishing drafts to the automation repo as a PR ----
 
