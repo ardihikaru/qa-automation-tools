@@ -1,7 +1,7 @@
 // Small presentational pieces shared by the knowledge card, view and drawer.
 import { ReactNode, useState } from 'react';
 import { AlertCircle, ChevronLeft, ChevronRight, Loader2, PanelRight } from 'lucide-react';
-import { AiStatus, Diff, DiffKind, Problems, SyncStatus, absoluteTime, commitUrl, relativeTime, shortSha } from './api';
+import { AiStatus, Diff, DiffKind, I18n, Problems, SyncStatus, i18nState, isMachine, absoluteTime, commitUrl, relativeTime, shortSha } from './api';
 import { PAGE_SIZES, pageCount, pageWindow } from './paging';
 import { selectCls } from './styles';
 
@@ -60,6 +60,20 @@ export function AiStatusNote({ status, error }: { status: AiStatus; error: strin
     );
   }
   return null;
+}
+
+/** Small marker after text that an LLM translated (state machine or stale). Nothing for original, missing or English. */
+export function MachineMark({ i18n }: { i18n?: I18n | null }) {
+  if (!isMachine(i18n)) return null;
+  const stale = i18nState(i18n) === 'stale';
+  return (
+    <span
+      className="shrink-0 inline-flex items-center rounded px-1 text-[10px] font-medium leading-4 text-gray-500 ring-1 ring-inset ring-gray-300"
+      title={stale ? 'Machine translated; the English text changed since, a new translation is pending' : 'Machine translated from English'}
+    >
+      {stale ? 'MT (outdated)' : 'MT'}
+    </span>
+  );
 }
 
 export function LocalBadge() {

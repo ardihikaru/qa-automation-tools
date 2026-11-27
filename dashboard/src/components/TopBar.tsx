@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import UserChip from './UserChip';
+import LanguageToggle from './LanguageToggle';
 import { TopBarCrumb, useCurrentPageHeader } from './pageHeader';
 
 function CrumbLink({ c }: { c: TopBarCrumb }) {
@@ -165,6 +166,7 @@ export default function TopBar({ fallbackTitle, onMenu }: TopBarProps) {
       </div>
 
       {header?.actions && <div className="flex items-center gap-2 shrink-0">{header.actions}</div>}
+      <LanguageToggle />
       <UserChip />
     </header>
   );

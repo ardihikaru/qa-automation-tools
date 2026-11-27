@@ -2,6 +2,7 @@
 // (docs/designs/PRODUCT_KNOWLEDGE_SYNC.md, ai-backend/internal/api/knowledge.go).
 // Shapes mirror ai-backend/internal/services/knowledge/query.go; the server stays the authority.
 import { ApiError, api } from '../products/api';
+import { getKnowledgeLang } from './lang';
 
 export { ApiError };
 
@@ -34,6 +35,56 @@ export const TYPE_LABEL: Record<EntityType, string> = {
   story: 'User story',
   test_case: 'Test case',
 };
+
+// ---- i18n (docs/designs/KNOWLEDGE_TRANSLATION.md); every shape assumption lives in this section ----
+
+/** machine: LLM text; original: the author's own text; stale: older machine text; missing: not translated yet. */
+export type I18nState = 'machine' | 'original' | 'stale' | 'missing';
+export interface I18n {
+  lang?: string;
+  /** Item-level state (additive field of the read shape). */
+  state?: I18nState;
+  /** Per-field texts; when present they replace the English field values (see `localize`). */
+  fields?: Record<string, { text?: string; state?: I18nState }>;
+}
+
+/** The state to show for an item: the item's own, else the weakest of its fields. */
+export function i18nState(i: I18n | null | undefined): I18nState | undefined {
+  if (!i) return undefined;
+  if (i.state) return i.state;
+  const st = Object.values(i.fields ?? {}).map((f) => f.state);
+  for (const s of ['stale', 'machine'] as const) if (st.includes(s)) return s;
+  return st.includes('original') ? 'original' : undefined;
+}
+/** Only machine and stale texts carry the "machine translated" marker. */
+export const isMachine = (i: I18n | null | undefined) => {
+  const s = i18nState(i);
+  return s === 'machine' || s === 'stale';
+};
+
+/**
+ * Applies `i18n.fields[f].text` over the English field `f` (an empty or missing text keeps the
+ * English). Walks the whole response, so nested refs and children are covered too. Responses
+ * whose English fields are already translated in place pass through untouched.
+ */
+export function localize<T>(v: T): T {
+  if (Array.isArray(v)) {
+    v.forEach(localize);
+  } else if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const fields = (o.i18n as I18n | undefined)?.fields;
+    if (fields) {
+      for (const [f, x] of Object.entries(fields)) if (x?.text && x.state !== 'missing') o[f] = x.text;
+    }
+    Object.values(o).forEach(localize);
+  }
+  return v;
+}
+
+/** GET of the knowledge base in the user's language (`?lang=`). */
+function kget<T>(path: string, init?: RequestInit): Promise<T> {
+  return api<T>(`${path}${path.includes('?') ? '&' : '?'}lang=${getKnowledgeLang()}`, init).then(localize);
+}
 
 export const isEntityType = (v: string): v is EntityType => v in TYPE_PATH;
 
@@ -73,6 +124,7 @@ export interface EntityBase {
   source_line: number | null;
   source_url: string | null;
   annotation: Annotation | null;
+  i18n?: I18n;
 }
 
 /** A slim reference to a related entity (`refs` in query.go). `name` is the title, text or scenario. */
@@ -81,6 +133,7 @@ export interface Ref {
   name: string;
   origin: Origin;
   removed_at: string | null;
+  i18n?: I18n;
 }
 
 export interface Part extends EntityBase {
@@ -325,6 +378,7 @@ export interface TreeFeature {
   automated: number;
   coverage_pct: number;
   has_annotation: boolean;
+  i18n?: I18n;
 }
 interface TreeNode {
   code: string;
@@ -332,6 +386,7 @@ interface TreeNode {
   origin: Origin;
   removed_at: string | null;
   has_annotation: boolean;
+  i18n?: I18n;
 }
 export interface TreeSubmodule extends TreeNode {
   features: TreeFeature[];
@@ -357,12 +412,15 @@ export interface Page<T> {
 // ---- request bodies ----
 
 export interface StoryDraft {
+  /** Language the text was typed in (a hint; the server detects it). */
+  lang?: 'en' | 'id';
   code?: string;
   epic_code: string;
   text: string;
   feature_codes: string[];
 }
 export interface TestCaseDraft {
+  lang?: 'en' | 'id';
   code?: string;
   epic_code: string;
   story_code: string;
@@ -399,7 +457,7 @@ const json = (method: string, body: unknown, signal?: AbortSignal): RequestInit 
 export const getSummary = (pid: number, signal?: AbortSignal) => api<Summary>(`${kb(pid)}/summary`, { signal });
 
 export const getTree = (pid: number, includeRemoved: boolean, signal?: AbortSignal) =>
-  api<Tree>(`${kb(pid)}/tree${qs({ include_removed: includeRemoved })}`, { signal });
+  kget<Tree>(`${kb(pid)}/tree${qs({ include_removed: includeRemoved })}`, { signal });
 
 export const listSyncs = (pid: number, limit = 50, signal?: AbortSignal) =>
   api<{ syncs: SyncRow[] }>(`${kb(pid)}/syncs${qs({ limit })}`, { signal }).then((r) => r.syncs ?? []);
@@ -419,7 +477,7 @@ export async function startSync(pid: number): Promise<{ sync_id: number; attache
 }
 
 export const listEpics = (pid: number, includeRemoved = false, signal?: AbortSignal) =>
-  api<{ epics: Epic[] }>(`${kb(pid)}/epics${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.epics ?? []);
+  kget<{ epics: Epic[] }>(`${kb(pid)}/epics${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.epics ?? []);
 
 export interface ScopeFilter {
   part?: string;
@@ -440,7 +498,7 @@ export interface StoryFilter extends ScopeFilter {
   page_size?: number;
 }
 export const listStories = (pid: number, f: StoryFilter, signal?: AbortSignal) =>
-  api<Page<StoryItem>>(`${kb(pid)}/stories${qs({ ...f })}`, { signal });
+  kget<Page<StoryItem>>(`${kb(pid)}/stories${qs({ ...f })}`, { signal });
 
 export interface TestCaseFilter extends StoryFilter {
   story?: string;
@@ -455,7 +513,7 @@ export interface TestCaseFilter extends StoryFilter {
   verified_by?: string;
 }
 export const listTestCases = (pid: number, f: TestCaseFilter, signal?: AbortSignal) =>
-  api<Page<TestCase>>(`${kb(pid)}/test-cases${qs({ ...f })}`, { signal });
+  kget<Page<TestCase>>(`${kb(pid)}/test-cases${qs({ ...f })}`, { signal });
 
 export interface FeatureFilter extends ScopeFilter {
   release?: string;
@@ -471,10 +529,10 @@ export interface FeatureFilter extends ScopeFilter {
   page_size?: number;
 }
 export const listFeatures = (pid: number, f: FeatureFilter, signal?: AbortSignal) =>
-  api<Page<FeatureItem>>(`${kb(pid)}/features${qs({ ...f })}`, { signal });
+  kget<Page<FeatureItem>>(`${kb(pid)}/features${qs({ ...f })}`, { signal });
 
 export const listModules = (pid: number, includeRemoved = false, signal?: AbortSignal) =>
-  api<{ modules: ModuleItem[] }>(`${kb(pid)}/modules${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.modules ?? []);
+  kget<{ modules: ModuleItem[] }>(`${kb(pid)}/modules${qs({ include_removed: includeRemoved })}`, { signal }).then((r) => r.modules ?? []);
 
 export const getCoverage = (pid: number, by: CoverageBy, scope: ScopeFilter & { epic?: string } = {}, signal?: AbortSignal) =>
   api<{ by: string; coverage: Record<string, Coverage> | null }>(`${kb(pid)}/coverage${qs({ by, ...scope })}`, { signal }).then((r) => r.coverage ?? {});
@@ -492,7 +550,7 @@ export async function listAllTestCases(pid: number, f: TestCaseFilter, signal?: 
 }
 
 export const getEntity = <T extends EntityDetail = EntityDetail>(pid: number, type: EntityType, code: string, signal?: AbortSignal) =>
-  api<T>(`${kb(pid)}/${TYPE_PATH[type]}/${enc(code)}`, { signal });
+  kget<T>(`${kb(pid)}/${TYPE_PATH[type]}/${enc(code)}`, { signal });
 
 export const putAnnotation = (pid: number, type: EntityType, code: string, note: string, tags: string[]) =>
   api<Annotation>(`${kb(pid)}/annotations/${type}/${enc(code)}`, json('PUT', { note, tags }));
@@ -632,6 +690,8 @@ export interface JobEvents {
   /** case_run verdict (pass|fail|skipped|none) and the skip reason; a skipped run is status completed. */
   outcome?: string;
   skip_reason?: string;
+  /** drafts_publish jobs: local draft code -> repo code (assumed to be echoed by the events endpoint). */
+  codes?: Record<string, string> | null;
 }
 /** One row of GET .../test-cases/{code}/jobs. */
 export interface CaseJob {
@@ -850,3 +910,34 @@ export function devPeriodRollup(features: { dev_period?: string | null }[]): str
   if (!from) return '';
   return from === to ? from : `${from}..${to}`;
 }
+
+// ---- translation status (admin chip) ----
+
+export type TranslationRunState = 'idle' | 'queued' | 'running' | 'done' | 'failed' | string;
+export interface TranslationStatus {
+  state: TranslationRunState;
+  total: number;
+  done: number;
+  stale: number;
+  failed: number;
+}
+export const getTranslationStatus = (pid: number, signal?: AbortSignal) => api<TranslationStatus>(`${kb(pid)}/translations/status`, { signal });
+
+// ---- publishing drafts to the automation repo as a PR ----
+
+export type PublicationState = 'queued' | 'running' | 'pr_open' | 'merged' | 'failed';
+export interface Publication {
+  id: number | string;
+  epic_code: string;
+  state: PublicationState;
+  pr_url?: string | null;
+  branch?: string | null;
+  job_id?: number | string | null;
+  /** Local code -> repo code, e.g. {'L-ABC-1': 'TC-OUTREG-042'}; filled once published. */
+  codes?: Record<string, string> | null;
+}
+export const isActivePublication = (p: Publication) => p.state === 'queued' || p.state === 'running';
+export const listPublications = (pid: number, signal?: AbortSignal) =>
+  api<{ publications?: Publication[] }>(`${kb(pid)}/publications`, { signal }).then((r) => r?.publications ?? []);
+export const publishDrafts = (pid: number, epicCode: string) =>
+  api<{ job_id: number | string }>(`${kb(pid)}/publish`, json('POST', { epic_code: epicCode }));

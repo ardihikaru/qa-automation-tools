@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { FeatureItem, ModuleItem, Page, listFeatures, listModules } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, ReleaseChip } from './ui';
+import { Empty, MachineMark, ErrorNote, Pagination, SkeletonRows, PeekButton, ReleaseChip } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 import { CoverageRow } from './pages/kit';
@@ -99,6 +99,7 @@ export default function FeaturesTab({ pid, paging, releases, refreshKey, selecte
                   noted={!!f.annotation}
                   extra={
                     <span className="flex items-center gap-3">
+                      <MachineMark i18n={f.i18n} />
                       <span className="hidden lg:inline font-mono text-xs text-gray-500" title="Module">
                         {f.module_code}
                       </span>

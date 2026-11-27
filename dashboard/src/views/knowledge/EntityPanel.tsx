@@ -27,7 +27,7 @@ import {
   putAnnotation,
   relativeTime,
 } from './api';
-import { CaseStatusChip, CodeLabel, CoverageBar, ErrorNote, Loading, LocalBadge, ReleaseChip, RemovedBadge } from './ui';
+import { CaseStatusChip, CodeLabel, CoverageBar, ErrorNote, Loading, LocalBadge, MachineMark, ReleaseChip, RemovedBadge } from './ui';
 
 export interface Target {
   type: EntityType;
@@ -576,6 +576,7 @@ export default function EntityPanel({ pid, target, canWrite, reloadKey, onOpen, 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-gray-500">{TYPE_LABEL[e.type]}</span>
           {local && <LocalBadge />}
+          <MachineMark i18n={e.i18n} />
           {e.removed_at && <RemovedBadge syncId={e.removed_sync_id} />}
         </div>
         <h2 className={`font-mono text-lg font-semibold break-all ${e.removed_at ? 'line-through text-gray-400' : 'text-gray-900'}`}>{e.code}</h2>

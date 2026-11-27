@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Search, StickyNote } from 'lucide-react';
 import { Coverage, Tree, TreeFeature, TreeModule, TreePart, TreeSubmodule, entityHref, getCoverage, getTree, listModules } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CodeLabel, Empty, ErrorNote, HideUntestedToggle, Pagination, PeekButton, ReleaseChip, RemovedBadge, SkeletonRows, UntestedRunButton } from './ui';
+import { CodeLabel, MachineMark, Empty, ErrorNote, HideUntestedToggle, Pagination, PeekButton, ReleaseChip, RemovedBadge, SkeletonRows, UntestedRunButton } from './ui';
 import { Paging, UNTESTED_RUN, testedFirst, useClampPage, useResetOnChange } from './paging';
 import { inputCls } from './styles';
 import { Target } from './EntityPanel';
@@ -79,6 +79,7 @@ function FeatureRow({ pid, f, cov, selected, onOpen }: { pid: number; f: TreeFea
           <span className={`truncate text-sm ${removed ? 'line-through text-gray-400' : 'text-gray-800'}`} title={f.name}>
             {f.name}
           </span>
+          <MachineMark i18n={f.i18n} />
           {f.has_annotation && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-label="has a note" />}
           {removed && <RemovedBadge />}
         </span>
@@ -277,6 +278,7 @@ export default function ModulesTab({ pid, paging, refreshKey, selected, onOpen }
                     <span className="font-semibold text-gray-900 truncate" title={p.name}>
                       {p.name}
                     </span>
+                    <MachineMark i18n={p.i18n} />
                     <span className="ml-auto text-xs text-gray-500 shrink-0 tabular-nums">
                       {totals.parts[p.code] ?? p.modules.length} {(totals.parts[p.code] ?? p.modules.length) === 1 ? 'module' : 'modules'}
                     </span>
@@ -298,6 +300,7 @@ export default function ModulesTab({ pid, paging, refreshKey, selected, onOpen }
                               <span className={`truncate text-sm font-medium ${m.removed_at ? 'line-through text-gray-400' : 'text-gray-800'}`} title={m.name}>
                                 {m.name}
                               </span>
+                              <MachineMark i18n={m.i18n} />
                               {m.has_annotation && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-label="has a note" />}
                               <span className="ml-auto shrink-0 text-xs text-gray-500 tabular-nums">
                                 {totals.modules[m.code] ?? feats.length} {(totals.modules[m.code] ?? feats.length) === 1 ? 'feature' : 'features'}

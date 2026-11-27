@@ -5,6 +5,9 @@
 // (or returns null from me() on 401); each caller decides what a 401 means.
 // AuthContext treats a 401 from me() or stopImpersonation() as "signed out".
 
+export type Language = 'en' | 'id';
+export const normalizeLanguage = (v: unknown): Language => (v === 'id' ? 'id' : 'en');
+
 export interface AuthUser {
   id: string;
   username: string;
@@ -16,6 +19,8 @@ export interface AuthUser {
   isLead: boolean;
   active: boolean;
   mustChangePassword: boolean;
+  /** Display language of the knowledge base; absent (older server) means 'en'. UI chrome stays English. */
+  language?: Language;
   // Present only while impersonating: the real, signed-in user acting as
   // this one. Absent (not null) otherwise.
   impersonator?: Impersonator;
@@ -101,6 +106,14 @@ export async function changePassword(currentPassword: string, newPassword: strin
   if (!res.ok) {
     throw await readError(res, 'Could not change password');
   }
+}
+
+export async function setLanguage(language: Language): Promise<void> {
+  const res = await authFetch('/api/auth/language', {
+    method: 'PUT',
+    body: JSON.stringify({ language }),
+  });
+  if (!res.ok) throw await readError(res, 'Could not save the language');
 }
 
 export async function listUsers(): Promise<UserSummary[]> {

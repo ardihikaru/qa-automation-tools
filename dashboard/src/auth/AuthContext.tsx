@@ -1,7 +1,9 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as authApi from './api';
-import type { AuthUser } from './api';
+import type { AuthUser, Language } from './api';
+import { normalizeLanguage } from './api';
+import { setKnowledgeLang } from '../views/knowledge/lang';
 
 interface AuthState {
   user: AuthUser | null;
@@ -14,6 +16,9 @@ interface AuthContextValue extends AuthState {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   markPasswordChanged: () => void;
+  // Effective display language. Optimistic: flips at once, rolls back (and rejects) when the save fails.
+  language: Language;
+  changeLanguage: (language: Language) => Promise<void>;
   // Both resolve only after starting a full reload to '/' (no page state from
   // the previous identity survives). They reject with AuthError on failure so
   // the caller can show it inline; a 401 signs out and goes to /login instead.
@@ -31,6 +36,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const navigate = useNavigate();
+
+  // Set during render (idempotent) so children's first fetch already sends the right ?lang.
+  const language = normalizeLanguage(state.user?.language);
+  setKnowledgeLang(language);
+
+  const changeLanguage = useCallback(async (next: Language) => {
+    let prev: Language = 'en';
+    setState((s) => {
+      prev = normalizeLanguage(s.user?.language);
+      return s.user ? { ...s, user: { ...s.user, language: next } } : s;
+    });
+    try {
+      await authApi.setLanguage(next);
+    } catch (err) {
+      setState((s) => (s.user ? { ...s, user: { ...s.user, language: prev } } : s));
+      throw err;
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -118,6 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         refresh,
         markPasswordChanged,
+        language,
+        changeLanguage,
         impersonate,
         stopImpersonation,
       }}>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, StickyNote } from 'lucide-react';
 import { Epic, Page, StoryItem, entityHref, listStories } from './api';
 import { useDebounced, useLoad } from './hooks';
-import { CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
+import { CodeLabel, MachineMark, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { CoverageCount, StatusBar } from './pages/kit';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
@@ -102,7 +102,7 @@ export default function StoriesTab({ pid, paging, epics, features, refreshKey, s
                       {s.annotation && <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" aria-label="has a note" />}
                     </span>
                     <span className={`text-sm line-clamp-2 break-words ${removed ? 'line-through text-gray-400' : 'text-gray-800'}`} title={s.text}>
-                      {s.text}
+                      {s.text} <MachineMark i18n={s.i18n} />
                     </span>
                     <span className="flex flex-wrap items-center gap-1.5 md:justify-end">
                       <span className="font-mono text-xs text-gray-500 truncate" title={s.epic_code}>
