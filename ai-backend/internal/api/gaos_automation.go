@@ -71,6 +71,35 @@ type gaosAutomationBody struct {
 	Product  string `json:"product"`
 	CaseCode string `json:"caseCode"`
 	Mode     string `json:"mode"`
+	// GAOS_RELEASE_B.md §3.2: the deployed repository's kind, and whether GAOS asks for a
+	// pinned auto-merge of the approved spec. Both optional; absent = today's behaviour.
+	Kind      string `json:"kind"`
+	AutoMerge *bool  `json:"auto_merge"`
+}
+
+// The repository kinds (GAOS_RELEASE_B.md §3.2).
+const (
+	gaosKindBE        = "be"
+	gaosKindFullstack = "fullstack"
+)
+
+// gaosKindLevels are the case levels a run-all of a kind runs; nil = every level.
+func gaosKindLevels(kind string) []string {
+	if kind == gaosKindBE {
+		return []string{"API", "GQL"}
+	}
+	return nil
+}
+
+// gaosKindFitsLevel reports whether a create of a case of level may be asked with kind.
+func gaosKindFitsLevel(kind, level string) bool {
+	switch kind {
+	case gaosKindBE:
+		return level == "API"
+	case gaosKindFullstack:
+		return level == "WEB" || level == "E2E"
+	}
+	return true
 }
 
 // gaosCaseAction maps GAOS's mode to the action the case automation path uses.
@@ -98,6 +127,10 @@ func (r *Router) gaosAutomation(w http.ResponseWriter, req *http.Request) {
 		writeJSONError(w, http.StatusUnprocessableEntity, "mode must be create or run")
 		return
 	}
+	if body.Kind != "" && body.Kind != gaosKindBE && body.Kind != gaosKindFullstack {
+		writeJSONError(w, http.StatusUnprocessableEntity, "kind must be be or fullstack")
+		return
+	}
 	ctx := req.Context()
 	d := r.getDB()
 	if d == nil {
@@ -123,7 +156,7 @@ func (r *Router) gaosAutomation(w http.ResponseWriter, req *http.Request) {
 			writeJSONError(w, http.StatusUnprocessableEntity, "caseCode * is only valid with mode run")
 			return
 		}
-		r.gaosRunAll(w, ctx, d, pid)
+		r.gaosRunAll(w, ctx, d, pid, body.Kind)
 		return
 	}
 	// An unknown (or removed) case is refused before anything is started.
@@ -137,7 +170,23 @@ func (r *Router) gaosAutomation(w http.ResponseWriter, req *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "unknown case")
 		return
 	}
-	res := r.enqueueCaseAction(ctx, d, caseEnqueueIn{PID: pid, Code: body.CaseCode, Action: action, TriggeredBy: gaosTriggeredBy})
+	in := caseEnqueueIn{PID: pid, Code: body.CaseCode, Action: action, TriggeredBy: gaosTriggeredBy, Kind: body.Kind}
+	if body.Mode == "create" {
+		if body.Kind != "" {
+			level, err := caseLevel(ctx, d, pid, body.CaseCode)
+			if err != nil {
+				log.Printf("gaos automation: case level: %v", err)
+				writeJSONError(w, http.StatusInternalServerError, "lookup failed")
+				return
+			}
+			if !gaosKindFitsLevel(body.Kind, level) {
+				writeJSONError(w, http.StatusUnprocessableEntity, "kind does not match the case level")
+				return
+			}
+		}
+		in.AutoMerge = body.AutoMerge != nil && *body.AutoMerge
+	}
+	res := r.enqueueCaseAction(ctx, d, in)
 	if e := res.Err; e != nil {
 		// The same job is already active: answer with it, as if this call had started it.
 		if res.ActiveJobID != "" && e.Code == "case_active" {
@@ -195,6 +244,18 @@ func (r *Router) gaosJobStatus(w http.ResponseWriter, req *http.Request, jobID s
 	if u := gaosPRURL(job); u != "" {
 		out["pr_url"] = u
 	}
+	// GAOS_RELEASE_B.md §3.3: the commit pushed after the approval, and the auto-merge outcome.
+	if v := gaosPayloadString(job, "pushed_sha"); v != "" {
+		out["pushed_sha"] = v
+	}
+	if v := gaosPayloadString(job, "auto_merge"); v != "" {
+		out["auto_merge"] = v
+	} else if req, _ := job.Payload["auto_merge_requested"].(bool); req && gaosPRURL(job) != "" &&
+		job.Status != jobStatusRunning && job.Status != jobStatusQueued {
+		// The job ended (a restart completed it) between opening the pull request and the
+		// auto-merge step: nothing was armed, and GAOS is told so (GAOS_RELEASE_B.md §3.3).
+		out["auto_merge"] = "refused:restarted"
+	}
 	if o := strings.TrimRight(r.dashboardOrigin, "/"); o != "" && o != "*" {
 		out["job_url"] = o + "/jobs/" + job.ID
 	}
@@ -218,12 +279,14 @@ func gaosJobID(path string) string {
 
 // gaosRunAll starts (or finds) the job that runs every automated case of the product, one after
 // the other, through the same enqueueCaseAction path as a single run.
-func (r *Router) gaosRunAll(w http.ResponseWriter, ctx context.Context, d *db.DB, pid int) {
+func (r *Router) gaosRunAll(w http.ResponseWriter, ctx context.Context, d *db.DB, pid int, kind string) {
 	gaosRunAllMu.Lock()
 	defer gaosRunAllMu.Unlock()
 	var active string
+	// One active run-all per product and kind: a be run-all is not a fullstack one.
 	if err := d.QueryRow(ctx, `SELECT COALESCE(MAX(id), '') FROM job_runs WHERE type = ? AND status IN ('queued','running')
-		AND CAST(JSON_EXTRACT(payload, '$.product_id') AS UNSIGNED) = ?`, gaosRunAllType, pid).Scan(&active); err != nil {
+		AND CAST(JSON_EXTRACT(payload, '$.product_id') AS UNSIGNED) = ?
+		AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.kind')), '') = ?`, gaosRunAllType, pid, kind).Scan(&active); err != nil {
 		log.Printf("gaos run-all: active check: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
 		return
@@ -236,7 +299,7 @@ func (r *Router) gaosRunAll(w http.ResponseWriter, ctx context.Context, d *db.DB
 		writeJSONError(w, http.StatusServiceUnavailable, "case automation is not configured")
 		return
 	}
-	codes, err := automatedCaseCodes(ctx, d, pid)
+	codes, err := automatedCaseCodes(ctx, d, pid, gaosKindLevels(kind)...)
 	if err != nil {
 		log.Printf("gaos run-all: list cases: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "lookup failed")
@@ -249,7 +312,7 @@ func (r *Router) gaosRunAll(w http.ResponseWriter, ctx context.Context, d *db.DB
 	now := time.Now().UTC()
 	job := &jobRecord{ID: newJobID(), Type: gaosRunAllType, Status: jobStatusRunning, CreatedAt: now, StartedAt: &now,
 		Payload: map[string]interface{}{"product_id": pid, "case_code": gaosAllCases, "triggered_by": gaosTriggeredBy,
-			"phase": "queued", "total": len(codes)}}
+			"phase": "queued", "total": len(codes), "kind": kind}}
 	if err := r.upsertJobRecordErr(ctx, job); err != nil {
 		log.Printf("gaos run-all: enqueue: %v", err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -262,10 +325,19 @@ func (r *Router) gaosRunAll(w http.ResponseWriter, ctx context.Context, d *db.DB
 	writeJSON(w, http.StatusAccepted, map[string]any{"job_id": job.ID})
 }
 
-// automatedCaseCodes are the product's live cases that have a spec.
-func automatedCaseCodes(ctx context.Context, d *db.DB, pid int) ([]string, error) {
-	rows, err := d.Query(ctx, `SELECT code FROM kb_test_cases WHERE product_id = ? AND removed_at IS NULL
-		AND spec_paths IS NOT NULL AND JSON_LENGTH(spec_paths) > 0 ORDER BY code`, pid)
+// automatedCaseCodes are the product's live cases that have a spec; with levels, only cases of
+// those levels (a run-all of kind be, GAOS_RELEASE_B.md §3.2).
+func automatedCaseCodes(ctx context.Context, d *db.DB, pid int, levels ...string) ([]string, error) {
+	q := `SELECT code FROM kb_test_cases WHERE product_id = ? AND removed_at IS NULL
+		AND spec_paths IS NOT NULL AND JSON_LENGTH(spec_paths) > 0`
+	args := []interface{}{pid}
+	if len(levels) > 0 {
+		q += ` AND level IN (?` + strings.Repeat(`,?`, len(levels)-1) + `)`
+		for _, l := range levels {
+			args = append(args, l)
+		}
+	}
+	rows, err := d.Query(ctx, q+` ORDER BY code`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -428,6 +500,15 @@ func (r *Router) gaosJobCancel(w http.ResponseWriter, req *http.Request, jobID s
 	if c, ok := gaosJobCancels.Load(jobID); ok {
 		c.(context.CancelFunc)()
 	}
+	// A spec whose auto-merge is (or may be) armed is disarmed: a canceled card never merges
+	// (GAOS_RELEASE_B.md §4.2). A failure is logged; the job stays canceled either way.
+	if am := gaosPayloadString(job, "auto_merge"); (am == caseauto.AutoMergeEnabled || am == autoMergePending) && r.repoPool != nil {
+		if u := gaosPRURL(job); u != "" {
+			if err := r.repoPool.DisableAutoMerge(context.WithoutCancel(ctx), u); err != nil {
+				log.Printf("gaos job cancel: disable auto-merge: %v", err)
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"job_id": jobID, "status": "failed", "error": gaosCanceledMsg, "canceled": true})
 }
 
@@ -463,6 +544,23 @@ func gaosPRURL(job *jobRecord) string {
 	for _, m := range []map[string]interface{}{job.Payload, job.Result} {
 		if u, ok := m["pr_url"].(string); ok && u != "" {
 			return u
+		}
+	}
+	return ""
+}
+
+// caseLevel is a case's level (API, GQL, WEB, E2E; "" when unset).
+func caseLevel(ctx context.Context, d *db.DB, pid int, code string) (string, error) {
+	var level string
+	err := d.QueryRow(ctx, `SELECT level FROM kb_test_cases WHERE product_id = ? AND code = ?`, pid, code).Scan(&level)
+	return level, err
+}
+
+// gaosPayloadString is a string the job recorded under key, in its payload or its result.
+func gaosPayloadString(job *jobRecord, key string) string {
+	for _, m := range []map[string]interface{}{job.Payload, job.Result} {
+		if v, ok := m[key].(string); ok && v != "" {
+			return v
 		}
 	}
 	return ""

@@ -134,6 +134,23 @@ automation for the case) or `run` (run the spec the case already has). Answer: `
 * An instance that cannot run case automation (no playwright-executor, no repository pool, no `REPO_POOL_HOST_DIR`, or
   no AI for `create`) answers `503`; nothing is started.
 
+### Release B fields (`kind`, `auto_merge`, capabilities)
+
+[GAOS_RELEASE_B.md](designs/GAOS_RELEASE_B.md). GAOS first reads `GET /api/v1/gaos/capabilities`
+(`{"capabilities":["kind"]}`, plus `"auto-merge"` when `QA_SPEC_AUTO_MERGE=on`) and sends only what is listed.
+
+* `kind` (`be` | `fullstack`, optional): a `*` run of `be` runs only `API` and `GQL` cases; a `create` of `be` must be
+  an `API` case and writes under `tests/api/rest/`, of `fullstack` a `WEB` or `E2E` case under `tests/web/`; anything
+  else is `422`.
+* `auto_merge` (`true`, optional, `create` only): asks for a **pinned auto-merge** of the spec once approved. It is
+  turned on only when a person approved the spec **in the QA tools** (a GAOS Inbox answer never counts), GAOS still
+  allows it at that moment (`GET /api/v1/products/{id}/spec-auto-merge` on GAOS), the commit holds exactly the
+  approved file, the identity is not admin or maintain, the `qa-auto/*` branch is under a ruleset restricting updates
+  and deletions, and every required check of the base branch is bound to its source. GitHub then merges when the
+  checks pass; a GAOS cancel turns it off again. Any failing condition leaves the pull request for a person.
+* The job status adds `pushed_sha` (the commit pushed after the approval) and `auto_merge` (`enabled`, `off`,
+  `pending`, or `refused:<reason>`).
+
 ### `GET /api/v1/gaos/jobs/{id}`
 
 The state of one job: `{"job_id","status","phase","job_type","error","report":{"passed","failed","skipped"},"pr_url"?,"job_url"?}`.

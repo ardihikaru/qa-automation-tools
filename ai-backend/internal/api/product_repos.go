@@ -26,6 +26,9 @@ const (
 	RepoOpCreateBranch RepoOp = "create_branch"
 	RepoOpPush         RepoOp = "push"
 	RepoOpOpenPR       RepoOp = "open_pr"
+	// RepoOpAutoMerge turns on the pinned auto-merge of an approved spec (GAOS_RELEASE_B.md §4):
+	// a stronger write than opening a pull request, allowed on an automation repository only.
+	RepoOpAutoMerge RepoOp = "auto_merge"
 )
 
 var (
@@ -39,6 +42,12 @@ var (
 // writeAllowed is the pure core of repoWriteAllowed: an unknown op is denied; the automation repo
 // is allowed; any other repo (main included) is allowed only while the product flag is on.
 func writeAllowed(isAutomation, flag bool, op RepoOp) error {
+	if op == RepoOpAutoMerge {
+		if isAutomation {
+			return nil
+		}
+		return ErrWriteNotAllowed
+	}
 	switch op {
 	case RepoOpCreateBranch, RepoOpPush, RepoOpOpenPR:
 	default:

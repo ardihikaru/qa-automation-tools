@@ -76,6 +76,9 @@ type ValidateOptions struct {
 	// Fixtures are the fixture names the repo declares (src/fixtures/*.ts). When non-empty, a
 	// test callback may only destructure these plus Playwright's built-ins.
 	Fixtures map[string]bool
+	// Kind is the repository kind GAOS asked for (GAOS_RELEASE_B.md §3.2): "be" allows only
+	// tests/api/rest/, "fullstack" only tests/web/; "" allows either.
+	Kind string
 }
 
 var (
@@ -138,6 +141,12 @@ func Validate(f GeneratedFile, o ValidateOptions) error {
 	}
 	if !PathRe(o.Code).MatchString(f.Path) || path.Clean(f.Path) != f.Path {
 		return fmt.Errorf("the path must be tests/<web|api/rest>/<module>/%s.spec.ts", o.Code)
+	}
+	switch {
+	case o.Kind == "be" && !strings.HasPrefix(f.Path, "tests/api/rest/"):
+		return fmt.Errorf("this repository is backend only: the path must be tests/api/rest/<module>/%s.spec.ts", o.Code)
+	case o.Kind == "fullstack" && !strings.HasPrefix(f.Path, "tests/web/"):
+		return fmt.Errorf("this case is a browser case: the path must be tests/web/<module>/%s.spec.ts", o.Code)
 	}
 	c := f.Content
 	if strings.TrimSpace(c) == "" {
