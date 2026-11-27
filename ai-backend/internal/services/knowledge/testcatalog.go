@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path"
@@ -24,7 +25,8 @@ func (testCatalog) Name() string { return TestCatalogFormatName }
 
 // Version 2: optional 13th column "Prod since" (MODULE_CHECKLIST_EXPORT.md, Amendment 1).
 // Version 3: optional 14th column "Periode pelaksanaan" (development period, Amendment 2).
-func (testCatalog) Version() int { return 3 }
+// Version 4: GFM cell escaping (`\|`) and <br> decoding in cells and story text.
+func (testCatalog) Version() int { return 4 }
 
 const (
 	modulesDir = "docs/modules/"
@@ -58,18 +60,101 @@ func splitLines(b []byte) []string {
 	return lines
 }
 
-// cells mirrors line.split('|').slice(1, -1).map(trim).
+// cells splits a catalog table row into trimmed cells (line.split('|').slice(1, -1).map(trim)) with
+// GFM escaping (KNOWLEDGE_TRANSLATION.md, "Catalog cell grammar"). A run of k backslashes right
+// before '|': k odd is a literal '|' preceded by (k-1)/2 backslashes, k even is a delimiter and the
+// run is kept unchanged. A backslash anywhere else is literal. <br>, <br/> and <br /> (any case)
+// decode to "\n" in each cell.
 func cells(line string) []string {
-	parts := strings.Split(line, "|")
+	var parts []string
+	var cur []byte
+	run := 0 // backslashes immediately before the current position
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '\\':
+			run++
+			cur = append(cur, c)
+		case c == '|':
+			if run%2 == 1 {
+				cur = append(cur[:len(cur)-run], bytes.Repeat([]byte{'\\'}, (run-1)/2)...)
+				cur = append(cur, '|')
+			} else {
+				parts = append(parts, string(cur))
+				cur = cur[:0]
+			}
+			run = 0
+		default:
+			run = 0
+			cur = append(cur, c)
+		}
+	}
+	parts = append(parts, string(cur))
 	if len(parts) < 2 {
 		return nil
 	}
 	parts = parts[1 : len(parts)-1]
 	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
+		parts[i] = decodeBR(strings.TrimSpace(parts[i]))
 	}
 	return parts
 }
+
+var brTagRe = regexp.MustCompile(`(?i)<br(?: ?/)?>`)
+
+// decodeBR turns the three accepted <br> spellings into a line feed.
+func decodeBR(s string) string {
+	if !strings.Contains(s, "<") {
+		return s
+	}
+	return brTagRe.ReplaceAllString(s, "\n")
+}
+
+// ErrCellText is returned by EncodeCell and EncodeStoryText for text the catalog cannot carry.
+var ErrCellText = errors.New("text cannot be written to the catalog")
+
+func encodeText(text string, escapePipe bool) (string, error) {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	for _, r := range text {
+		if (r < 0x20 && r != '\n') || r == 0x7f {
+			return "", fmt.Errorf("%w: control character U+%04X", ErrCellText, r)
+		}
+	}
+	if brTagRe.MatchString(text) {
+		return "", fmt.Errorf("%w: literal <br> tag", ErrCellText)
+	}
+	var b strings.Builder
+	run := 0
+	for _, r := range text {
+		switch r {
+		case '\\':
+			run++
+			b.WriteRune(r)
+			continue
+		case '|':
+			if escapePipe {
+				b.WriteString(strings.Repeat("\\", run+1)) // m backslashes become 2m+1
+			}
+			b.WriteRune(r)
+		case '\n':
+			b.WriteString("<br>")
+		default:
+			b.WriteRune(r)
+		}
+		run = 0
+	}
+	return b.String(), nil
+}
+
+// EncodeCell is the writer side of cells: it returns text as one table cell (no surrounding
+// spaces or pipes). CRLF becomes LF and each end is trimmed (the canonical form, so
+// cells(" | " + EncodeCell(x) + " | ")[0] == canon(x)); LF is written as <br>, '|' as an odd run
+// of backslashes. Control characters other than LF and a literal <br> tag return ErrCellText.
+// Callers join cells with " | ", so a trailing backslash never touches a delimiter.
+func EncodeCell(text string) (string, error) { return encodeText(text, true) }
+
+// EncodeStoryText is EncodeCell for the text of a user-story line, where '|' needs no escaping.
+func EncodeStoryText(text string) (string, error) { return encodeText(text, false) }
 
 func firstHeading(lines []string) string {
 	for _, l := range lines {
@@ -243,7 +328,7 @@ func (testCatalog) Parse(files map[string][]byte) (*Snapshot, []Problem, error) 
 			if old, dup := stories[id]; dup {
 				prob(file, i+1, "duplicate story %s (also in %s)", id, old.SourceFile)
 			}
-			s := Story{Code: id, EpicCode: strings.Split(id, "-")[1], Text: strings.TrimSpace(text), SourceFile: file, SourceLine: i + 1, FeatureCodes: []string{}}
+			s := Story{Code: id, EpicCode: strings.Split(id, "-")[1], Text: decodeBR(strings.TrimSpace(text)), SourceFile: file, SourceLine: i + 1, FeatureCodes: []string{}}
 			if um := unmappedRe.FindStringSubmatch(mid); um != nil {
 				s.UnmappedReason = strings.TrimSpace(um[1])
 			} else {
