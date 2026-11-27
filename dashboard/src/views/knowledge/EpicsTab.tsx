@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Epic, entityHref, listEpics } from './api';
 import { useLoad } from './hooks';
-import { CoverageBar, Empty, ErrorNote, Pagination, SkeletonRows } from './ui';
+import { CoverageBar, MachineMark, Empty, ErrorNote, Pagination, SkeletonRows } from './ui';
 import { inputCls } from './styles';
 import { Paging, useClampPage, useResetOnChange } from './paging';
 
@@ -82,7 +82,7 @@ export default function EpicsTab({ pid, paging, refreshKey }: Props) {
                       </Link>
                     </td>
                     <td className="px-3 py-2 truncate" title={e.title}>
-                      {e.title}
+                      {e.title} <MachineMark i18n={e.i18n} />
                     </td>
                     <td className="px-3 py-2 tabular-nums">{n(e.test_cases)}</td>
                     <td className="px-3 py-2">

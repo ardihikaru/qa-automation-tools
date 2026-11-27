@@ -6,7 +6,7 @@ import { VerdictIcon, useVerify } from './Verification';
 import { formatInZone, useSystemTimezone } from '../../lib/time';
 import SubmitButton from '../../components/SubmitButton';
 import { useDebounced, useLoad } from './hooks';
-import { CaseStatusChip, CodeLabel, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
+import { CaseStatusChip, CodeLabel, MachineMark, Empty, ErrorNote, Pagination, SkeletonRows, PeekButton, RemovedBadge } from './ui';
 import { inputCls, selectCls } from './styles';
 import { Target } from './EntityPanel';
 import CaseAutomation from './CaseAutomation';
@@ -235,7 +235,8 @@ export default function TestCasesTab({ pid, paging, enums, epics, refreshKey, se
                     <td className="px-3 py-2 truncate" title={scen}>
                       <Link to={entityHref(pid, 'test_case', c.code)} tabIndex={-1} className={`hover:underline ${removed ? 'line-through text-gray-400' : 'text-gray-800'}`}>
                         {scen}
-                      </Link>
+                      </Link>{' '}
+                      <MachineMark i18n={c.i18n} />
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-gray-600 truncate" title={c.story_code ?? ''}>
                       {c.story_code || <span className="text-gray-400">—</span>}

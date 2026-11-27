@@ -31,6 +31,8 @@ import SyncsTab from './SyncsTab';
 import { ErrorNote, Loading, RelTime, ShaLink, SyncStatusChip } from './ui';
 import { useKnowledgeSync } from './useKnowledgeSync';
 import SyncButton from './SyncButton';
+import DraftsPanel from './DraftsPanel';
+import TranslationStatusChip from './TranslationStatus';
 import { DEFAULT_PAGE_SIZE, Paging, parsePage, parseSize } from './paging';
 
 const TABS = [
@@ -276,6 +278,7 @@ export default function KnowledgeView() {
               <span>
                 {summary.counts.features} features · {summary.counts.stories} stories · {summary.counts.test_cases} test cases · {Math.round(summary.coverage.pct)}% automated
               </span>
+              {user?.role === 'Admin' && <TranslationStatusChip pid={pid} refreshKey={refreshKey} />}
               {latest && (
                 <span className="inline-flex items-center gap-2">
                   · <SyncStatusChip status={latest.status} /> sync #{latest.id} <RelTime at={latest.finished_at ?? latest.started_at} />
@@ -304,6 +307,8 @@ export default function KnowledgeView() {
             </div>
           )}
         </header>
+
+        {canWrite && summary.configured && <DraftsPanel pid={pid} refreshKey={refreshKey} onChanged={() => setRefreshKey((n) => n + 1)} />}
 
         {sync.error && <ErrorNote>{sync.error}</ErrorNote>}
         {sync.note && (

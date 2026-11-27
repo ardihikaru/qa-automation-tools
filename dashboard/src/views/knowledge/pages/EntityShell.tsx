@@ -6,7 +6,7 @@ import { ExternalLink, Lock, Pencil } from 'lucide-react';
 import { Coverage, EntityBase, EntityType, TYPE_LABEL, knowledgeHref } from '../api';
 import { coverageSentence } from '../coverage';
 import { AnnotationEditor } from '../EntityPanel';
-import { LocalBadge, Skeleton, SkeletonRows } from '../ui';
+import { LocalBadge, MachineMark, Skeleton, SkeletonRows } from '../ui';
 import { CaseGridSkeleton } from './CaseGrid';
 import { Crumb, Crumbs, Fields, StatusBar } from './kit';
 import { PageCtx, baseCrumbs, topBarCrumbs } from './data';
@@ -61,6 +61,7 @@ export default function EntityShell({ ctx, entity: e, title, titleText, crumbs, 
           <span>{TYPE_LABEL[e.type]}</span>
           <span className={`font-mono ${removed ? 'line-through' : 'text-gray-700'}`}>{e.code}</span>
           {local && <LocalBadge />}
+          <MachineMark i18n={e.i18n} />
         </p>
         {/* The top bar already shows the code; a page whose title is the code skips the heading. */}
         {!codeIsTitle && (

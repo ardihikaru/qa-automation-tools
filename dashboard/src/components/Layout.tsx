@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { Fragment, ReactNode, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   DollarSign,
@@ -11,6 +11,7 @@ import {
   History as HistoryIcon,
   Archive as ArchiveIcon,
 } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 import TopBar from './TopBar';
 import { TopBarProvider } from './pageHeader';
 import ImpersonationBanner from './ImpersonationBanner';
@@ -46,6 +47,7 @@ function navTitle(pathname: string): string {
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
+  const { language } = useAuth();
 
   return (
     <TopBarProvider>
@@ -100,7 +102,10 @@ export default function Layout({ children }: LayoutProps) {
           <TopBar fallbackTitle={navTitle(pathname)} onMenu={() => setSidebarOpen(true)} />
 
           <main className="flex-1 w-full min-w-0 p-6">
-            <PageTransition>{children}</PageTransition>
+            {/* A language change remounts the page, so every knowledge fetch runs again with the new ?lang. */}
+            <PageTransition>
+              <Fragment key={language}>{children}</Fragment>
+            </PageTransition>
           </main>
         </div>
       </div>

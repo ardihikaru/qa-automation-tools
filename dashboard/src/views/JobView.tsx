@@ -257,6 +257,16 @@ export default function JobView() {
               <span className="font-mono text-gray-900 break-all">{meta.branch}</span>
             </span>
           )}
+          {meta.codes && Object.keys(meta.codes).length > 0 && (
+            <span className="text-sm text-gray-600 min-w-0 break-words">
+              {Object.entries(meta.codes).map(([from, to], i) => (
+                <span key={from} className="font-mono text-gray-900">
+                  {i > 0 && ', '}
+                  {to} <span className="font-sans text-gray-500">(was {from})</span>
+                </span>
+              ))}
+            </span>
+          )}
           {prUrl && (
             <a href={prUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:underline min-h-8 min-w-0">
               <GitPullRequest className="w-4 h-4 shrink-0" aria-hidden="true" />

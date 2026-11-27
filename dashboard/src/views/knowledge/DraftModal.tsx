@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import Modal from '../../components/Modal';
 import SubmitButton from '../../components/SubmitButton';
+import AutoGrowTextarea from '../../components/AutoGrowTextarea';
+import { useAuth } from '../../auth/AuthContext';
 import {
   ApiError,
   EntityDetail,
@@ -36,7 +38,10 @@ const labelCls = 'block text-sm font-medium text-gray-700 mb-1';
 const areaCls =
   'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent';
 
+const NEWLINE_HINT = 'Press Shift+Enter for a new line';
+
 export default function DraftModal({ pid, kind, existing, enums, epics, features, onClose, onSaved }: Props) {
+  const { language } = useAuth();
   const editing = !!existing;
   const story = existing?.type === 'story' ? (existing as StoryDetail) : undefined;
   const tc = existing?.type === 'test_case' ? (existing as TestCaseDetail) : undefined;
@@ -110,8 +115,8 @@ export default function DraftModal({ pid, kind, existing, enums, epics, features
     return null;
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     if (inflight.current) return;
     const p = problem();
     if (p) return setError(p);
@@ -121,9 +126,10 @@ export default function DraftModal({ pid, kind, existing, enums, epics, features
     try {
       const body =
         kind === 'story'
-          ? { code, epic_code: epic, text: text.trim(), feature_codes: featureCodes }
+          ? { code, lang: language, epic_code: epic, text: text.trim(), feature_codes: featureCodes }
           : {
               code,
+              lang: language,
               epic_code: epic,
               story_code: storyCode.trim(),
               scenario: scenario.trim(),
@@ -183,7 +189,8 @@ export default function DraftModal({ pid, kind, existing, enums, epics, features
           <>
             <label className="block">
               <span className={labelCls}>Story</span>
-              <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} className={areaCls} placeholder="As a … I want … so that …" />
+              <AutoGrowTextarea value={text} onChange={(e) => setText(e.target.value)} onSubmitKey={() => void submit()} minRows={4} className={areaCls} placeholder="As a … I want … so that …" />
+              <span className="block text-xs text-gray-500 mt-1">{NEWLINE_HINT}</span>
             </label>
             <div>
               <span className={labelCls}>Features</span>
@@ -242,7 +249,8 @@ export default function DraftModal({ pid, kind, existing, enums, epics, features
             </label>
             <label className="block">
               <span className={labelCls}>Scenario (Given / When / Then)</span>
-              <textarea value={scenario} onChange={(e) => setScenario(e.target.value)} rows={4} className={`${areaCls} font-mono`} />
+              <AutoGrowTextarea value={scenario} onChange={(e) => setScenario(e.target.value)} onSubmitKey={() => void submit()} minRows={4} className={`${areaCls} font-mono`} />
+              <span className="block text-xs text-gray-500 mt-1">{NEWLINE_HINT}</span>
             </label>
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
               {(
