@@ -8,6 +8,7 @@ package api
 //
 // The GAOS automation routes (GAOS_AUTOMATION.md) share the same guard:
 //   POST /api/v1/gaos/automation, GET /api/v1/gaos/jobs/{id} (gaos_automation.go).
+// And GAOS_CASE_PROPOSALS.md: POST /api/v1/gaos/case-proposals (gaos_case_proposals.go).
 
 import (
 	"context"
@@ -49,7 +50,7 @@ var (
 // never called.
 func IsGAOSInboundPath(path string) bool {
 	return path == "/api/v1/gaos/results" || path == "/api/v1/gaos/catalog" || path == gaosInboxAnswerPath ||
-		path == gaosAutomationPath || strings.HasPrefix(path, gaosJobsPrefix)
+		path == gaosAutomationPath || strings.HasPrefix(path, gaosJobsPrefix) || path == gaosCaseProposalsPath
 }
 
 // SetGAOSInboundToken enables the inbound routes. Empty = disabled (503, fail-closed).
@@ -83,6 +84,12 @@ func (r *Router) serveGAOSInbound(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		r.gaosInboxAnswer(w, req)
+	case req.URL.Path == gaosCaseProposalsPath:
+		if req.Method != http.MethodPost {
+			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		r.gaosCaseProposals(w, req)
 	case req.URL.Path == gaosAutomationPath:
 		if req.Method != http.MethodPost {
 			writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")

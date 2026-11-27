@@ -273,3 +273,12 @@ from the GAOS decisions view.
 module-derivation fix are merged to `main` and go live with the next deploy.
 
 *Status on 2026-11-25:* the two automation routes (Direction 3) are implemented and go live with the next deploy.
+
+## Direction 4: GAOS proposes test cases for a merged bundle
+
+When every pull request of a bundle (one task-manager code across repositories) has merged, GAOS's test planner sends
+`POST /api/v1/gaos/case-proposals` with the same `GAOS_INBOUND_TOKEN`. A `create` item becomes a **local draft** case
+(`L-G<8 hex>-<index>`, status `planned`, the pull request URLs in its reason) that a QA person reviews and promotes; a
+`link` item ties an existing case to the bundle's pull request URLs, shown as `pr_links` on the case. Each item answers
+`created`, `updated`, `linked` or `refused` with a reason; a retry overwrites the drafts at the same index. Contract:
+[docs/designs/GAOS_CASE_PROPOSALS.md](designs/GAOS_CASE_PROPOSALS.md).

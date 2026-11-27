@@ -265,6 +265,10 @@ func (r *Router) handleKnowledge(w http.ResponseWriter, req *http.Request, pid i
 		switch method {
 		case http.MethodGet:
 			out, err := s.Entity(ctx, pid, et, code)
+			if err == nil && et == knowledge.TypeTestCase && out != nil {
+				// GAOS_CASE_PROPOSALS.md: the pull requests GAOS linked to this case.
+				out["pr_links"] = r.casePRLinks(ctx, pid, code)
+			}
 			respond(w, out, err)
 		case http.MethodPut:
 			if !draftable {

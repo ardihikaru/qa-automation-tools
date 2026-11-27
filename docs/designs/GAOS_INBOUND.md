@@ -10,6 +10,7 @@ GAOS's QA tab has **Pull from QA tools** and **Push to QA tools** buttons. They 
 
 *   `GET /api/v1/gaos/results?product=<gaos id>&after=<cursor>&limit=<n>`: GAOS pulls automation facts.
 *   `POST /api/v1/gaos/catalog`: GAOS pushes its planning decisions.
+*   `POST /api/v1/gaos/case-proposals`: GAOS's test planner proposes local draft cases and links existing cases to a merged bundle's pull requests (same guard; [GAOS_CASE_PROPOSALS.md](GAOS_CASE_PROPOSALS.md)).
 
 ## Decisions
 1.  **Auth: one static bearer, not the cookie.** `GAOS_INBOUND_TOKEN` (env; `gaos_` prefix, at least 37 chars, must differ from `GAOS_API_TOKEN`, else it is refused at start and the routes stay disabled). Compared in constant time (SHA-256 of both, `subtle.ConstantTimeCompare`). Unset: 503 (fail-closed). Wrong or missing: 401. The two exact paths bypass the cookie middleware in `ServeHTTP` and are added to `IsAuthAllowList`; **this is the explicit decision to widen the allow-list**, limited to these two exact paths, and the handler is the guard. (`IsAuthAllowList` is documentation only; the real bypass is `Router.ServeHTTP`.) Handlers use no session user.
