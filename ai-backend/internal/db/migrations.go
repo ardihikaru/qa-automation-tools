@@ -1087,6 +1087,17 @@ ALTER TABLE kb_features ADD COLUMN dev_period VARCHAR(20) NOT NULL DEFAULT '' AF
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 	`INSERT IGNORE INTO app_settings (k, v) VALUES ('timezone', 'Asia/Jakarta');`,
+	// GAOS_CASE_PROPOSALS.md: the pull requests GAOS's test planner tied to an existing case.
+	`CREATE TABLE IF NOT EXISTS kb_case_pr_links (
+  product_id INT NOT NULL,
+  case_code VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  pr_url VARCHAR(300) NOT NULL,
+  bundle_key VARCHAR(220) NOT NULL DEFAULT '',
+  note TEXT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (product_id, case_code, pr_url),
+  CONSTRAINT fk_kb_case_pr_links_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;`,
 }
 
 const skipIfPrefix = "-- skip-if:"
